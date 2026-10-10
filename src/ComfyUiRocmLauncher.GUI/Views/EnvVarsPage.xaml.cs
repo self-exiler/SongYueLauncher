@@ -1,0 +1,118 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using ComfyUiRocmLauncher.Core.Models;
+using ComfyUiRocmLauncher.Core.Services;
+
+namespace ComfyUiRocmLauncher.GUI.Views;
+
+/// <summary>环境变量页（SRS FR-3）：固定注入层只读 + 模板层 + 可编辑自定义层。</summary>
+public sealed partial class EnvVarsPage : Page
+{
+    private readonly CliArgsCatalog _catalog = CliArgsCatalog.Instance;
+
+    public EnvVarsPage()
+    {
+        InitializeComponent();
+        Loaded += (_, _) => RebuildRows();
+    }
+
+    private AppConfig Settings => App.Services.Settings;
+
+    private void RebuildRows()
+    {
+        CustomRows.Children.Clear();
+        foreach (var kv in Settings.CustomEnvVars)
+        {
+            CustomRows.Children.Add(BuildRow(kv.Key, kv.Value));
+        }
+        CheckConflicts();
+    }
+
+    private UIElement BuildRow(string key, string value)
+    {
+        var keyBox = new TextBox
+        {
+            Text = key,
+            Width = 260,
+            PlaceholderText = "VAR_NAME",
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
+        };
+        var valueBox = new TextBox
+        {
+            Text = value,
+            MinWidth = 260,
+            PlaceholderText = "值",
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
+        };
+        var delete = new Button { Content = "删除" };
+
+        void Commit()
+        {
+            var newKey = keyBox.Text.Trim();
+            if (string.IsNullOrEmpty(newKey)) return;
+
+            // FR-3.3：key 与固定注入层冲突时禁止保存并提示
+            if (LaunchEnvBuilder.FixedKeys.Contains(newKey, StringComparer.OrdinalIgnoreCase))
+            {
+                ConflictText.Text = $"已阻止保存：{newKey} 属于固定注入层，由启动器统一管理";
+                return;
+            }
+
+            Settings.CustomEnvVars.Remove(key);
+            Settings.CustomEnvVars[newKey] = valueBox.Text;
+            key = newKey;
+            App.Services.Save();
+            CheckConflicts();
+        }
+
+        keyBox.TextChanged += (_, _) => Commit();
+        valueBox.TextChanged += (_, _) => Commit();
+        delete.Click += (_, _) =>
+        {
+            Settings.CustomEnvVars.Remove(key);
+            App.Services.Save();
+            RebuildRows();
+        };
+
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        panel.Children.Add(keyBox);
+        panel.Children.Add(valueBox);
+        panel.Children.Add(delete);
+        return panel;
+    }
+
+    private void CheckConflicts()
+    {
+        var conflicts = Settings.CustomEnvVars.Keys
+            .Where(k => LaunchEnvBuilder.FixedKeys.Contains(k, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        ConflictText.Text = conflicts.Count == 0
+            ? string.Empty
+            : "与固定注入层冲突（需删除或改名后才能保存新值）：" + string.Join(", ", conflicts);
+    }
+
+    private void AddRow_Click(object sender, RoutedEventArgs e)
+    {
+        var key = "NEW_VAR_" + (Settings.CustomEnvVars.Count + 1);
+        Settings.CustomEnvVars[key] = string.Empty;
+        App.Services.Save();
+        RebuildRows();
+    }
+
+    private void ApplyTemplate_Click(object sender, RoutedEventArgs e)
+    {
+        var tag = (TemplateCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "rdna3";
+        var venvDir = LaunchEnvBuilder.VenvDirFrom(Settings.PythonExe);
+
+        var vars = TemplateCatalog.Instance.ExpandEnvVars(tag, Settings.ComfyUiDir, venvDir);
+        foreach (var kv in vars)
+        {
+            Settings.CustomEnvVars[kv.Key] = kv.Value;
+        }
+
+        TemplateCatalog.Instance.ApplyArgs(tag, Settings.Args, _catalog);
+        App.Services.Save();
+        RebuildRows();
+    }
+}

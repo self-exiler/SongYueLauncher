@@ -1,0 +1,156 @@
+using ComfyUiRocmLauncher.Core.Models;
+using ComfyUiRocmLauncher.Core.Services;
+
+namespace ComfyUiRocmLauncher.Core.Test;
+
+public class EnvAndConfigTests : IDisposable
+{
+    private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), "crl-test-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_tempRoot, recursive: true); } catch (IOException) { }
+        GC.SuppressFinalize(this);
+    }
+
+    [Fact]
+    public void Build_FixedInjectionLayer()
+    {
+        var config = new AppConfig
+        {
+            ComfyUiDir = @"D:\AI\comfyui-rocm",
+            PythonExe = @"D:\AI\comfyui-rocm\.venv\Scripts\python.exe",
+        };
+
+        var env = LaunchEnvBuilder.Build(config, @"C:\rocm", out var conflicts);
+
+        Assert.Equal("1", env["PYTHONUTF8"]);
+        Assert.Equal("1", env["PYTHONNOUSERSITE"]);
+        Assert.Equal(@"C:\rocm", env["HIP_PATH"]);
+        Assert.Equal(@"C:\rocm", env["ROCM_PATH"]);
+        Assert.StartsWith(@"D:\AI\comfyui-rocm\.venv;D:\AI\comfyui-rocm\.venv\Scripts;", env["PATH"]);
+        Assert.Empty(conflicts);
+    }
+
+    [Fact]
+    public void Build_ReportsConflictWithFixedKeys()
+    {
+        var config = new AppConfig { PythonExe = @"D:\venv\Scripts\python.exe" };
+        config.CustomEnvVars["HIP_PATH"] = "x";
+
+        var env = LaunchEnvBuilder.Build(config, null, out var conflicts);
+
+        Assert.Contains("HIP_PATH", conflicts);
+        Assert.False(env.ContainsKey("HIP_PATH"));
+    }
+
+    [Fact]
+    public void Build_AppliesCustomVars()
+    {
+        var config = new AppConfig { PythonExe = @"D:\venv\Scripts\python.exe" };
+        config.CustomEnvVars["MIOPEN_FIND_MODE"] = "2";
+
+        var env = LaunchEnvBuilder.Build(config, null, out _);
+
+        Assert.Equal("2", env["MIOPEN_FIND_MODE"]);
+    }
+
+    [Fact]
+    public void EnsureCacheDirs_CreatesDefaults()
+    {
+        var dir = Path.Combine(_tempRoot, "comfy");
+        Directory.CreateDirectory(dir);
+        var env = new Dictionary<string, string>();
+
+        var created = LaunchEnvBuilder.EnsureCacheDirs(dir, env);
+
+        Assert.Equal(2, created.Count);
+        Assert.True(Directory.Exists(Path.Combine(dir, "triton-cache")));
+        Assert.True(Directory.Exists(Path.Combine(dir, "tunableop-cache")));
+        Assert.Equal(Path.Combine(dir, "triton-cache"), env["TRITON_CACHE_DIR"]);
+    }
+
+    [Fact]
+    public void VenvDirFrom_DerivesVenv()
+    {
+        Assert.Equal(@"D:\AI\comfyui-rocm\.venv",
+            LaunchEnvBuilder.VenvDirFrom(@"D:\AI\comfyui-rocm\.venv\Scripts\python.exe"));
+    }
+
+    [Fact]
+    public void Config_RoundTrip()
+    {
+        var svc = new ConfigService(Path.Combine(_tempRoot, "cfg"));
+        var config = new AppConfig
+        {
+            ComfyUiDir = @"D:\AI\comfyui-rocm",
+            PythonExe = @"D:\AI\comfyui-rocm\.venv\Scripts\python.exe",
+            AutoOpenBrowser = true,
+            ExtraArgs = "--verbose",
+        };
+        config.Args.Enable("enable-manager", true);
+        config.CustomEnvVars["MIOPEN_FIND_MODE"] = "2";
+
+        svc.Save(config);
+        var loaded = svc.Load();
+
+        Assert.Equal(config.ComfyUiDir, loaded.ComfyUiDir);
+        Assert.True(loaded.AutoOpenBrowser);
+        Assert.Equal("--verbose", loaded.ExtraArgs);
+        Assert.True(loaded.Args.IsEnabled("enable-manager"));
+        Assert.Equal("2", loaded.CustomEnvVars["MIOPEN_FIND_MODE"]);
+    }
+
+    [Fact]
+    public void Config_BrokenFileIsBackedUpAndDefaultsRestored()
+    {
+        var root = Path.Combine(_tempRoot, "broken");
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "config.json"), "{ this is not json");
+
+        var svc = new ConfigService(root);
+        var loaded = svc.Load();
+
+        Assert.Equal(string.Empty, loaded.ComfyUiDir);
+        Assert.True(Directory.GetFiles(root, "config.broken.*.json").Length == 1);
+    }
+
+    [Fact]
+    public void LogService_RingBufferRespectsCapacity()
+    {
+        var dir = Path.Combine(_tempRoot, "logs");
+        var log = new LogService(dir, capacity: 5);
+        for (var i = 0; i < 20; i++) log.Append($"line {i}");
+
+        Assert.Equal(5, log.Count);
+        Assert.Equal("line 15", log.Snapshot()[0]);
+    }
+
+    [Fact]
+    public void LogService_RetentionDeletesOldest()
+    {
+        var dir = Path.Combine(_tempRoot, "logs2");
+        Directory.CreateDirectory(dir);
+        for (var i = 0; i < 5; i++)
+        {
+            File.WriteAllText(Path.Combine(dir, $"comfyui_2026-01-0{i + 1}_00-00-00.log"), new string('x', 1024));
+        }
+
+        var log = new LogService(dir);
+        var deleted = log.ApplyRetention(retainCount: 2, retainTotalMB: 200);
+
+        Assert.Equal(3, deleted);
+        Assert.Equal(2, Directory.GetFiles(dir, "comfyui_*.log").Length);
+    }
+
+    [Fact]
+    public void AnsiParser_ParsesAndStrips()
+    {
+        var runs = AnsiParser.Parse("\u001b[32mok\u001b[0m tail");
+        Assert.Equal("green", runs[0].Color);
+        Assert.Equal("ok", runs[0].Text);
+        Assert.Equal("default", runs[1].Color);
+        Assert.Equal(" tail", runs[1].Text);
+        Assert.Equal("ok tail", AnsiParser.Strip("\u001b[32mok\u001b[0m tail"));
+    }
+}

@@ -1,0 +1,177 @@
+{
+  "version": 1,
+  "source": "comfy/cli_args.py (2026-10 snapshot, docs/cli_args_upstream.py)",
+  "comment": "数据驱动的启动参数清单。type 取值: flag | int | float | string | optionalString | optionalInt | enum | multiEnum | floatList | stringList | repeatableStringList | repeatableVerbose | repeatableKeyValue。mutex 为互斥组编号（同组开启一个自动关闭其余）。bat=true 表示 comfyui-rocm.bat 基础参数组默认启用，batValue 为其取值。",
+  "groups": [
+    {
+      "id": "network",
+      "title": "网络",
+      "args": [
+        { "name": "listen", "type": "optionalString", "default": "127.0.0.1", "const": "0.0.0.0,::", "metavar": "IP", "description": "监听地址，逗号分隔多地址；启用但不填值时监听所有 IPv4/IPv6" },
+        { "name": "port", "type": "int", "default": 8188, "description": "监听端口" },
+        { "name": "tls-keyfile", "type": "string", "description": "TLS 私钥文件路径（需配合 tls-certfile）" },
+        { "name": "tls-certfile", "type": "string", "description": "TLS 证书文件路径（需配合 tls-keyfile）" },
+        { "name": "enable-cors-header", "type": "optionalString", "const": "*", "metavar": "ORIGIN", "description": "开启 CORS；启用但不填值时允许所有来源（*）" },
+        { "name": "max-upload-size", "type": "float", "default": 100, "description": "上传大小上限（MB）" }
+      ]
+    },
+    {
+      "id": "directories",
+      "title": "目录",
+      "args": [
+        { "name": "base-directory", "type": "string", "description": "覆盖 models/custom_nodes/input/output/temp/user 的基目录" },
+        { "name": "extra-model-paths-config", "type": "repeatableStringList", "metavar": "PATH", "description": "加载 extra_model_paths.yaml，可指定多个（每行一个，每个路径单独传递一次该参数）" },
+        { "name": "output-directory", "type": "string", "description": "覆盖输出目录（优先于 base-directory）" },
+        { "name": "temp-directory", "type": "string", "description": "覆盖临时目录（优先于 base-directory）" },
+        { "name": "input-directory", "type": "string", "description": "覆盖输入目录（优先于 base-directory）" },
+        { "name": "user-directory", "type": "string", "mustExist": true, "description": "覆盖 user 目录（须为已存在的绝对路径）" },
+        { "name": "models-directory", "type": "string", "mustExist": true, "description": "覆盖 models 目录（须为已存在的绝对路径）" }
+      ]
+    },
+    {
+      "id": "device",
+      "title": "设备与后端",
+      "args": [
+        { "name": "cuda-device", "type": "string", "metavar": "DEVICE_ID", "description": "可见设备 id 列表（如 0 或 0,1），或 all 保持全部可见" },
+        { "name": "default-device", "type": "int", "metavar": "DEFAULT_DEVICE_ID", "description": "默认设备 id，其余设备保持可见" },
+        { "name": "cuda-malloc", "type": "flag", "mutex": 1, "description": "启用 cudaMallocAsync（torch 2.0+ 默认启用）" },
+        { "name": "disable-cuda-malloc", "type": "flag", "mutex": 1, "description": "禁用 cudaMallocAsync" },
+        { "name": "directml", "type": "optionalInt", "const": -1, "metavar": "DIRECTML_DEVICE", "description": "使用 torch-directml（本项目不用，仅枚举）" },
+        { "name": "oneapi-device-selector", "type": "string", "metavar": "SELECTOR_STRING", "description": "oneAPI 设备选择（本项目不用，仅枚举）" },
+        { "name": "supports-fp8-compute", "type": "flag", "description": "声称设备支持 fp8 计算" },
+        { "name": "enable-triton-backend", "type": "flag", "description": "启用 comfy-kitchen Triton 后端（默认启动时禁用）" },
+        { "name": "disable-triton-backend", "type": "flag", "bat": true, "description": "强制禁用 comfy-kitchen Triton 后端（覆盖 enable-triton-backend）" }
+      ]
+    },
+    {
+      "id": "precision",
+      "title": "精度",
+      "args": [
+        { "name": "force-fp32", "type": "flag", "mutex": 2, "description": "强制全局 fp32" },
+        { "name": "force-fp16", "type": "flag", "mutex": 2, "description": "强制全局 fp16（同时隐含 fp16-unet）" },
+        { "name": "fp32-unet", "type": "flag", "mutex": 3, "description": "UNet 以 fp32 运行" },
+        { "name": "fp64-unet", "type": "flag", "mutex": 3, "description": "UNet 以 fp64 运行" },
+        { "name": "bf16-unet", "type": "flag", "mutex": 3, "description": "UNet 以 bf16 运行" },
+        { "name": "fp16-unet", "type": "flag", "mutex": 3, "description": "UNet 以 fp16 运行" },
+        { "name": "fp8_e4m3fn-unet", "type": "flag", "mutex": 3, "description": "UNet 权重存为 fp8_e4m3fn" },
+        { "name": "fp8_e5m2-unet", "type": "flag", "mutex": 3, "description": "UNet 权重存为 fp8_e5m2" },
+        { "name": "fp8_e8m0fnu-unet", "type": "flag", "mutex": 3, "description": "UNet 权重存为 fp8_e8m0fnu" },
+        { "name": "fp16-vae", "type": "flag", "mutex": 4, "description": "VAE 以 fp16 运行（可能黑图）" },
+        { "name": "fp32-vae", "type": "flag", "mutex": 4, "description": "VAE 以 fp32 全精度运行" },
+        { "name": "bf16-vae", "type": "flag", "mutex": 4, "description": "VAE 以 bf16 运行" },
+        { "name": "cpu-vae", "type": "flag", "description": "VAE 在 CPU 上运行" },
+        { "name": "fp8_e4m3fn-text-enc", "type": "flag", "mutex": 5, "description": "文本编码器权重存为 fp8（e4m3fn）" },
+        { "name": "fp8_e5m2-text-enc", "type": "flag", "mutex": 5, "description": "文本编码器权重存为 fp8（e5m2）" },
+        { "name": "fp16-text-enc", "type": "flag", "mutex": 5, "description": "文本编码器权重存为 fp16" },
+        { "name": "fp32-text-enc", "type": "flag", "mutex": 5, "description": "文本编码器权重存为 fp32" },
+        { "name": "bf16-text-enc", "type": "flag", "mutex": 5, "description": "文本编码器权重存为 bf16" },
+        { "name": "fp16-intermediates", "type": "flag", "description": "实验性：节点间中间张量用 fp16" },
+        { "name": "force-channels-last", "type": "flag", "description": "推理时强制 channels_last 格式" }
+      ]
+    },
+    {
+      "id": "cache",
+      "title": "缓存与内存",
+      "args": [
+        { "name": "cache-ram", "type": "floatList", "maxValues": 2, "metavar": "GB", "mutex": 6, "description": "RAM 压力缓存（默认模式）。第 1 个值为活跃缓存阈值 GB，可选第 2 个值为非活跃/固定阈值；不填值用自动默认" },
+        { "name": "cache-classic", "type": "flag", "mutex": 6, "description": "旧式（激进）缓存" },
+        { "name": "cache-lru", "type": "int", "default": 0, "mutex": 6, "bat": true, "batValue": "20", "description": "LRU 缓存 N 条节点结果（占更多 RAM/VRAM）" },
+        { "name": "cache-none", "type": "flag", "mutex": 6, "description": "不缓存，每次执行全部节点（省内存）" },
+        { "name": "high-ram", "type": "flag", "mutex": 6, "description": "高内存模式（隐含 cache-classic）" },
+        { "name": "reserve-vram", "type": "float", "description": "为系统/其他软件保留的显存 GB" },
+        { "name": "vram-headroom", "type": "float", "default": 0, "description": "DynamicVRAM 额外保持的空闲显存 GB" },
+        { "name": "disable-nvml-pressure", "type": "flag", "description": "DynamicVRAM 用 CUDA 代替 NVML 测显存压力" },
+        { "name": "disable-smart-memory", "type": "flag", "bat": true, "description": "激进 offload 到内存，不在显存保留模型" },
+        { "name": "disable-pinned-memory", "type": "flag", "bat": true, "description": "禁用 pinned memory" }
+      ]
+    },
+    {
+      "id": "vram",
+      "title": "显存模式",
+      "args": [
+        { "name": "gpu-only", "type": "flag", "mutex": 7, "description": "全部（含文本编码器）存 GPU 运行" },
+        { "name": "highvram", "type": "flag", "mutex": 7, "description": "模型用后不卸载到 CPU，常驻显存" },
+        { "name": "lowvram", "type": "flag", "mutex": 7, "description": "低显存模式（动态显存启用时无效）" },
+        { "name": "novram", "type": "flag", "mutex": 7, "description": "比 lowvram 更极限" },
+        { "name": "cpu", "type": "flag", "mutex": 7, "description": "全部用 CPU（很慢）" },
+        { "name": "enable-dynamic-vram", "type": "flag", "bat": true, "description": "启用动态显存（在默认未启用的系统上）" },
+        { "name": "disable-dynamic-vram", "type": "flag", "description": "禁用动态显存，改用估算式模型加载" },
+        { "name": "async-offload", "type": "optionalInt", "const": 2, "metavar": "NUM_STREAMS", "description": "异步权重卸载，可选值为卸载流数量（默认 2）" },
+        { "name": "disable-async-offload", "type": "flag", "description": "禁用异步权重卸载" },
+        { "name": "fast-disk", "type": "flag", "description": "强制磁盘后备动态加载（NVME 快盘可更快）" },
+        { "name": "disable-fast-disk", "type": "flag", "description": "禁用磁盘后备动态加载（覆盖 fast-disk）" }
+      ]
+    },
+    {
+      "id": "attention",
+      "title": "注意力",
+      "args": [
+        { "name": "use-split-cross-attention", "type": "flag", "mutex": 8, "description": "split 交叉注意力优化（xformers 生效时被忽略）" },
+        { "name": "use-quad-cross-attention", "type": "flag", "mutex": 8, "description": "sub-quadratic 交叉注意力（RDNA1/2 模板用）" },
+        { "name": "use-pytorch-cross-attention", "type": "flag", "mutex": 8, "description": "PyTorch 2.0 交叉注意力" },
+        { "name": "use-sage-attention", "type": "flag", "mutex": 8, "description": "SageAttention" },
+        { "name": "use-flash-attention", "type": "flag", "mutex": 8, "description": "FlashAttention" },
+        { "name": "use-ck-attention", "type": "flag", "mutex": 8, "description": "Comfy Kitchen 注意力（RDNA4 模板用）" },
+        { "name": "disable-xformers", "type": "flag", "description": "禁用 xformers" },
+        { "name": "force-upcast-attention", "type": "flag", "mutex": 9, "description": "强制注意力 upcast（若能修复黑图请反馈上游）" },
+        { "name": "dont-upcast-attention", "type": "flag", "mutex": 9, "description": "禁用全部注意力 upcast（调试用）" }
+      ]
+    },
+    {
+      "id": "manager",
+      "title": "Manager 与节点",
+      "args": [
+        { "name": "enable-manager", "type": "flag", "bat": true, "description": "启用 ComfyUI-Manager" },
+        { "name": "disable-manager-ui", "type": "flag", "mutex": 10, "description": "仅禁用 Manager 的 UI 与端点（后台任务仍运行）" },
+        { "name": "enable-manager-legacy-ui", "type": "flag", "mutex": 10, "bat": true, "description": "启用 Manager 旧版 UI（隐含 enable-manager）" },
+        { "name": "disable-all-custom-nodes", "type": "flag", "description": "禁用全部自定义节点" },
+        { "name": "whitelist-custom-nodes", "type": "stringList", "description": "白名单节点目录名（多个空格分隔），配合 disable-all-custom-nodes 使用" },
+        { "name": "disable-partner-nodes", "type": "flag", "description": "禁用付费 API 节点（前端保持联网）" },
+        { "name": "offline", "type": "flag", "description": "前端断网（CSP 限制），同时禁用付费节点" },
+        { "name": "disable-api-nodes", "type": "flag", "bat": true, "description": "offline 的废弃别名（bat 在用，隐含 offline）" }
+      ]
+    },
+    {
+      "id": "performance",
+      "title": "性能与编译",
+      "args": [
+        { "name": "disable-cuda-graphs", "type": "flag", "description": "禁用 CUDA graphs" },
+        { "name": "disable-comfy-compiler", "type": "flag", "description": "禁用 Comfy 模型编译器（隐含 disable-cuda-graphs）" },
+        { "name": "assert-graph-breaks", "type": "flag", "description": "编译器 graph break 时直接失败" },
+        { "name": "force-non-blocking", "type": "flag", "description": "强制非阻塞张量操作（部分非 N 卡更快，可能影响工作流）" },
+        { "name": "fast", "type": "multiEnum", "choices": ["fp16_accumulation", "fp8_matrix_mult", "cublas_ops", "autotune"], "description": "实验性优化（可能崩）。启用但全不选 = 全开；勾选部分 = 只开所选" },
+        { "name": "deterministic", "type": "flag", "description": "使用更慢的确定性算法（不保证图片完全可复现）" },
+        { "name": "debug-hang", "type": "flag", "description": "Ctrl-C 时 dump 栈，用于排查卡死" },
+        { "name": "mmap-torch-files", "type": "flag", "description": "加载 ckpt/pt 文件时使用 mmap" },
+        { "name": "disable-mmap", "type": "flag", "description": "加载 safetensors 时禁用 mmap" }
+      ]
+    },
+    {
+      "id": "misc",
+      "title": "日志与其他",
+      "args": [
+        { "name": "verbose", "type": "repeatableVerbose", "choices": ["DEBUG", "DETAIL", "INFO", "WARNING", "ERROR", "CRITICAL"], "description": "日志级别；可不带值（=DEBUG），或 LEVEL，或 LEVEL FILE 输出到文件，可重复多次" },
+        { "name": "log-stdout", "type": "flag", "description": "常规输出走 stdout（默认走 stderr）" },
+        { "name": "dont-print-server", "type": "flag", "description": "不打印服务输出" },
+        { "name": "quick-test-for-ci", "type": "flag", "description": "CI 快速测试" },
+        { "name": "windows-standalone-build", "type": "flag", "description": "独立版便利行为（隐含 auto-launch）" },
+        { "name": "auto-launch", "type": "flag", "description": "自动打开浏览器（与启动器侧开关互不影响）" },
+        { "name": "disable-auto-launch", "type": "flag", "description": "禁止自动打开浏览器" },
+        { "name": "disable-metadata", "type": "flag", "description": "文件中不保存 prompt 元数据" },
+        { "name": "multi-user", "type": "flag", "description": "启用多用户独立存储" },
+        { "name": "front-end-version", "type": "string", "default": "comfyanonymous/ComfyUI@latest", "description": "前端版本，格式 repoOwner/repoName@version（latest 或版本号）" },
+        { "name": "front-end-root", "type": "string", "mustExist": true, "description": "本地前端目录（须已存在，优先于 front-end-version）" },
+        { "name": "enable-compress-response-body", "type": "flag", "description": "压缩响应体" },
+        { "name": "comfy-api-base", "type": "string", "default": "https://api.comfy.org", "description": "ComfyUI API base URL" },
+        { "name": "database-url", "type": "string", "description": "数据库 URL（如 sqlite:///:memory:）" },
+        { "name": "enable-assets", "type": "flag", "description": "启用资产系统（API 路由、数据库同步、后台扫描）" },
+        { "name": "enable-asset-hashing", "type": "flag", "description": "扫描资产时计算 blake3 哈希（有启动成本）" },
+        { "name": "feature-flag", "type": "repeatableKeyValue", "metavar": "KEY[=VALUE]", "description": "服务器特性开关，每行一个 KEY 或 KEY=VALUE，可多次" },
+        { "name": "list-feature-flags", "type": "flag", "description": "打印已知特性开关 JSON 并退出" },
+        { "name": "default-hashing-function", "type": "enum", "choices": ["md5", "sha1", "sha256", "sha512"], "default": "sha256", "description": "文件哈希算法（重名/内容比对）" },
+        { "name": "preview-method", "type": "enum", "choices": ["none", "auto", "latent2rgb", "taesd"], "default": "none", "description": "采样器节点预览方式" },
+        { "name": "preview-size", "type": "int", "default": 512, "description": "采样预览最大尺寸" }
+      ]
+    }
+  ]
+}

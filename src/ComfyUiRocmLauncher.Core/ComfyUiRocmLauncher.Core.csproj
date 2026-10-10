@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ComfyUiRocmLauncher.Core</RootNamespace>
+    <AssemblyName>ComfyUiRocmLauncher.Core</AssemblyName>
+  </PropertyGroup>
+
+  <!-- WMI 读取显卡型号（FR-1.3）。Core 保持零 UI 依赖，不引用任何 WinUI / WindowsAppSDK 类型。 -->
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- 数据驱动资源：启动参数清单（附录 A）与 GPU 模板（附录 B）随程序集内嵌，GUI 与测试共用同一份。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\cli-args.json" />
+    <EmbeddedResource Include="Resources\gpu-templates.json" />
+  </ItemGroup>
+
+</Project>

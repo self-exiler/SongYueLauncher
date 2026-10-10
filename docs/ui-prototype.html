@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComfyUI ROCm Launcher — 界面原型</title>
+<style>
+:root{
+  --bg:#202020; --bg-layer:#282828; --bg-card:#2d2d2d; --bg-card-hover:#333333;
+  --bg-input:#1f1f1f; --border:#3d3d3d; --border-strong:#4a4a4a;
+  --text:#ffffff; --text-2:#c5c5c5; --text-3:#9a9a9a;
+  --accent:#4CC2FF; --accent-hover:#6bcdff; --accent-text:#003355;
+  --ok:#6CCB5F; --warn:#FCE100; --err:#FF99A4; --busy:#76B9ED;
+  --console-bg:#161616;
+}
+[data-theme="light"]{
+  --bg:#f3f3f3; --bg-layer:#fafafa; --bg-card:#ffffff; --bg-card-hover:#f5f5f5;
+  --bg-input:#ffffff; --border:#d6d6d6; --border-strong:#bdbdbd;
+  --text:#1a1a1a; --text-2:#444444; --text-3:#767676;
+  --accent:#0067C0; --accent-hover:#1976c9; --accent-text:#ffffff;
+  --ok:#0F7B0F; --warn:#9d5d00; --err:#C42B1C; --busy:#0067C0;
+  --console-bg:#1e1e1e;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  font-size:14px;background:var(--bg);color:var(--text);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+/* ===== 标题栏 ===== */
+#titlebar{
+  height:44px;flex:none;display:flex;align-items:center;gap:10px;
+  padding:0 12px;background:var(--bg-layer);border-bottom:1px solid var(--border);
+  -webkit-app-region:drag;user-select:none;
+}
+#titlebar .appicon{width:20px;height:20px;color:var(--accent);flex:none}
+#titlebar .appname{font-weight:600;font-size:13px}
+#titlebar .proto-tag{font-size:11px;color:var(--text-3);border:1px solid var(--border-strong);border-radius:4px;padding:1px 6px}
+#stateBadge{
+  margin-left:8px;font-size:12px;font-weight:600;padding:2px 10px;border-radius:12px;
+  background:#3a3a3a;color:var(--text-2);transition:all .3s;
+}
+#stateBadge.s-idle{background:#3a3a3a;color:var(--text-2)}
+#stateBadge.s-starting{background:rgba(252,225,0,.15);color:var(--warn)}
+#stateBadge.s-running{background:rgba(108,203,95,.15);color:var(--ok)}
+#stateBadge.s-stopping{background:rgba(255,153,164,.15);color:var(--err)}
+#stateBadge.s-busy{background:rgba(118,185,237,.15);color:var(--busy)}
+#titlebar .spacer{flex:1}
+#themeToggle{
+  -webkit-app-region:no-drag;background:transparent;border:1px solid var(--border);
+  color:var(--text-2);border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;
+}
+#themeToggle:hover{background:var(--bg-card-hover)}
+/* ===== 主布局 ===== */
+#main{flex:1;display:flex;min-height:0}
+#sidenav{
+  width:220px;flex:none;background:var(--bg-layer);border-right:1px solid var(--border);
+  padding:8px;display:flex;flex-direction:column;gap:2px;
+}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:5px;
+  color:var(--text-2);cursor:pointer;font-size:13.5px;border:none;background:transparent;
+  width:100%;text-align:left;position:relative;
+}
+.nav-item:hover{background:var(--bg-card-hover)}
+.nav-item.active{background:var(--bg-card);color:var(--text);font-weight:600}
+.nav-item.active::before{
+  content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--accent);
+}
+.nav-item svg{width:16px;height:16px;flex:none;opacity:.9}
+#sidenav .nav-footer{margin-top:auto;font-size:11px;color:var(--text-3);padding:8px 12px;line-height:1.6}
+#content{flex:1;overflow-y:auto;padding:20px 24px 80px}
+.page{display:none;max-width:1100px;margin:0 auto}
+.page.active{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+h1{font-size:22px;font-weight:600;margin-bottom:4px}
+.page-sub{color:var(--text-3);font-size:12.5px;margin-bottom:18px}
+h2{font-size:15px;font-weight:600;margin-bottom:10px}
+/* ===== 卡片 ===== */
+.card{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:8px;
+  padding:16px 18px;margin-bottom:16px;
+}
+/* ===== 表单 ===== */
+.frow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.frow:last-child{margin-bottom:0}
+.frow label{width:120px;flex:none;color:var(--text-2);font-size:13px}
+.frow .grow{flex:1;display:flex;gap:8px;align-items:center}
+input[type=text],input[type=number],select,textarea{
+  background:var(--bg-input);border:1px solid var(--border);border-radius:4px;
+  color:var(--text);padding:6px 10px;font-size:13px;font-family:inherit;width:100%;
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+input::placeholder,textarea::placeholder{color:var(--text-3)}
+.mono{font-family:"Cascadia Mono","Cascadia Code",Consolas,monospace}
+.btn{
+  background:var(--bg-card);border:1px solid var(--border-strong);color:var(--text);
+  border-radius:5px;padding:6px 16px;font-size:13px;cursor:pointer;font-family:inherit;
+  white-space:nowrap;transition:background .12s;
+}
+.btn:hover:not(:disabled){background:var(--bg-card-hover)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:var(--accent-text);font-weight:600}
+.btn-accent:hover:not(:disabled){background:var(--accent-hover)}
+.btn-lg{padding:10px 28px;font-size:14px}
+.btn-danger:hover:not(:disabled){border-color:var(--err);color:var(--err)}
+.hint{font-size:12px;color:var(--text-3)}
+.ok-text{color:var(--ok)} .warn-text{color:var(--warn)} .err-text{color:var(--err)}
+/* ===== Toggle ===== */
+.toggle{position:relative;width:40px;height:20px;flex:none;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.toggle .track{
+  position:absolute;inset:0;border-radius:10px;background:transparent;
+  border:1.5px solid var(--text-3);transition:all .15s;
+}
+.toggle .track::after{
+  content:"";position:absolute;top:50%;left:3px;transform:translateY(-50%);
+  width:12px;height:12px;border-radius:50%;background:var(--text-3);transition:all .15s;
+}
+.toggle input:checked + .track{background:var(--accent);border-color:var(--accent)}
+.toggle input:checked + .track::after{left:23px;background:var(--accent-text)}
+.toggle input:disabled + .track{opacity:.4;cursor:not-allowed}
+/* ===== 状态指示点 ===== */
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:1px}
+.dot.idle{background:#8a8a8a}.dot.running{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.dot.starting{background:var(--warn);animation:pulse 1s infinite}
+.dot.stopping{background:var(--err);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.35}}
+/* ===== 参数页 ===== */
+.args-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.args-toolbar input[type=text]{max-width:260px}
+details.arg-group{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;
+}
+details.arg-group > summary{
+  padding:11px 16px;cursor:pointer;font-weight:600;font-size:14px;list-style:none;
+  display:flex;align-items:center;gap:8px;user-select:none;
+}
+details.arg-group > summary::-webkit-details-marker{display:none}
+details.arg-group > summary::before{
+  content:"";width:0;height:0;border-left:5px solid var(--text-3);
+  border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .15s;
+}
+details.arg-group[open] > summary::before{transform:rotate(90deg)}
+details.arg-group > summary .count{margin-left:auto;font-size:12px;color:var(--text-3);font-weight:400}
+details.arg-group > summary .oncount{color:var(--accent);font-weight:600}
+.arg-row{
+  display:flex;align-items:flex-start;gap:12px;padding:9px 16px;border-top:1px solid var(--border);
+}
+.arg-row:hover{background:var(--bg-card-hover)}
+.arg-row .arg-toggle{padding-top:2px}
+.arg-row .arg-main{flex:1;min-width:0}
+.arg-row .arg-name{font-family:"Cascadia Mono",Consolas,monospace;font-size:13px;color:var(--accent)}
+.arg-row .arg-name .bat-mark{color:var(--warn);font-size:11px;margin-left:6px;border:1px solid var(--warn);border-radius:3px;padding:0 4px}
+.arg-row .arg-desc{font-size:12px;color:var(--text-3);margin-top:2px}
+.arg-row .arg-ctrl{width:280px;flex:none;display:flex;flex-direction:column;gap:5px}
+.arg-row.off .arg-ctrl{opacity:.35;pointer-events:none}
+.arg-ctrl .choice-list{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--text-2)}
+.arg-ctrl .choice-list label{display:flex;gap:5px;align-items:center;cursor:pointer}
+textarea.mini{min-height:52px;resize:vertical;font-size:12px}
+/* 命令预览 */
+.cmd-preview{
+  position:sticky;bottom:0;background:var(--bg-layer);border:1px solid var(--border-strong);
+  border-radius:8px;padding:12px 16px;margin-top:14px;box-shadow:0 -4px 16px rgba(0,0,0,.25);
+}
+.cmd-preview .cmd-text{
+  font-family:"Cascadia Mono",Consolas,monospace;font-size:12px;color:var(--text-2);
+  white-space:pre-wrap;word-break:break-all;max-height:90px;overflow-y:auto;margin-top:6px;
+}
+.cmd-preview .cmd-text .hl{color:var(--accent)}
+/* ===== 环境变量表 ===== */
+table.kv{width:100%;border-collapse:collapse;font-size:13px}
+table.kv th{text-align:left;color:var(--text-3);font-weight:400;font-size:12px;padding:4px 8px;border-bottom:1px solid var(--border)}
+table.kv td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+table.kv tr:last-child td{border-bottom:none}
+table.kv .k{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent);width:38%}
+table.kv .v{font-family:"Cascadia Mono",Consolas,monospace;color:var(--text-2);word-break:break-all}
+.lock-tag{font-size:11px;color:var(--text-3);border:1px solid var(--border-strong);border-radius:3px;padding:0 5px;margin-left:6px}
+.kv-input{background:transparent;border:1px solid transparent;border-radius:4px;color:var(--text);padding:4px 8px;width:100%;font-family:"Cascadia Mono",Consolas,monospace;font-size:12.5px}
+.kv-input:hover{border-color:var(--border)}
+.kv-input:focus{border-color:var(--accent);background:var(--bg-input);outline:none}
+.kv-input.conflict{border-color:var(--err);background:rgba(255,153,164,.08)}
+.del-btn{background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:15px;padding:2px 8px;border-radius:4px}
+.del-btn:hover{color:var(--err);background:var(--bg-card-hover)}
+/* ===== 日志页 ===== */
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.toolbar .sep{width:1px;height:20px;background:var(--border-strong);margin:0 4px}
+.console{
+  background:var(--console-bg);border:1px solid var(--border);border-radius:8px;
+  padding:12px 14px;font-family:"Cascadia Mono",Consolas,monospace;font-size:12.5px;
+  line-height:1.55;height:calc(100vh - 240px);min-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;
+}
+.console .c-gray{color:#9a9a9a}.console .c-green{color:#6CCB5F}.console .c-yellow{color:#FCE100}
+.console .c-cyan{color:#4CC2FF}.console .c-red{color:#FF99A4}.console .c-white{color:#e8e8e8}
+.console .c-magenta{color:#D16D9E}.console .c-dim{color:#6a6a6a}
+/* ===== 环境管理页 ===== */
+.task-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:16px}
+.task-card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.task-card h3{font-size:14.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+.task-card .t-desc{font-size:12px;color:var(--text-3);line-height:1.6;flex:1}
+.task-card .t-actions{display:flex;gap:8px;align-items:center;margin-top:4px}
+.radio-row{display:flex;gap:16px;font-size:12.5px;color:var(--text-2)}
+.radio-row label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.spinner{
+  width:14px;height:14px;border:2px solid var(--border-strong);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:-3px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Toast */
+#toast{
+  position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--bg-layer);border:1px solid var(--border-strong);color:var(--text);
+  padding:10px 20px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;
+  transition:all .25s;box-shadow:0 6px 24px rgba(0,0,0,.4);z-index:99;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+ol.steps{margin:4px 0 0 20px;color:var(--text-2);font-size:13px;line-height:1.9}
+ol.steps code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent);font-size:12px}
+.quick-dirs{display:flex;gap:8px;flex-wrap:wrap}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#4a4a4a;border-radius:5px;border:2px solid var(--bg)}
+::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+
+<!-- ================= 标题栏 ================= -->
+<header id="titlebar">
+  <svg class="appicon" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11L9.5 22 19.5 9.5H12.5L13 2z"/></svg>
+  <span class="appname">ComfyUI ROCm Launcher</span>
+  <span class="proto-tag">界面原型 v1.0</span>
+  <span id="stateBadge" class="s-idle">已停止</span>
+  <span class="spacer"></span>
+  <button id="themeToggle" onclick="toggleTheme()">切换浅色</button>
+</header>
+
+<div id="main">
+  <!-- ================= 侧边导航 ================= -->
+  <nav id="sidenav">
+    <button class="nav-item active" data-page="home">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 7.5 8 2l6 5.5V14H9.5v-4h-3v4H2z"/></svg>
+      主页
+    </button>
+    <button class="nav-item" data-page="args">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="6" cy="4" r="1.8" fill="var(--bg-layer)"/><circle cx="11" cy="8" r="1.8" fill="var(--bg-layer)"/><circle cx="4.5" cy="12" r="1.8" fill="var(--bg-layer)"/></svg>
+      启动参数
+    </button>
+    <button class="nav-item" data-page="env">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M5 6h6M5 8.5h6M5 11h4"/></svg>
+      环境变量
+    </button>
+    <button class="nav-item" data-page="log">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="m4.5 6 2.5 2-2.5 2M8 11h3.5"/></svg>
+      日志
+    </button>
+    <button class="nav-item" data-page="manage">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.8 13.5 5v6L8 14.2 2.5 11V5z"/><path d="M8 1.8V8m0 0 5.5-3M8 8 2.5 5"/></svg>
+      环境管理
+    </button>
+    <div class="nav-footer">
+      技术栈：C# / .NET 10 + WinUI 3<br>
+      依据：SRS v1.0（2026-10-06）<br>
+      原型仅演示交互，无真实后端
+    </div>
+  </nav>
+
+  <!-- ================= 内容区 ================= -->
+  <section id="content">
+
+    <!-- ========== 主页 ========== -->
+    <div class="page active" id="page-home">
+      <h1>主页</h1>
+      <div class="page-sub">启动 / 停止 ComfyUI，路径与运行状态一览</div>
+
+      <div class="card">
+        <h2>路径设置</h2>
+        <div class="frow">
+          <label>ComfyUI 目录</label>
+          <div class="grow">
+            <input type="text" class="mono" value="D:\AI\comfyui-rocm" id="inpComfyDir">
+            <button class="btn" onclick="toast('原型演示：此处弹出目录选择器')">浏览…</button>
+          </div>
+        </div>
+        <div class="frow">
+          <label>Python 解释器</label>
+          <div class="grow">
+            <input type="text" class="mono" value="D:\AI\comfyui-rocm\.venv\Scripts\python.exe" id="inpPython">
+            <button class="btn" onclick="toast('原型演示：此处弹出文件选择器')">浏览…</button>
+            <button class="btn" id="btnVerifyPy" onclick="verifyPython()">验证</button>
+            <span class="hint" id="pyVerifyResult"></span>
+          </div>
+        </div>
+        <div class="frow">
+          <label>uv.exe</label>
+          <div class="grow">
+            <span class="hint ok-text">✓ 已从 PATH 自动发现：C:\Users\dioha\.local\bin\uv.exe</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>控制</h2>
+        <div class="frow">
+          <button class="btn btn-accent btn-lg" id="btnStart" onclick="startComfy()">▶ 启动</button>
+          <button class="btn btn-lg btn-danger" id="btnStop" disabled onclick="stopComfy()">■ 停止</button>
+          <button class="btn btn-lg" id="btnBrowser" disabled onclick="openBrowser()">打开浏览器</button>
+        </div>
+        <div class="frow" style="margin-top:6px">
+          <label class="toggle"><input type="checkbox" id="tglSyncPkgs" checked><span class="track"></span></label>
+          <span>启动前同步追踪包<span class="hint">（6 个包按 requirements.txt 校验版本，默认开）</span></span>
+        </div>
+        <div class="frow">
+          <label class="toggle"><input type="checkbox" id="tglAutoBrowser"><span class="track"></span></label>
+          <span>启动后自动打开浏览器<span class="hint">（默认关，与 ComfyUI --auto-launch 互不影响）</span></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>状态</h2>
+        <div class="frow"><label>运行状态</label><span id="homeState"><span class="dot idle"></span>已停止</span></div>
+        <div class="frow"><label>当前版本</label><span class="mono" id="verHash">a1b2c3d4e5</span><span class="hint">（.last_update_hash 前 10 位）</span></div>
+        <div class="frow"><label>GPU 型号</label><span>AMD Radeon RX 7900 XTX</span><span class="hint">（WMI 读取）</span></div>
+      </div>
+
+      <div class="card">
+        <h2>快捷目录</h2>
+        <div class="quick-dirs">
+          <button class="btn" onclick="toast('原型演示：资源管理器打开 output')">output</button>
+          <button class="btn" onclick="toast('原型演示：资源管理器打开 models')">models</button>
+          <button class="btn" onclick="toast('原型演示：资源管理器打开 user\\workflow')">user\workflow</button>
+          <button class="btn" onclick="toast('原型演示：资源管理器打开 custom_nodes')">custom_nodes</button>
+          <button class="btn" onclick="toast('原型演示：资源管理器打开 input')">input</button>
+        </div>
+        <div class="hint" style="margin-top:8px">目录不存在时对应按钮自动禁用</div>
+      </div>
+    </div>
+
+    <!-- ========== 启动参数页 ========== -->
+    <div class="page" id="page-args">
+      <h1>启动参数</h1>
+      <div class="page-sub">数据驱动：内置 JSON 清单，来源 ComfyUI 上游 cli_args.py（2026-10 快照），共 <b>110</b> 项 · 同组互斥参数开启一个自动关闭其余</div>
+
+      <div class="args-toolbar">
+        <input type="text" id="argSearch" placeholder="按参数名搜索…" oninput="filterArgs(this.value)">
+        <button class="btn" onclick="applyArgsTemplate()">应用模板</button>
+        <select id="selArgsTemplate" style="width:210px">
+          <option value="rdna12">RDNA1/2（gfx101x / gfx103x）</option>
+          <option value="rdna3" selected>RDNA3（gfx110x）</option>
+          <option value="rdna4">RDNA4（gfx120x）</option>
+        </select>
+        <button class="btn btn-danger" onclick="resetArgs()">恢复默认（全不启用）</button>
+      </div>
+
+      <div id="argGroups"></div>
+
+      <div class="cmd-preview">
+        <div class="frow" style="margin-bottom:8px">
+          <label style="width:auto">额外参数</label>
+          <div class="grow">
+            <input type="text" class="mono" id="extraArgs" placeholder="原样拼接在结构化参数之后（放最后，允许覆盖前者）" oninput="updatePreview()">
+          </div>
+        </div>
+        <b style="font-size:12.5px">命令预览</b>
+        <div class="cmd-text" id="cmdPreview"></div>
+      </div>
+    </div>
+
+    <!-- ========== 环境变量页 ========== -->
+    <div class="page" id="page-env">
+      <h1>环境变量</h1>
+      <div class="page-sub">三层结构自上而下合成最终环境：固定注入 → 模板 → 自定义</div>
+
+      <div class="card">
+        <h2>固定注入层 <span class="lock-tag">只读</span></h2>
+        <table class="kv">
+          <tr><th style="width:38%">变量</th><th>值</th></tr>
+          <tr><td class="k">PYTHONUTF8</td><td class="v">1</td></tr>
+          <tr><td class="k">PYTHONNOUSERSITE</td><td class="v">1</td></tr>
+          <tr><td class="k">PATH</td><td class="v">D:\AI\comfyui-rocm\.venv; D:\AI\comfyui-rocm\.venv\Scripts; （前置到原 PATH）</td></tr>
+          <tr><td class="k">HIP_PATH</td><td class="v">启动时执行 rocm-sdk path --root 的输出</td></tr>
+          <tr><td class="k">ROCM_PATH</td><td class="v">同上</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>模板层</h2>
+        <div class="frow">
+          <label>GPU 模板</label>
+          <div class="grow">
+            <select id="selEnvTemplate" style="max-width:280px">
+              <option value="rdna12">RDNA1/2（gfx101x / gfx103x）</option>
+              <option value="rdna3" selected>RDNA3（gfx110x）</option>
+              <option value="rdna4">RDNA4（gfx120x）</option>
+            </select>
+            <button class="btn btn-accent" onclick="applyEnvTemplate()">应用模板</button>
+          </div>
+        </div>
+        <div class="hint">应用模板 = 把模板中的环境变量与启动参数写入普通配置，之后与自定义项无区别、可自由编辑。纯手动选择，不做 GPU 自动检测推荐。</div>
+      </div>
+
+      <div class="card">
+        <h2>自定义层</h2>
+        <table class="kv" id="customEnvTable">
+          <tr><th style="width:38%">变量名</th><th>值</th><th style="width:44px"></th></tr>
+        </table>
+        <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+          <button class="btn" onclick="addEnvRow()">＋ 添加变量</button>
+          <span class="hint">key 与固定注入层冲突时禁止保存并提示</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>启动前自动步骤（复刻 comfyui-rocm.bat）</h2>
+        <ol class="steps">
+          <li>执行 <code>rocm-sdk init</code>（失败仅警告，不阻断）</li>
+          <li>执行 <code>rocm-sdk path --root</code> 推导 <code>HIP_PATH</code> / <code>ROCM_PATH</code>（失败警告）</li>
+          <li>确保 <code>TRITON_CACHE_DIR</code>、<code>PYTORCH_TUNABLEOP_CACHE_DIR</code> 指向的目录存在（默认 <code>&lt;ComfyUI目录&gt;\triton-cache</code>、<code>...\tunableop-cache</code>）</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- ========== 日志页 ========== -->
+    <div class="page" id="page-log">
+      <h1>日志</h1>
+      <div class="page-sub">子进程 stdout / stderr 合并流 · ANSI 颜色解析渲染 · 内存环形缓冲 5000 行 · 每次启动落盘 logs\comfyui_yyyy-MM-dd_HH-mm-ss.log</div>
+      <div class="toolbar">
+        <button class="btn" onclick="clearLog()">清空</button>
+        <button class="btn" onclick="copyLog()">复制全部</button>
+        <button class="btn" onclick="toast('原型演示：资源管理器打开 %APPDATA%\\ComfyUI ROCm Launcher\\logs')">打开日志目录</button>
+        <span class="sep"></span>
+        <label class="toggle"><input type="checkbox" id="tglAutoScroll" checked><span class="track"></span></label>
+        <span style="font-size:13px">自动滚动</span>
+        <span class="sep"></span>
+        <span class="hint">磁盘保护：保留最近 30 份，总大小超 200 MB 从最旧开始删除</span>
+      </div>
+      <div class="console" id="logConsole"><span class="c-dim">— 尚未启动 ComfyUI，暂无日志。点击主页「启动」查看模拟输出 —</span>
+</div>
+    </div>
+
+    <!-- ========== 环境管理页 ========== -->
+    <div class="page" id="page-manage">
+      <h1>环境管理</h1>
+      <div class="page-sub">ROCm / PyTorch 组件更新 · 通用依赖安装 · 整合包程序更新（运行中保护：ComfyUI 运行时本页全部操作禁用）</div>
+
+      <div id="manageGuard" style="display:none" class="card">
+        <span class="warn-text">⚠ ComfyUI 正在运行 / 环境任务进行中，环境管理操作已禁用（FR-6.4 运行中保护）</span>
+      </div>
+
+      <div class="task-grid" id="taskGrid">
+        <div class="task-card">
+          <h3>ROCm / PyTorch 更新</h3>
+          <div class="t-desc">复刻 rocm-pytorch-package-updater.bat：detect_gpu.py 取 arch → 卸载旧组件 → 按 arch 分支从 AMD nightly 源安装 → rocm-sdk init → 验证 torch / HIP / 设备名。</div>
+          <div class="t-actions">
+            <button class="btn btn-accent task-btn" data-task="rocm" onclick="runTask('rocm',this)">开始更新</button>
+          </div>
+        </div>
+        <div class="task-card">
+          <h3>通用依赖安装</h3>
+          <div class="t-desc">从 requirements.txt 过滤 torch 系后 uv pip install，完成后对比 pip freeze 输出变更包列表。支持国内镜像源加速。</div>
+          <div class="t-actions">
+            <button class="btn btn-accent task-btn" data-task="deps" onclick="runTask('deps',this)">开始安装</button>
+            <label style="font-size:12.5px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="chkMirror"> 使用国内镜像源</label>
+          </div>
+        </div>
+        <div class="task-card">
+          <h3>程序更新</h3>
+          <div class="t-desc">复刻 comfyui-rocm-updater.bat：git ls-remote 比对 hash → clone --depth 1 → robocopy 覆盖（排除 .venv/models/output/user 等）→ 更新 3 个追踪 custom_nodes。</div>
+          <div class="radio-row">
+            <label><input type="radio" name="updMode" value="code" checked> 仅代码（默认）</label>
+            <label><input type="radio" name="updMode" value="full"> 代码 + Python 包</label>
+          </div>
+          <div class="t-actions">
+            <button class="btn btn-accent task-btn" data-task="update" onclick="runTask('update',this)">检查并更新</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar" style="margin-bottom:8px">
+          <b style="font-size:13.5px">任务输出</b>
+          <span id="taskStatus" class="hint"></span>
+          <span style="flex:1"></span>
+          <button class="btn" id="btnCancelTask" disabled onclick="cancelTask()">取消（终止子进程）</button>
+          <button class="btn" onclick="document.getElementById('taskConsole').innerHTML=''">清屏</button>
+        </div>
+        <div class="console" id="taskConsole" style="height:280px"><span class="c-dim">— 选择上方任务卡片开始执行；所有 pip 操作统一为 uv pip … --python &lt;python.exe&gt; —</span>
+</div>
+      </div>
+    </div>
+
+  </section>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ================================================================
+   全局状态机（SRS 2.4）：Idle / Starting / Running / Stopping / BusyEnv
+================================================================ */
+let appState = 'Idle';
+const stateLabel = {Idle:'已停止', Starting:'启动中', Running:'运行中', Stopping:'停止中', BusyEnv:'环境任务中'};
+const badgeClass = {Idle:'s-idle', Starting:'s-starting', Running:'s-running', Stopping:'s-stopping', BusyEnv:'s-busy'};
+const dotClass = {Idle:'idle', Starting:'starting', Running:'running', Stopping:'stopping', BusyEnv:'starting'};
+
+function setState(s){
+  appState = s;
+  const badge = document.getElementById('stateBadge');
+  badge.textContent = stateLabel[s];
+  badge.className = badgeClass[s];
+  document.getElementById('homeState').innerHTML = '<span class="dot '+dotClass[s]+'"></span>'+stateLabel[s];
+  const busy = (s !== 'Idle');
+  document.getElementById('btnStart').disabled = busy;
+  document.getElementById('btnStop').disabled = !(s==='Starting'||s==='Running');
+  document.getElementById('btnBrowser').disabled = (s!=='Running');
+  // FR-6.4：运行中保护环境管理页
+  document.getElementById('manageGuard').style.display = busy ? 'block' : 'none';
+  document.querySelectorAll('.task-btn').forEach(b=> b.disabled = busy);
+}
+
+/* ================================================================
+   启动参数数据（cli-args.json 的 110 项，与上游 1:1 核对）
+   t: flag|int|float|string|optS(optionalString)|optI(optionalInt)
+      |enum|multiEnum|floatList|stringList|repSL(repeatableStringList)
+      |verbose|kv(repeatableKeyValue)
+================================================================ */
+const G = [
+{id:'network',title:'网络',args:[
+ {n:'listen',t:'optS',def:'127.0.0.1',c:'0.0.0.0,::',d:'监听地址，逗号分隔多地址；启用不填值 = 监听全部 IPv4/IPv6'},
+ {n:'port',t:'int',def:8188,d:'监听端口'},
+ {n:'tls-keyfile',t:'string',d:'TLS 私钥文件（需配合 tls-certfile）'},
+ {n:'tls-certfile',t:'string',d:'TLS 证书文件（需配合 tls-keyfile）'},
+ {n:'enable-cors-header',t:'optS',c:'*',d:'开启 CORS；不填值 = 允许所有来源 *'},
+ {n:'max-upload-size',t:'float',def:100,d:'上传大小上限（MB）'}]},
+{id:'directories',title:'目录',args:[
+ {n:'base-directory',t:'string',d:'覆盖 models/custom_nodes/input/output/temp/user 的基目录'},
+ {n:'extra-model-paths-config',t:'repSL',d:'加载 extra_model_paths.yaml（每行一个，逐次传递）'},
+ {n:'output-directory',t:'string',d:'覆盖输出目录'},
+ {n:'temp-directory',t:'string',d:'覆盖临时目录'},
+ {n:'input-directory',t:'string',d:'覆盖输入目录'},
+ {n:'user-directory',t:'string',d:'覆盖 user 目录（须已存在）'},
+ {n:'models-directory',t:'string',d:'覆盖 models 目录（须已存在）'}]},
+{id:'device',title:'设备与后端',args:[
+ {n:'cuda-device',t:'string',d:'可见设备 id 列表（0 或 0,1）或 all'},
+ {n:'default-device',t:'int',d:'默认设备 id'},
+ {n:'cuda-malloc',t:'flag',m:1,d:'启用 cudaMallocAsync'},
+ {n:'disable-cuda-malloc',t:'flag',m:1,d:'禁用 cudaMallocAsync'},
+ {n:'directml',t:'optI',c:-1,d:'torch-directml（本项目不用，仅枚举）'},
+ {n:'oneapi-device-selector',t:'string',d:'oneAPI 设备（本项目不用，仅枚举）'},
+ {n:'supports-fp8-compute',t:'flag',d:'声称支持 fp8 计算'},
+ {n:'enable-triton-backend',t:'flag',d:'启用 comfy-kitchen Triton 后端'},
+ {n:'disable-triton-backend',t:'flag',bat:1,d:'强制禁用 Triton 后端（覆盖 enable）'}]},
+{id:'precision',title:'精度',args:[
+ {n:'force-fp32',t:'flag',m:2,d:'强制全局 fp32'},
+ {n:'force-fp16',t:'flag',m:2,d:'强制全局 fp16（隐含 fp16-unet）'},
+ {n:'fp32-unet',t:'flag',m:3,d:'UNet fp32'},{n:'fp64-unet',t:'flag',m:3,d:'UNet fp64'},
+ {n:'bf16-unet',t:'flag',m:3,d:'UNet bf16'},{n:'fp16-unet',t:'flag',m:3,d:'UNet fp16'},
+ {n:'fp8_e4m3fn-unet',t:'flag',m:3,d:'UNet 权重 fp8_e4m3fn'},
+ {n:'fp8_e5m2-unet',t:'flag',m:3,d:'UNet 权重 fp8_e5m2'},
+ {n:'fp8_e8m0fnu-unet',t:'flag',m:3,d:'UNet 权重 fp8_e8m0fnu'},
+ {n:'fp16-vae',t:'flag',m:4,d:'VAE fp16（可能黑图）'},
+ {n:'fp32-vae',t:'flag',m:4,d:'VAE fp32 全精度'},
+ {n:'bf16-vae',t:'flag',m:4,d:'VAE bf16'},
+ {n:'cpu-vae',t:'flag',d:'VAE 跑 CPU'},
+ {n:'fp8_e4m3fn-text-enc',t:'flag',m:5,d:'文本编码器 fp8（e4m3fn）'},
+ {n:'fp8_e5m2-text-enc',t:'flag',m:5,d:'文本编码器 fp8（e5m2）'},
+ {n:'fp16-text-enc',t:'flag',m:5,d:'文本编码器 fp16'},
+ {n:'fp32-text-enc',t:'flag',m:5,d:'文本编码器 fp32'},
+ {n:'bf16-text-enc',t:'flag',m:5,d:'文本编码器 bf16'},
+ {n:'fp16-intermediates',t:'flag',d:'实验性：节点间中间张量 fp16'},
+ {n:'force-channels-last',t:'flag',d:'强制 channels_last 推理'}]},
+{id:'cache',title:'缓存与内存',args:[
+ {n:'cache-ram',t:'floatList',m:6,d:'RAM 压力缓存阈值 GB（0~2 个值，空格分隔；默认模式）'},
+ {n:'cache-classic',t:'flag',m:6,d:'旧式（激进）缓存'},
+ {n:'cache-lru',t:'int',m:6,bat:1,bv:'20',d:'LRU 缓存 N 条节点结果'},
+ {n:'cache-none',t:'flag',m:6,d:'不缓存（省内存）'},
+ {n:'high-ram',t:'flag',m:6,d:'高内存模式（隐含 cache-classic）'},
+ {n:'reserve-vram',t:'float',d:'为系统保留显存 GB'},
+ {n:'vram-headroom',t:'float',def:0,d:'DynamicVRAM 额外余量 GB'},
+ {n:'disable-nvml-pressure',t:'flag',d:'用 CUDA 代替 NVML 测压'},
+ {n:'disable-smart-memory',t:'flag',bat:1,d:'激进 offload 到内存'},
+ {n:'disable-pinned-memory',t:'flag',bat:1,d:'禁用 pinned memory'}]},
+{id:'vram',title:'显存模式',args:[
+ {n:'gpu-only',t:'flag',m:7,d:'全部存 GPU 运行'},
+ {n:'highvram',t:'flag',m:7,d:'模型常驻显存'},
+ {n:'lowvram',t:'flag',m:7,d:'低显存模式'},
+ {n:'novram',t:'flag',m:7,d:'比 lowvram 更极限'},
+ {n:'cpu',t:'flag',m:7,d:'全部用 CPU（很慢）'},
+ {n:'enable-dynamic-vram',t:'flag',bat:1,d:'启用动态显存'},
+ {n:'disable-dynamic-vram',t:'flag',d:'禁用动态显存（估算式加载）'},
+ {n:'async-offload',t:'optI',c:2,d:'异步权重卸载流数（默认 2）'},
+ {n:'disable-async-offload',t:'flag',d:'关异步卸载'},
+ {n:'fast-disk',t:'flag',d:'磁盘后备动态加载'},
+ {n:'disable-fast-disk',t:'flag',d:'禁用磁盘后备（覆盖 fast-disk）'}]},
+{id:'attention',title:'注意力',args:[
+ {n:'use-split-cross-attention',t:'flag',m:8,d:'split 交叉注意力'},
+ {n:'use-quad-cross-attention',t:'flag',m:8,d:'sub-quadratic 交叉注意力（RDNA1/2 模板）'},
+ {n:'use-pytorch-cross-attention',t:'flag',m:8,d:'PyTorch 2.0 交叉注意力'},
+ {n:'use-sage-attention',t:'flag',m:8,d:'SageAttention'},
+ {n:'use-flash-attention',t:'flag',m:8,d:'FlashAttention'},
+ {n:'use-ck-attention',t:'flag',m:8,d:'Comfy Kitchen 注意力（RDNA4 模板）'},
+ {n:'disable-xformers',t:'flag',d:'禁用 xformers'},
+ {n:'force-upcast-attention',t:'flag',m:9,d:'强制注意力 upcast'},
+ {n:'dont-upcast-attention',t:'flag',m:9,d:'禁用注意力 upcast'}]},
+{id:'manager',title:'Manager 与节点',args:[
+ {n:'enable-manager',t:'flag',bat:1,d:'启用 ComfyUI-Manager'},
+ {n:'disable-manager-ui',t:'flag',m:10,d:'仅禁用 Manager UI 与端点'},
+ {n:'enable-manager-legacy-ui',t:'flag',m:10,bat:1,d:'Manager 旧版 UI（隐含 enable-manager）'},
+ {n:'disable-all-custom-nodes',t:'flag',d:'禁用全部自定义节点'},
+ {n:'whitelist-custom-nodes',t:'stringList',d:'白名单节点目录名（空格分隔）'},
+ {n:'disable-partner-nodes',t:'flag',d:'禁用付费 API 节点'},
+ {n:'offline',t:'flag',d:'前端断网（CSP），隐含禁用付费节点'},
+ {n:'disable-api-nodes',t:'flag',bat:1,d:'offline 的废弃别名（bat 在用）'}]},
+{id:'performance',title:'性能与编译',args:[
+ {n:'disable-cuda-graphs',t:'flag',d:'禁用 CUDA graphs'},
+ {n:'disable-comfy-compiler',t:'flag',d:'禁用 Comfy 编译器（隐含 disable-cuda-graphs）'},
+ {n:'assert-graph-breaks',t:'flag',d:'graph break 时失败'},
+ {n:'force-non-blocking',t:'flag',d:'强制非阻塞张量操作'},
+ {n:'fast',t:'multiEnum',ch:['fp16_accumulation','fp8_matrix_mult','cublas_ops','autotune'],d:'实验性优化：全不选 = 全开；勾选部分 = 只开所选'},
+ {n:'deterministic',t:'flag',d:'确定性算法（更慢）'},
+ {n:'debug-hang',t:'flag',d:'Ctrl-C 时 dump 栈'},
+ {n:'mmap-torch-files',t:'flag',d:'ckpt/pt 用 mmap 加载'},
+ {n:'disable-mmap',t:'flag',d:'safetensors 禁 mmap'}]},
+{id:'misc',title:'日志与其他',args:[
+ {n:'verbose',t:'verbose',ch:['DEBUG','DETAIL','INFO','WARNING','ERROR','CRITICAL'],d:'日志级别：LEVEL 或 LEVEL FILE，可重复'},
+ {n:'log-stdout',t:'flag',d:'输出走 stdout'},
+ {n:'dont-print-server',t:'flag',d:'不打印服务输出'},
+ {n:'quick-test-for-ci',t:'flag',d:'CI 快测'},
+ {n:'windows-standalone-build',t:'flag',d:'独立版便利行为（隐含 auto-launch）'},
+ {n:'auto-launch',t:'flag',d:'自动开浏览器（与启动器开关互不影响）'},
+ {n:'disable-auto-launch',t:'flag',d:'禁止自动开浏览器'},
+ {n:'disable-metadata',t:'flag',d:'不存 prompt 元数据'},
+ {n:'multi-user',t:'flag',d:'多用户存储'},
+ {n:'front-end-version',t:'string',def:'comfyanonymous/ComfyUI@latest',d:'前端版本 repoOwner/repoName@version'},
+ {n:'front-end-root',t:'string',d:'本地前端目录（须已存在）'},
+ {n:'enable-compress-response-body',t:'flag',d:'压缩响应体'},
+ {n:'comfy-api-base',t:'string',def:'https://api.comfy.org',d:'API base URL'},
+ {n:'database-url',t:'string',d:'数据库 URL'},
+ {n:'enable-assets',t:'flag',d:'启用资产系统'},
+ {n:'enable-asset-hashing',t:'flag',d:'资产扫描计算 blake3 哈希'},
+ {n:'feature-flag',t:'kv',d:'服务器特性开关，每行一个 KEY 或 KEY=VALUE'},
+ {n:'list-feature-flags',t:'flag',d:'打印特性开关并退出'},
+ {n:'default-hashing-function',t:'enum',ch:['md5','sha1','sha256','sha512'],def:'sha256',d:'文件哈希算法'},
+ {n:'preview-method',t:'enum',ch:['none','auto','latent2rgb','taesd'],def:'none',d:'采样预览方式'},
+ {n:'preview-size',t:'int',def:512,d:'预览尺寸'}]}
+];
+
+/* 模板（附录 B） */
+const TEMPLATES = {
+ rdna12:{args:[['disable-api-nodes'],['cache-lru','20'],['disable-smart-memory'],['disable-pinned-memory'],['enable-manager'],['enable-manager-legacy-ui'],['disable-triton-backend'],['enable-dynamic-vram'],['use-quad-cross-attention']],
+   env:{'COMFYUI_ENABLE_MIOPEN':'0','FLASH_ATTENTION_TRITON_AMD_ENABLE':'TRUE','MIOPEN_FIND_ENFORCE':'1','MIOPEN_FIND_MODE':'2','MIOPEN_DEBUG_DISABLE_FIND_DB':'0','MIOPEN_SEARCH_CUTOFF':'1','MIOPEN_ENABLE_LOGGING':'0','MIOPEN_LOG_LEVEL':'0','MIOPEN_ENABLE_LOGGING_CMD':'0','TRITON_PRINT_AUTOTUNING':'0','TRITON_CACHE_AUTOTUNING':'0','TRITON_CACHE_DIR':'D:\\AI\\comfyui-rocm\\triton-cache','PYTORCH_TUNABLEOP_CACHE_DIR':'D:\\AI\\comfyui-rocm\\tunableop-cache','MIOPEN_SYSTEM_DB_PATH':'<venv>\\Lib\\site-packages\\_rocm_sdk_devel\\bin','ROCBLAS_TENSILE_DB_PATH':'<venv>\\Lib\\site-packages\\_rocm_sdk_devel\\bin\\rocblas','ROCBLAS_TENSILE_LIBPATH':'<venv>\\Lib\\site-packages\\_rocm_sdk_devel\\bin\\rocblas\\library','TORCH_BACKENDS_CUDA_FLASH_SDP_ENABLED':'0','TORCH_BACKENDS_CUDA_MEM_EFF_SDP_ENABLED':'0','TORCH_BACKENDS_CUDA_MATH_SDP_ENABLED':'1'}},
+ rdna3:{args:[['disable-api-nodes'],['cache-lru','20'],['disable-smart-memory'],['disable-pinned-memory'],['enable-manager'],['enable-manager-legacy-ui'],['disable-triton-backend'],['enable-dynamic-vram']],
+   env:{'COMFYUI_ENABLE_MIOPEN':'0','FLASH_ATTENTION_TRITON_AMD_ENABLE':'TRUE','MIOPEN_FIND_ENFORCE':'1','MIOPEN_FIND_MODE':'2','MIOPEN_DEBUG_DISABLE_FIND_DB':'0','MIOPEN_SEARCH_CUTOFF':'1','MIOPEN_ENABLE_LOGGING':'0','MIOPEN_LOG_LEVEL':'0','MIOPEN_ENABLE_LOGGING_CMD':'0','TRITON_PRINT_AUTOTUNING':'0','TRITON_CACHE_AUTOTUNING':'0','TRITON_CACHE_DIR':'D:\\AI\\comfyui-rocm\\triton-cache','PYTORCH_TUNABLEOP_CACHE_DIR':'D:\\AI\\comfyui-rocm\\tunableop-cache','TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL':'1'}},
+ rdna4:{args:[['enable-manager'],['enable-manager-legacy-ui'],['use-ck-attention']],
+   env:{'COMFYUI_ENABLE_MIOPEN':'0','FLASH_ATTENTION_TRITON_AMD_ENABLE':'TRUE','MIOPEN_FIND_ENFORCE':'1','MIOPEN_FIND_MODE':'2','MIOPEN_DEBUG_DISABLE_FIND_DB':'0','MIOPEN_SEARCH_CUTOFF':'1','MIOPEN_ENABLE_LOGGING':'0','MIOPEN_LOG_LEVEL':'0','MIOPEN_ENABLE_LOGGING_CMD':'0','TRITON_PRINT_AUTOTUNING':'0','TRITON_CACHE_AUTOTUNING':'0','TRITON_CACHE_DIR':'D:\\AI\\comfyui-rocm\\triton-cache','PYTORCH_TUNABLEOP_CACHE_DIR':'D:\\AI\\comfyui-rocm\\tunableop-cache','MIOPEN_SYSTEM_DB_PATH':'<venv>\\Lib\\site-packages\\_rocm_sdk_devel\\bin','ROCBLAS_TENSILE_DB_PATH':'<venv>\\Lib\\site-packages\\_rocm_sdk_devel\\bin\\rocblas','ROCBLAS_TENSILE_LIBPATH':'<venv>\\Lib\\site-packages\\_rocm_sdk_devel\\bin\\rocblas\\library','TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL':'1'}}
+};
+
+/* ================= 参数页渲染 ================= */
+const argState = {}; // name -> {on, val, extras{}}
+function argId(n){return 'arg_'+n.replace(/[^a-zA-Z0-9]/g,'_')}
+
+function buildArgsPage(){
+  const host = document.getElementById('argGroups');
+  host.innerHTML = '';
+  G.forEach(g=>{
+    const det = document.createElement('details');
+    det.className = 'arg-group'; det.dataset.gid = g.id;
+    const sum = document.createElement('summary');
+    sum.innerHTML = g.title + '<span class="count" data-cnt="'+g.id+'"></span>';
+    det.appendChild(sum);
+    g.args.forEach(a=>{
+      argState[a.n] = argState[a.n] || {on:false, val:(a.def!==undefined?String(a.def):''), extras:{}};
+      const row = document.createElement('div');
+      row.className = 'arg-row off'; row.id = argId(a.n); row.dataset.name = a.n;
+      const batMark = a.bat ? '<span class="bat-mark">bat 默认</span>' : '';
+      row.innerHTML =
+        '<label class="toggle arg-toggle"><input type="checkbox" onchange="onArgToggle(\''+a.n+'\','+(a.m||0)+',this.checked)"><span class="track"></span></label>'+
+        '<div class="arg-main"><div class="arg-name">--'+a.n+batMark+'</div><div class="arg-desc">'+a.d+(a.m?' · 互斥组 '+a.m:'')+'</div></div>'+
+        '<div class="arg-ctrl">'+ctrlHtml(a)+'</div>';
+      det.appendChild(row);
+    });
+    host.appendChild(det);
+  });
+  refreshCounts(); updatePreview();
+}
+
+function ctrlHtml(a){
+  const esc = s => String(s).replace(/"/g,'&quot;');
+  const ev = 'onchange="onArgVal(\''+a.n+'\')" oninput="onArgVal(\''+a.n+'\')"';
+  switch(a.t){
+    case 'flag': return '<span class="hint">启用后传递 --'+a.n+'</span>';
+    case 'int': case 'float':
+      return '<input type="text" class="mono" data-v placeholder="'+(a.def!==undefined?('默认 '+a.def):'值')+'" value="'+(a.def!==undefined?esc(a.def):'')+'" '+ev+'>';
+    case 'string':
+      return '<input type="text" class="mono" data-v placeholder="值" value="'+(a.def!==undefined?esc(a.def):'')+'" '+ev+'>';
+    case 'optS': case 'optI':
+      return '<input type="text" class="mono" data-v placeholder="留空 = 无值传递（const '+(a.c)+'）" '+ev+'>';
+    case 'enum':
+      return '<select data-v '+ev+'>'+a.ch.map(c=>'<option '+(String(a.def)===c?'selected':'')+'>'+c+'</option>').join('')+'</select>';
+    case 'multiEnum':
+      return '<div class="choice-list">'+a.ch.map(c=>'<label><input type="checkbox" data-ch="'+c+'" onchange="onArgVal(\''+a.n+'\')"> '+c+'</label>').join('')+'</div><span class="hint">全不选 = 全部启用</span>';
+    case 'floatList': case 'stringList':
+      return '<input type="text" class="mono" data-v placeholder="多个值空格分隔" '+ev+'>';
+    case 'repSL': case 'kv':
+      return '<textarea class="mono mini" data-v placeholder="每行一条" '+ev+'></textarea>';
+    case 'verbose':
+      return '<select data-v '+ev+'><option value="">DEBUG（不带值）</option>'+a.ch.map(c=>'<option>'+c+'</option>').join('')+'</select>'+
+             '<input type="text" class="mono" data-v2 placeholder="可选：日志文件路径" '+ev+'>';
+    default: return '';
+  }
+}
+
+function onArgToggle(name, mutex, on){
+  argState[name].on = on;
+  if(on && mutex){ // 互斥：关闭同组其余
+    G.forEach(g=>g.args.forEach(a=>{
+      if(a.m===mutex && a.n!==name && argState[a.n].on){
+        argState[a.n].on = false;
+        const r = document.getElementById(argId(a.n));
+        r.querySelector('input[type=checkbox]').checked = false;
+        r.classList.add('off');
+      }
+    }));
+  }
+  document.getElementById(argId(name)).classList.toggle('off', !on);
+  refreshCounts(); updatePreview();
+}
+function onArgVal(name){ updatePreview(); }
+
+function readArgCmd(a){
+  const st = argState[a.n]; if(!st.on) return [];
+  const row = document.getElementById(argId(a.n));
+  const v1 = row.querySelector('[data-v]');
+  const val = v1 ? v1.value.trim() : '';
+  switch(a.t){
+    case 'flag': return ['--'+a.n];
+    case 'int': case 'float': case 'string': case 'enum':
+      return val ? ['--'+a.n, val] : [];
+    case 'optS': case 'optI':
+      return val ? ['--'+a.n, val] : ['--'+a.n];
+    case 'multiEnum':{
+      const picks = [...row.querySelectorAll('[data-ch]:checked')].map(c=>c.dataset.ch);
+      return picks.length ? ['--'+a.n, ...picks] : ['--'+a.n];
+    }
+    case 'floatList': case 'stringList':
+      return val ? ['--'+a.n, ...val.split(/\s+/)] : ['--'+a.n];
+    case 'repSL': case 'kv':
+      return val ? val.split(/\n/).map(s=>s.trim()).filter(Boolean).flatMap(l=>['--'+a.n, l]) : [];
+    case 'verbose':{
+      const f = row.querySelector('[data-v2]');
+      const fv = f ? f.value.trim() : '';
+      if(!val && !fv) return ['--verbose'];
+      return fv ? ['--verbose', val||'DEBUG', fv] : ['--verbose', val];
+    }
+    default: return [];
+  }
+}
+
+function updatePreview(){
+  const py = document.getElementById('inpPython').value || '<python.exe>';
+  let parts = [];
+  G.forEach(g=>g.args.forEach(a=>{ parts = parts.concat(readArgCmd(a)); }));
+  const extra = document.getElementById('extraArgs').value.trim();
+  let html = '<span class="hl">'+py+'</span> main.py';
+  parts.forEach(p=>{ html += ' ' + (p.startsWith('--') ? '<span class="hl">'+escHtml(p)+'</span>' : escHtml(p)); });
+  if(extra) html += ' <span style="color:var(--warn)">'+escHtml(extra)+'</span>';
+  document.getElementById('cmdPreview').innerHTML = html;
+}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function refreshCounts(){
+  G.forEach(g=>{
+    const on = g.args.filter(a=>argState[a.n].on).length;
+    const el = document.querySelector('[data-cnt="'+g.id+'"]');
+    el.innerHTML = (on?'<span class="oncount">'+on+' 启用</span> · ':'') + g.args.length + ' 项';
+  });
+}
+
+function filterArgs(q){
+  q = q.trim().toLowerCase();
+  G.forEach(g=>{
+    let visible = 0;
+    g.args.forEach(a=>{
+      const show = !q || a.n.toLowerCase().includes(q);
+      document.getElementById(argId(a.n)).style.display = show?'flex':'none';
+      if(show) visible++;
+    });
+    const det = document.querySelector('details[data-gid="'+g.id+'"]');
+    det.style.display = visible? 'block':'none';
+    if(q && visible) det.open = true;
+  });
+}
+
+function applyArgsTemplate(){
+  const tpl = TEMPLATES[document.getElementById('selArgsTemplate').value];
+  tpl.args.forEach(([n,v])=>{
+    const a = findArg(n); if(!a) return;
+    // 先关同互斥组
+    if(a.m) G.forEach(g=>g.args.forEach(x=>{ if(x.m===a.m){ argState[x.n].on=false; setRow(x.n,false);} }));
+    argState[n].on = true; setRow(n,true);
+    if(v!==undefined){
+      const inp = document.querySelector('#'+argId(n)+' [data-v]');
+      if(inp) inp.value = v;
+    }
+  });
+  refreshCounts(); updatePreview();
+  toast('模板参数已写入（与自定义项无区别，可继续编辑）');
+}
+function findArg(n){ for(const g of G){ const a=g.args.find(x=>x.n===n); if(a) return a; } return null; }
+function setRow(n,on){
+  const r = document.getElementById(argId(n));
+  r.querySelector('input[type=checkbox]').checked = on;
+  r.classList.toggle('off', !on);
+}
+function resetArgs(){
+  Object.keys(argState).forEach(n=>{ argState[n].on=false; setRow(n,false); });
+  document.getElementById('extraArgs').value='';
+  refreshCounts(); updatePreview();
+  toast('已恢复默认（全部不启用）');
+}
+
+/* ================= 环境变量页 ================= */
+const FIXED_KEYS = ['PYTHONUTF8','PYTHONNOUSERSITE','PATH','HIP_PATH','ROCM_PATH'];
+function addEnvRow(k='', v=''){
+  const tbl = document.getElementById('customEnvTable');
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td><input class="kv-input k" placeholder="VAR_NAME" value="'+escHtml(k)+'" oninput="checkEnvConflict(this)"></td>'+
+                 '<td><input class="kv-input" placeholder="值" value="'+escHtml(v)+'"></td>'+
+                 '<td><button class="del-btn" title="删除" onclick="this.closest(\'tr\').remove()">✕</button></td>';
+  tbl.appendChild(tr);
+}
+function checkEnvConflict(inp){
+  const bad = FIXED_KEYS.includes(inp.value.trim().toUpperCase());
+  inp.classList.toggle('conflict', bad);
+  if(bad) toast('⚠ key 与固定注入层冲突，禁止保存：'+inp.value.trim().toUpperCase());
+}
+function applyEnvTemplate(){
+  const tpl = TEMPLATES[document.getElementById('selEnvTemplate').value];
+  Object.entries(tpl.env).forEach(([k,v])=>addEnvRow(k,v));
+  toast('模板环境变量已写入自定义层（'+Object.keys(tpl.env).length+' 项）');
+}
+
+/* ================= 日志页 ================= */
+const logConsole = document.getElementById('logConsole');
+let logStreamTimer = null;
+function appendLog(html){
+  if(logConsole.querySelector('.c-dim')) logConsole.innerHTML='';
+  logConsole.insertAdjacentHTML('beforeend', html+'\n');
+  if(document.getElementById('tglAutoScroll').checked)
+    logConsole.scrollTop = logConsole.scrollHeight;
+}
+function clearLog(){ logConsole.innerHTML = '<span class="c-dim">— 日志已清空 —</span>\n'; }
+function copyLog(){
+  navigator.clipboard.writeText(logConsole.innerText).then(()=>toast('已复制全部日志'));
+}
+const START_LOG = [
+ ['c-gray','Checkpoint files will always be loaded safely.'],
+ ['c-white','Total VRAM 24564 MB, total RAM 65277 MB'],
+ ['c-white','pytorch version: 2.10.0.dev20261005+rocm7.2'],
+ ['c-cyan','AMD arch: gfx1100'],
+ ['c-cyan','ROCm version: (7, 2)'],
+ ['c-white','Set vram state to: NORMAL_VRAM'],
+ ['c-white','Device: cuda:0 AMD Radeon RX 7900 XTX : cudaMallocAsync'],
+ ['c-gray','Using sub quadratic optimization for attention, if you have memory or speed issues try using: --use-split-cross-attention'],
+ ['c-yellow','[WARN] TRITON_CACHE_DIR 不存在，已自动创建：D:\\AI\\comfyui-rocm\\triton-cache'],
+ ['c-white','Python version: 3.12.11 (tags/v3.12.11:abc1234, Oct  5 2026, 10:00:00) [MSC v.1944 64 bit (AMD64)]'],
+ ['c-white','ComfyUI version: 0.9.9'],
+ ['c-magenta','[ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main/model-list.json'],
+ ['c-magenta','[ComfyUI-Manager] Startup -> legacy UI enabled'],
+ ['c-gray','[Prompt Server] web root: D:\\AI\\comfyui-rocm\\.venv\\Lib\\site-packages\\comfyui_frontend_package\\static'],
+ ['c-white','Torch version check passed.'],
+ ['c-green','### Loading: ComfyUI-Manager (V3.38)'],
+ ['c-green','### Loading: ComfyUI-INT8-Fast-ROCM'],
+ ['c-white',''],
+ ['c-white','Starting server'],
+ ['c-white',''],
+ ['c-green','To see the GUI go to: http://127.0.0.1:8188']
+];
+
+/* ================= 启动 / 停止（FR-4） ================= */
+function deriveUrl(){
+  const portArg = argState['port'];
+  let port = 8188;
+  if(portArg && portArg.on){
+    const v = document.querySelector('#'+argId('port')+' [data-v]').value.trim();
+    if(v) port = v;
+  }
+  const listenOn = argState['listen'] && argState['listen'].on;
+  let host = '127.0.0.1';
+  if(listenOn){
+    const v = document.querySelector('#'+argId('listen')+' [data-v]').value.trim();
+    if(v && v!=='0.0.0.0' && v!=='::' && v!=='0.0.0.0,::') host = v.split(',')[0];
+  }
+  const tls = argState['tls-keyfile'].on && argState['tls-certfile'].on;
+  return (tls?'https':'http')+'://'+host+':'+port;
+}
+function startComfy(){
+  if(appState!=='Idle') return;
+  setState('Starting');
+  clearLog();
+  appendLog('<span class="c-dim">[启动器] 校验 python.exe / main.py … OK</span>');
+  appendLog('<span class="c-dim">[启动器] 合成环境变量（固定注入 + 自定义层）…</span>');
+  appendLog('<span class="c-dim">[启动器] rocm-sdk init … OK；rocm-sdk path --root → HIP_PATH=C:\\…\\_rocm_sdk_core</span>');
+  if(document.getElementById('tglSyncPkgs').checked){
+    appendLog('<span class="c-dim">[启动器] 同步追踪包：comfyui-frontend-package==1.32.9（一致，跳过）、comfyui-workflow-templates（一致，跳过）、comfyui-embedded-docs（一致，跳过）、comfy-kitchen（一致，跳过）、comfy-aimdo（一致，跳过）、av（一致，跳过）</span>');
+  }
+  appendLog('<span class="c-dim">[启动器] spawn: '+escHtml(document.getElementById('inpPython').value)+' main.py …（日志落盘 logs\\comfyui_2026-10-07_22-00-00.log）</span>');
+  appendLog('');
+  let i = 0;
+  logStreamTimer = setInterval(()=>{
+    if(i >= START_LOG.length){
+      clearInterval(logStreamTimer);
+      return;
+    }
+    const [cls, text] = START_LOG[i];
+    appendLog('<span class="'+cls+'">'+escHtml(text)+'</span>');
+    if(text.startsWith('To see the GUI go to')){
+      setState('Running');
+      if(document.getElementById('tglAutoBrowser').checked){
+        toast('已自动打开浏览器：'+deriveUrl());
+      } else {
+        toast('ComfyUI 已就绪，可点击「打开浏览器」');
+      }
+    }
+    i++;
+  }, 260);
+}
+function stopComfy(){
+  if(!(appState==='Starting'||appState==='Running')) return;
+  if(logStreamTimer){ clearInterval(logStreamTimer); logStreamTimer=null; }
+  setState('Stopping');
+  appendLog('');
+  appendLog('<span class="c-dim">[启动器] 发送 CTRL_BREAK_EVENT 到子进程组，等待最多 5 秒…</span>');
+  setTimeout(()=>{
+    appendLog('<span class="c-yellow">got interrupt</span>');
+    appendLog('<span class="c-dim">[启动器] 进程已退出（exit code 0）</span>');
+    setState('Idle');
+  }, 1400);
+}
+function openBrowser(){ toast('原型演示：打开浏览器 '+deriveUrl()); }
+
+/* ================= 环境管理任务（FR-6） ================= */
+const taskConsole = document.getElementById('taskConsole');
+let taskTimer = null;
+const TASKS = {
+ rocm:[
+  ['c-dim','[1/6] 校验 python.exe … OK（Python 3.12.11）'],
+  ['c-dim','[2/6] 执行 detect_gpu.py … arch = gfx1100（debug 落盘 gpu_detect_debug.log）'],
+  ['c-dim','[3/6] 卸载旧组件：uv pip uninstall rocm rocm-sdk-devel rocm-sdk-core rocm-sdk-libraries torch torchaudio torchvision --python <python.exe>'],
+  ['c-gray','    - torch-2.9.1+rocm7.1  - torchvision-0.24.1  - rocm_sdk_core-7.1.0 …'],
+  ['c-dim','[4/6] 安装（arch=gfx1100）：uv pip install "torch[device-gfx1100]" "torchvision[device-gfx1100]" torchaudio rocm-sdk-devel --pre'],
+  ['c-dim','         --index-url https://nightly.repo.amd.com/rocm/whl-next/'],
+  ['c-gray','    Resolved 24 packages in 3.12s   Downloaded 24 packages (2.41 GB)   Installed 24 packages'],
+  ['c-dim','[5/6] rocm-sdk init … OK；rocm_kpack.dll 已存在，无需复制'],
+  ['c-dim','[6/6] 验证：python -c "import torch; …"'],
+  ['c-green','    torch 2.10.0.dev20261006+rocm7.2 | ROCm 可用: True | HIP 7.2.0 | 设备: AMD Radeon RX 7900 XTX'],
+  ['c-green','✔ ROCm / PyTorch 更新完成']
+ ],
+ deps:function(){
+  const mirror = document.getElementById('chkMirror').checked;
+  return [
+  ['c-dim','过滤 requirements.txt（正则 ^(torch|torchvision|torchaudio)）→ requirements_filtered.txt（42 项）'],
+  ['c-dim','uv pip install -r requirements_filtered.txt --python <python.exe>'+(mirror?'（使用镜像 https://mirrors.aliyun.com/pypi/simple/）':'')],
+  ['c-gray','Resolved 42 packages in 1.24s'],
+  ['c-gray','Downloaded 3 packages in 2.02s'],
+  ['c-gray','Installed 3 packages in 856ms'],
+  ['c-dim','对比 pip freeze，变更包列表：'],
+  ['c-yellow','  einops: 0.8.0 -> 0.8.1'],
+  ['c-yellow','  safetensors: 0.5.3 -> 0.6.2'],
+  ['c-yellow','  aiohttp: 3.11.12 -> 3.12.15'],
+  ['c-green','✔ 依赖安装完成']
+  ];
+ },
+ update:null // 动态生成（区分模式）
+};
+function buildUpdateLog(){
+  const full = document.querySelector('input[name=updMode]:checked').value === 'full';
+  const lines = [
+   ['c-dim','[1/5] 校验 git.exe / python.exe … OK'],
+   ['c-dim','[2/5] git ls-remote https://github.com/patientx-cfz/comfyui-rocm HEAD → 4f8a9c2d1e'],
+   ['c-dim','      本地 .last_update_hash = a1b2c3d4e5 → 需要更新'],
+   ['c-dim','[3/5] git clone --depth 1 → D:\\AI\\comfyui-rocm\\_update_temp'],
+   ['c-dim','[4/5] robocopy 覆盖（排除 .venv/models/output/input/user/custom_nodes/_update_temp 与 comfyui-user.bat）'],
+   ['c-gray','    robocopy 退出码 1（0–7 视为成功）'],
+   ['c-dim','[5/5] 清理 _update_temp；写入 .last_update_hash = 4f8a9c2d1e'],
+   ['c-dim','[仅代码] 更新 3 个追踪 custom_nodes：'],
+   ['c-gray','    ComfyUI-Manager: git pull --ff-only → 已是最新'],
+   ['c-gray','    ComfyUI-INT8-Fast-ROCM: git pull --ff-only → 更新 3 个提交'],
+   ['c-gray','    comfyui-h3-sla-attention-rocm: git pull --ff-only → 已是最新']
+  ];
+  if(full){
+    lines.push(['c-dim','[代码+包] sageattention wheel 强制更新（arch=gfx1100 → patientx/sageattention-autotune releases latest）']);
+    lines.push(['c-gray','    uv pip install --force-reinstall --no-deps sageattention-2.2.0+cu128torch2.7-cp312-win_amd64.whl']);
+    lines.push(['c-dim','[代码+包] 执行过滤 requirements 安装（见「通用依赖安装」流程）']);
+  }
+  lines.push(['c-green','✔ 程序更新完成']);
+  return lines;
+}
+function runTask(name, btn){
+  if(appState!=='Idle') return;
+  setState('BusyEnv');
+  document.getElementById('btnCancelTask').disabled = false;
+  document.getElementById('taskStatus').innerHTML = '<span class="spinner"></span> 任务进行中…';
+  taskConsole.innerHTML = '';
+  const lines = name==='update' ? buildUpdateLog() : (typeof TASKS[name]==='function' ? TASKS[name]() : TASKS[name]);
+  let i = 0;
+  taskTimer = setInterval(()=>{
+    if(i>=lines.length){ finishTask(); return; }
+    const [cls,text] = lines[i];
+    taskConsole.insertAdjacentHTML('beforeend','<span class="'+cls+'">'+escHtml(text)+'</span>\n');
+    taskConsole.scrollTop = taskConsole.scrollHeight;
+    i++;
+  }, 320);
+}
+function finishTask(){
+  if(taskTimer){ clearInterval(taskTimer); taskTimer=null; }
+  document.getElementById('btnCancelTask').disabled = true;
+  document.getElementById('taskStatus').textContent = '完成';
+  setState('Idle');
+}
+function cancelTask(){
+  if(taskTimer){ clearInterval(taskTimer); taskTimer=null; }
+  taskConsole.insertAdjacentHTML('beforeend','<span class="c-red">✕ 已取消：当前子进程已终止（取消 = 终止当前子进程）</span>\n');
+  document.getElementById('btnCancelTask').disabled = true;
+  document.getElementById('taskStatus').textContent = '已取消';
+  setState('Idle');
+}
+
+/* ================= 通用 ================= */
+function verifyPython(){
+  const el = document.getElementById('pyVerifyResult');
+  el.textContent = '验证中…'; el.className = 'hint';
+  setTimeout(()=>{ el.textContent = '✓ Python 3.12.11'; el.className = 'hint ok-text'; }, 600);
+}
+let toastTimer = null;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+function toggleTheme(){
+  const html = document.documentElement;
+  const dark = html.dataset.theme === 'dark';
+  html.dataset.theme = dark ? 'light' : 'dark';
+  document.getElementById('themeToggle').textContent = dark ? '切换深色' : '切换浅色';
+}
+
+/* 导航 */
+document.querySelectorAll('.nav-item').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.getElementById('page-'+btn.dataset.page).classList.add('active');
+  });
+});
+
+/* 初始化 */
+buildArgsPage();
+addEnvRow('MIOPEN_FIND_MODE','2');
+document.getElementById('inpPython').addEventListener('input', updatePreview);
+setState('Idle');
+</script>
+</body>
+</html>
