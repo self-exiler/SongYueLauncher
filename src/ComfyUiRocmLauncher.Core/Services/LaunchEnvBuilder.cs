@@ -3,7 +3,7 @@ using ComfyUiRocmLauncher.Core.Models;
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
-/// 启动环境变量三层合成（SRS FR-3）：固定注入层 → 模板层（已并入自定义层）→ 自定义层。
+/// 启动环境变量合成（SRS FR-3）：固定注入层 + 自定义层；GPU 模板变量在应用时已展开写入自定义层。
 /// </summary>
 public static class LaunchEnvBuilder
 {

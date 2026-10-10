@@ -32,7 +32,7 @@ public sealed class TemplateCatalog
 
     public static TemplateCatalog Instance => _instance ??= Load();
 
-    public static TemplateCatalog Load()
+    private static TemplateCatalog Load()
     {
         var asm = typeof(TemplateCatalog).Assembly;
         var name = asm.GetManifestResourceNames().First(n => n.EndsWith(ResourceSuffix, StringComparison.Ordinal));

@@ -158,7 +158,7 @@ public sealed partial class HomePage : Page
         }
         catch (Exception ex)
         {
-            App.Services.SetState(LaunchState.Idle);
+            // LaunchService 失败时已自行复位为 Idle，这里只提示
             await new ContentDialog
             {
                 XamlRoot = XamlRoot,

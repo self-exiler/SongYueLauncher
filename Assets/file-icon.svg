@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="ComfyUI ROCm Launcher file icon">
+  <title>ComfyUI ROCm Launcher</title>
+  <desc>File icon: document paper with folded corner and workflow node triangle.</desc>
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EAE6F6"/>
+    </linearGradient>
+    <linearGradient id="coreF" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#A78BFA"/>
+      <stop offset="0.55" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+  </defs>
+
+  <!-- page body (top-right corner square for fold) -->
+  <path d="M76,30 H160 L204,74 V210 Q204,226 188,226 H68 Q52,226 52,210 V48 Q52,30 68,30 Z" fill="url(#paper)"/>
+  <path d="M52,30 H78 Z" fill="none"/>
+  <!-- fold -->
+  <path d="M160,30 L204,30 L204,74 Z" fill="#D9D3EB"/>
+  <line x1="160" y1="30" x2="204" y2="74" stroke="#C2BAD9" stroke-width="2"/>
+
+  <!-- links -->
+  <g stroke="#8B5CF6" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+    <line x1="128" y1="101" x2="128" y2="85"/>
+    <line x1="117" y1="127" x2="103" y2="141"/>
+    <line x1="139" y1="127" x2="153" y2="141"/>
+  </g>
+
+  <!-- center node -->
+  <rect x="112" y="98" width="32" height="32" rx="10" fill="url(#coreF)"/>
+  <rect x="117" y="103" width="13" height="6.5" rx="3.25" fill="#FFFFFF" opacity="0.35"/>
+
+  <!-- satellite nodes -->
+  <circle cx="128" cy="72" r="9.5" fill="#8B5CF6"/>
+  <circle cx="96" cy="146" r="9.5" fill="#8B5CF6"/>
+  <circle cx="160" cy="146" r="9.5" fill="#8B5CF6"/>
+
+  <!-- content lines -->
+  <rect x="80" y="176" width="96" height="7" rx="3.5" fill="#C9C2DE"/>
+  <rect x="80" y="194" width="72" height="7" rx="3.5" fill="#D5CFE6"/>
+  <rect x="80" y="212" width="52" height="7" rx="3.5" fill="#D5CFE6"/>
+</svg>

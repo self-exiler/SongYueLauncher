@@ -25,7 +25,7 @@
             <TextBlock Text="维护任务" Style="{StaticResource SettingsSectionHeaderStyle}" Margin="0,0,0,8" />
             <Grid ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0" Style="{StaticResource CardBorderStyle}">
@@ -46,20 +46,6 @@
                         <CheckBox x:Name="MirrorCheck" Content="使用国内镜像源" />
                         <Button x:Name="DepsButton" Content="开始安装" Style="{StaticResource AccentButtonStyle}"
                                 HorizontalAlignment="Left" Click="Deps_Click" />
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Column="2" Style="{StaticResource CardBorderStyle}">
-                    <StackPanel Padding="16,12" Spacing="8">
-                        <TextBlock Text="程序更新" Style="{StaticResource CardTitleStyle}" />
-                        <TextBlock Style="{StaticResource SecondaryTextStyle}"
-                                   Text="git ls-remote 比对 hash → clone --depth 1 → robocopy 覆盖 → 更新 3 个追踪 custom_nodes。" />
-                        <StackPanel Spacing="4">
-                            <RadioButton x:Name="ModeCode" Content="仅代码（默认）" GroupName="UpdMode" IsChecked="True" />
-                            <RadioButton x:Name="ModeFull" Content="代码 + Python 包" GroupName="UpdMode" />
-                        </StackPanel>
-                        <Button x:Name="UpdateButton" Content="检查并更新" Style="{StaticResource AccentButtonStyle}"
-                                HorizontalAlignment="Left" Click="ProgramUpdate_Click" />
                     </StackPanel>
                 </Border>
             </Grid>

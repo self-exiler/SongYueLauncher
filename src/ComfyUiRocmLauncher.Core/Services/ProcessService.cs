@@ -16,6 +16,9 @@ public sealed class ProcessService
     /// <summary>合并后的 stdout/stderr 行。</summary>
     public event Action<string>? OutputReceived;
 
+    /// <summary>被管理的子进程退出时触发（含自行退出，供上层复位状态）。</summary>
+    public event Action? Exited;
+
     public bool IsRunning => _process is { HasExited: false };
 
     public void Start(string fileName, string arguments, string workingDirectory, IDictionary<string, string>? environment)
@@ -28,6 +31,7 @@ public sealed class ProcessService
 
         process.OutputDataReceived += (_, e) => { if (e.Data is not null) OutputReceived?.Invoke(e.Data); };
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) OutputReceived?.Invoke(e.Data); };
+        process.Exited += (_, _) => Exited?.Invoke();
 
         if (!process.Start())
             throw new InvalidOperationException($"无法启动进程：{fileName}");
@@ -38,16 +42,16 @@ public sealed class ProcessService
     }
 
     /// <summary>FR-4.2：先发 CTRL_BREAK_EVENT，等待最多 5 秒，未退出则强杀整个进程树。</summary>
-    public async Task<bool> StopAsync()
+    public async Task StopAsync()
     {
         var process = _process;
-        if (process is null) return true;
+        if (process is null) return;
 
         if (process.HasExited)
         {
             process.Dispose();
             _process = null;
-            return true;
+            return;
         }
 
         SendCtrlBreak((uint)process.Id);
@@ -80,7 +84,6 @@ public sealed class ProcessService
 
         process.Dispose();
         _process = null;
-        return true;
     }
 
     /// <summary>一次性命令执行（环境管理任务用），取消即终止当前子进程。</summary>
@@ -108,13 +111,19 @@ public sealed class ProcessService
 
         var registration = cancellationToken.Register(() =>
         {
-            try { process.Kill(entireProcessTree: true); tcs.TrySetCanceled(); }
+            // Kill 可能因进程恰已退出而抛 InvalidOperationException，取消信号必须照常置位
+            try { process.Kill(entireProcessTree: true); }
             catch (InvalidOperationException) { }
+            tcs.TrySetCanceled();
         });
 
         try
         {
-            return await tcs.Task.ConfigureAwait(false);
+            var code = await tcs.Task.ConfigureAwait(false);
+            // 冲刷异步输出读取，确保尾部行不丢
+            try { process.WaitForExit(); }
+            catch (InvalidOperationException) { }
+            return code;
         }
         finally
         {

@@ -2,13 +2,13 @@
 
 | 项目     | 内容                                                                                                                                                                                     |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 文档版本 | v1.1                                                                                                                                                                                     |
-| 日期     | 2026-10-07                                                                                                                                                                               |
-| 变更说明 | v1.1：新增 3.3 解决方案结构（GUI / Core / Core.Test 三项目划分与依赖约束）；参数清单与 GPU 模板定为 Core 内嵌资源（EmbeddedResource）                                                |
+| 文档版本 | v1.2                                                                                                                                                                                     |
+| 日期     | 2026-10-10                                                                                                                                                                               |
+| 变更说明 | v1.2：移除 FR-6.3 程序更新（上游 patientx-cfz/comfyui-rocm 仓库已删除，整合包不再 git 自更新），环境管理页仅剩 ROCm/PyTorch 更新与依赖安装两个任务。v1.1：新增 3.3 解决方案结构（GUI / Core / Core.Test 三项目划分与依赖约束）；参数清单与 GPU 模板定为 Core 内嵌资源（EmbeddedResource）                                                |
 | 状态     | 已评审（经 grill-me 两轮需求评审收敛）                                                                                                                                                   |
 | 应用名称 | ComfyUI ROCm Launcher（暂定）                                                                                                                                                            |
 | 技术栈   | C# / .NET 10 LTS + WinUI 3（Windows App SDK）                                                                                                                                            |
-| 参考依据 | `docs/功能参考脚本/`（comfyui-rocm.bat、install.bat、rocm-pytorch-package-updater.bat、comfyui-rocm-updater.bat）、ComfyUI 上游 `comfy/cli_args.py`（`docs/cli_args_upstream.py`） |
+| 参考依据 | `docs/功能参考脚本/`（comfyui-rocm.bat、install.bat、rocm-pytorch-package-updater.bat）、ComfyUI 上游 `comfy/cli_args.py`（`docs/cli_args_upstream.py`） |
 
 ---
 
@@ -20,8 +20,8 @@
 
 ### 1.2 范围
 
-- **包含**：启动/停止 ComfyUI、启动参数配置、环境变量配置、实时日志、ROCm/PyTorch 组件更新、通用 Python 依赖安装、整合包程序更新。
-- **不包含**：Python 环境的创建（用户自行用 uv 构建）、ComfyUI 本体的首次安装、NVIDIA/DirectML/CPU 等其他后端的支持、custom_nodes 的自由管理（仅更新脚本追踪的 3 个节点）。
+- **包含**：启动/停止 ComfyUI、启动参数配置、环境变量配置、实时日志、ROCm/PyTorch 组件更新、通用 Python 依赖安装。
+- **不包含**：Python 环境的创建（用户自行用 uv 构建）、ComfyUI 本体的首次安装与程序更新（上游整合包仓库已删除）、NVIDIA/DirectML/CPU 等其他后端的支持、custom_nodes 的管理。
 
 ### 1.3 定义
 
@@ -45,7 +45,7 @@
 - Windows 10 1809+ / Windows 11，x64
 - 已安装 comfyui-rocm 整合包（含 `main.py`、`requirements.txt`、`detect_gpu.py`）
 - 用户已用 uv 创建 venv 并完成初始依赖安装
-- 外部可执行依赖：`uv.exe`（环境管理）、`git.exe`（程序更新）、venv 内的 `rocm-sdk`
+- 外部可执行依赖：`uv.exe`（环境管理）、venv 内的 `rocm-sdk`
 
 ### 2.3 约束
 
@@ -85,9 +85,9 @@ Services
  ├─ LaunchEnvBuilder   固定注入 + rocm-sdk 推导 + 模板/自定义变量合成
  ├─ ArgsBuilder        结构化参数 + 额外参数 → 命令行
  ├─ LogService         内存环形缓冲(5000行) + ANSI 解析 + 落盘 + 磁盘保护
- ├─ UpdateService      程序更新 / ROCm-PyTorch 更新 / 依赖安装（子任务化、可取消）
+ ├─ UpdateService      ROCm-PyTorch 更新 / 依赖安装 / 追踪包同步（子任务化、可取消）
  ├─ GpuInfoService     WMI 读取显卡型号；调 detect_gpu.py 读 arch（环境管理用）
- └─ ToolLocator     git.exe 发现
+ └─ ToolLocator     uv.exe 发现
 ```
 
 ### 3.2 进程模型
@@ -112,7 +112,7 @@ ComfyUiRocmLauncher.sln（根目录，经典 sln 格式）
 
 - 依赖方向固定为 `GUI → Core ← Core.Test`，不允许反向引用或跨层引用。
 - Core 不得引用任何 `Microsoft.UI.*` / `Microsoft.Windows.App.*` 类型；服务与 UI 之间一律通过 `event` / `Action<T>` 回调通信，日志与进度由 GUI 侧切回 UI 线程渲染。
-- 不引入独立的 Packaging 项目（模板已启用单项目 MSIX，FR-3 的 robocopy 更新流程不依赖打包工程）；ViewModels 不独立成程序集。
+- 不引入独立的 Packaging 项目（模板已启用单项目 MSIX）；ViewModels 不独立成程序集。
 - 参数清单与 GPU 模板统一放在 Core 的内嵌资源中，GUI 与单元测试共用同一份数据；发版时对照上游 `cli_args.py` 更新（参见第 8 节风险表）。
 - Core 目标框架保持 `net10.0`（不带 WinUI），以保证单元测试无需 WindowsAppSDK 即可在 CI 运行。
 
@@ -120,7 +120,7 @@ ComfyUiRocmLauncher.sln（根目录，经典 sln 格式）
 
 - GUI 项目默认按**免打包（unpackaged）**方式启动：`UseUnpackaged=true` 时自动设置 `WindowsPackageType=None`、`EnableMsixTooling=false`、`EnableWinAppRunSupport=false`、`WindowsAppSDKSelfContained=true`，运行时随程序输出，**无需开启系统"开发人员模式"**。开发命令：`dotnet run --project src/ComfyUiRocmLauncher.GUI/ComfyUiRocmLauncher.GUI.csproj -p:Platform=x64`。
 - 发布 MSIX 时切回打包模式：`dotnet publish -p:UseUnpackaged=false`（此模式下的调试部署仍要求系统开启开发人员模式）。
-- 两条路径共用同一份 `Package.appxmanifest`、`app.manifest` 与代码，切换只影响启动/部署方式，不影响 FR-6.3 的 robocopy 更新流程。
+- 两条路径共用同一份 `Package.appxmanifest`、`app.manifest` 与代码，切换只影响启动/部署方式。
 
 ---
 
@@ -227,7 +227,7 @@ spawn: <python.exe> main.py <ArgsBuilder输出>
 
 ### 4.6 环境管理页（EnvManagerPage）
 
-页面上方三个任务卡片，下方内嵌输出区（等宽字体、滚动、清屏按钮）；任务进行中显示进度状态，支持取消（取消 = 终止当前子进程）。
+页面上方两个任务卡片，下方内嵌输出区（等宽字体、滚动、清屏按钮）；任务进行中显示进度状态，支持取消（取消 = 终止当前子进程）。
 
 **FR-6.1 ROCm / PyTorch 更新**（复刻 rocm-pytorch-package-updater.bat）
 
@@ -257,36 +257,7 @@ spawn: <python.exe> main.py <ArgsBuilder输出>
 - 完成后对比前后 `pip freeze`，输出变更包列表（`pkg: old -> new`）；
 - 支持使用国内镜像源加速。
 
-**FR-6.3 程序更新**（复刻 comfyui-rocm-updater.bat，robocopy 覆盖模式）
-
-- 更新源：`https://github.com/patientx-cfz/comfyui-rocm`
-- 模式选择（RadioButton）：**仅代码** / **代码 + Python 包**（默认仅代码）
-
-```
-公共步骤：
-1. 校验 git.exe、python.exe
-2. git ls-remote <repo> HEAD 取远程 hash；读 .last_update_hash 比对
-   一致 → 跳过核心更新，直接进入可选步骤
-3. git clone --depth 1 到 <ComfyUI目录>\_update_temp
-4. robocopy 覆盖：<temp> → <ComfyUI目录> /E
-   排除目录：.venv、models、output、input、user、custom_nodes、_update_temp
-   排除文件：comfyui-user.bat
-   （robocopy 退出码 0–7 视为成功，≥8 报错）
-5. 清理 _update_temp；写入 .last_update_hash
-"仅代码"追加：
-6. 更新 3 个追踪 custom_nodes（存在 .git → git pull --ff-only；
-   目录存在但非 git → 跳过并提示；不存在 → git clone）：
-   ComfyUI-Manager、ComfyUI-INT8-Fast-ROCM、comfyui-h3-sla-attention-rocm
-"代码 + Python 包"再追加：
-7. sageattention wheel 强制更新（--force-reinstall --no-deps）：
-   arch=gfx1201 → thehybrid1337/sageattention-rocm-gfx1201-win releases latest
-   其他        → patientx/sageattention-autotune releases latest
-8. 执行 FR-6.2 的过滤 requirements 安装
-```
-
-- updater 自身的"脚本自更新 relaunch"逻辑不迁移（本启动器通过应用商店/侧载包自身更新）。
-
-**FR-6.4 运行中保护**：状态机非 Idle 时本页全部操作禁用（含反向：BusyEnv 时禁止启动 ComfyUI）。
+**FR-6.3 运行中保护**：状态机非 Idle 时本页全部操作禁用（含反向：BusyEnv 时禁止启动 ComfyUI）。
 
 ---
 
@@ -318,7 +289,7 @@ spawn: <python.exe> main.py <ArgsBuilder输出>
 
 ### 5.2 其他文件
 
-- `<ComfyUI目录>\.last_update_hash`：整合包版本 hash（只读 + 更新后写入）。
+- `<ComfyUI目录>\.last_update_hash`：整合包版本 hash（只读，用于主页版本显示；若不存在显示 `unknown`）。
 - `logs\comfyui_yyyy-MM-dd_HH-mm-ss.log`：会话日志。
 
 ---
@@ -328,7 +299,6 @@ spawn: <python.exe> main.py <ArgsBuilder输出>
 | 依赖                            | 用途                                           | 发现/容错                              |
 | ------------------------------- | ---------------------------------------------- | -------------------------------------- |
 | `uv.exe`                      | 全部 pip 操作（`uv pip ... --python <exe>`） | PATH → 手动配置 → 环境管理页报错引导 |
-| `git.exe`                     | 程序更新（ls-remote/clone/pull）               | PATH；缺失时该任务禁用并提示安装 Git   |
 | `<venv>\Scripts\rocm-sdk.exe` | `init` 与 `path --root`                    | 缺失时警告并跳过推导                   |
 | `<ComfyUI目录>\detect_gpu.py` | arch 检测（环境管理）                          | 缺失时对应任务报错                     |
 | WMI`Win32_VideoController`    | 主页 GPU 型号                                  | 失败显示"未知"                         |
@@ -339,7 +309,7 @@ spawn: <python.exe> main.py <ArgsBuilder输出>
 
 - **NFR-1 性能**：UI 线程不阻塞；日志渲染 5000 行内滚动流畅（虚拟化列表）；启动器冷启动 < 3s。
 - **NFR-2 可用性**：界面中文；深色/浅色跟随系统；所有危险操作（更新、强杀）有状态反馈；报错信息给出可执行的下一步引导。
-- **NFR-3 可靠性**：子进程输出读取异常不崩溃；配置损坏可重建；更新任务中断后目录不留半成品（\_update_temp 可重入清理）。
+- **NFR-3 可靠性**：子进程输出读取异常不崩溃；配置损坏可重建；更新/安装任务可取消且不残留临时文件。
 - **NFR-4 安全/隐私**：无外传数据；网络访问仅限 GitHub、AMD nightly 源、PyPI（经 uv）。
 - **NFR-5 可维护性**：MVVM 分层；服务层无 UI 依赖可单测；参数清单（附录 A）以数据驱动方式维护，便于跟随上游 ComfyUI 变更。
 
@@ -352,7 +322,6 @@ spawn: <python.exe> main.py <ArgsBuilder输出>
 | MSIX 下附加控制台发 CTRL_BREAK 受限  | 优雅停止失败 | 始终有 5s 后强杀兜底；实现时优先验证 AttachConsole/FreeConsole + GenerateConsoleCtrlEvent 方案 |
 | 上游 ComfyUI 参数变更                | 参数页过时   | 参数清单数据驱动（内置 JSON），发版时同步`cli_args.py`                                       |
 | AMD nightly 源 URL 变动              | 更新失败     | URL 集中在常量/配置，错误信息含实际 URL 便于排查                                               |
-| robocopy 覆盖时文件被占用            | 更新不完整   | 运行中禁止更新；robocopy 退出码 ≥8 明确报错                                                   |
 | uv 版本差异导致 pip 子命令参数不兼容 | 环境管理失败 | 验证步骤输出 uv 版本；文档注明最低 uv 版本                                                     |
 | 用户 venv 无 pip 且 uv 缺失          | 无法装依赖   | 报错引导安装 uv（winget install astral-sh.uv）                                                 |
 
@@ -540,5 +509,4 @@ ROCBLAS_TENSILE_LIBPATH=<venv>\Lib\site-packages\_rocm_sdk_devel\bin\rocblas\lib
 | -------------------------------- | ------------------------------------------------------------- |
 | comfyui-rocm.bat                 | FR-3（环境变量/模板）、FR-4.1（启动序列/追踪包同步）、附录 B  |
 | rocm-pytorch-package-updater.bat | FR-6.1                                                        |
-| comfyui-rocm-updater.bat         | FR-6.3                                                        |
 | install.bat                      | 不迁移（环境由用户用 uv 自建）；其验证思路用于 FR-6.1 第 6 步 |

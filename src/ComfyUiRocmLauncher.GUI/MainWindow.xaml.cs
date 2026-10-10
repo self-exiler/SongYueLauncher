@@ -18,6 +18,7 @@ public sealed partial class MainWindow : Window
         NavView.SelectedItem = NavView.MenuItems[0];
         RefreshHeader();
 
+        AppWindow.Closing += (_, _) => App.Services.FlushSave();
         App.Services.StateChanged += _ => DispatcherQueue.TryEnqueue(RefreshHeader);
     }
 

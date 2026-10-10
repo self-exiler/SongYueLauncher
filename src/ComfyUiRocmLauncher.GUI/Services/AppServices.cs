@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using ComfyUiRocmLauncher.Core.Models;
 using ComfyUiRocmLauncher.Core.Services;
 
@@ -9,6 +10,9 @@ namespace ComfyUiRocmLauncher.GUI.Services;
 /// </summary>
 public sealed class AppServices
 {
+    private readonly DispatcherQueueTimer _saveTimer;
+    private bool _savePending;
+
     public AppServices()
     {
         ConfigService = new ConfigService();
@@ -16,6 +20,11 @@ public sealed class AppServices
         Log = new LogService(ConfigService.EnsureLogDirectory());
         Launch = new LaunchService(Log);
         Launch.StateChanged += s => SetState(s);
+
+        _saveTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _saveTimer.Interval = TimeSpan.FromMilliseconds(400);
+        _saveTimer.IsRepeating = false;
+        _saveTimer.Tick += (_, _) => FlushSave();
     }
 
     public ConfigService ConfigService { get; }
@@ -26,11 +35,34 @@ public sealed class AppServices
 
     public AppConfig Settings { get; }
 
+    /// <summary>展示状态：启动流程以 LaunchService 为权威经事件同步，环境任务由页面直接置位。</summary>
     public LaunchState State { get; private set; } = LaunchState.Idle;
 
     public event Action<LaunchState>? StateChanged;
 
-    public void Save() => ConfigService.Save(Settings);
+    /// <summary>防抖保存：连续编辑（如文本框逐字符）合并为一次落盘。</summary>
+    public void Save()
+    {
+        _savePending = true;
+        _saveTimer.Stop();
+        _saveTimer.Start();
+    }
+
+    /// <summary>立即落盘待写配置（窗口关闭前调用）；无待写变更时为空操作。</summary>
+    public void FlushSave()
+    {
+        _saveTimer.Stop();
+        if (!_savePending) return;
+        _savePending = false;
+        try
+        {
+            ConfigService.Save(Settings);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Append($"[启动器] 警告：配置写入失败：{ex.Message}");
+        }
+    }
 
     public void SetState(LaunchState state)
     {

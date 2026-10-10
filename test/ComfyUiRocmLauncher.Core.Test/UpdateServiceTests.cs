@@ -69,12 +69,6 @@ public class UpdateServiceTests
         Assert.Throws<NotSupportedException>(() => UpdateService.BuildInstallArgs("gfx115x", "--python \"py\""));
     }
 
-    [Theory]
-    [InlineData(0, true)][InlineData(1, true)][InlineData(7, true)]
-    [InlineData(8, false)][InlineData(16, false)]
-    public void RobocopyExitCode(int code, bool expected) =>
-        Assert.Equal(expected, UpdateService.IsRobocopySuccess(code));
-
     [Fact]
     public void TrackedPackages_HasSixEntries() => Assert.Equal(6, TrackedPackages.Names.Length);
 

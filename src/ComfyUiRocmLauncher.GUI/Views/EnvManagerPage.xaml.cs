@@ -6,7 +6,7 @@ using ComfyUiRocmLauncher.Core.Services;
 
 namespace ComfyUiRocmLauncher.GUI.Views;
 
-/// <summary>环境管理页（SRS FR-6）：三个更新任务 + 内嵌输出 + 取消 + 运行中保护。</summary>
+/// <summary>环境管理页（SRS FR-6）：两个维护任务 + 内嵌输出 + 取消 + 运行中保护。</summary>
 public sealed partial class EnvManagerPage : Page
 {
     private CancellationTokenSource? _cts;
@@ -39,7 +39,6 @@ public sealed partial class EnvManagerPage : Page
         GuardBanner.IsOpen = busy;
         RocmButton.IsEnabled = !busy;
         DepsButton.IsEnabled = !busy;
-        UpdateButton.IsEnabled = !busy;
     }
 
     private void Append(string line)
@@ -94,10 +93,6 @@ public sealed partial class EnvManagerPage : Page
             Append("变更包列表：");
             foreach (var change in changes) Append("  " + change);
         });
-
-    private async void ProgramUpdate_Click(object sender, RoutedEventArgs e) =>
-        await RunAsync("程序更新",
-            ct => UpdateService.UpdateProgramAsync(Settings, ModeFull.IsChecked == true, Append, ct));
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => _cts?.Cancel();
 

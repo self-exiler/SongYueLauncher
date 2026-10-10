@@ -14,13 +14,12 @@ public sealed partial class ArgsPage : Page
     private readonly Dictionary<string, RowUi> _rows = new(StringComparer.Ordinal);
     private readonly List<GroupUi> _groups = new();
 
-    /// <summary>一个参数分组的 UI 引用（折叠体 / 头部 / 头部文本 / 箭头 / 参数名集合）。</summary>
+    /// <summary>一个参数分组的 UI 引用（容器 / 折叠体 / 头部 / 头部文本 / 参数名集合）。</summary>
     private sealed record GroupUi(
         StackPanel Container,
         StackPanel Body,
         Button Header,
         TextBlock HeaderText,
-        FontIcon Chevron,
         string Title,
         IReadOnlyList<string> ArgNames);
 
@@ -90,7 +89,7 @@ public sealed partial class ArgsPage : Page
             container.Children.Add(body);
             GroupsHost.Children.Add(container);
 
-            _groups.Add(new GroupUi(container, body, header, headerText, chevron, group.Title, group.Args.Select(a => a.Name).ToList()));
+            _groups.Add(new GroupUi(container, body, header, headerText, group.Title, group.Args.Select(a => a.Name).ToList()));
         }
 
         ArgCountText.Text = $"共 {_catalog.Count} 项参数（来源 ComfyUI cli_args.py 快照）";

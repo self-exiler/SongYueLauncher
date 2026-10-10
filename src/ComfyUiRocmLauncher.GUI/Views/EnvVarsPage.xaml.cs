@@ -94,7 +94,8 @@ public sealed partial class EnvVarsPage : Page
 
     private void AddRow_Click(object sender, RoutedEventArgs e)
     {
-        var key = "NEW_VAR_" + (Settings.CustomEnvVars.Count + 1);
+        var key = "NEW_VAR";
+        for (var i = 1; Settings.CustomEnvVars.ContainsKey(key); i++) key = "NEW_VAR_" + i;
         Settings.CustomEnvVars[key] = string.Empty;
         App.Services.Save();
         RebuildRows();

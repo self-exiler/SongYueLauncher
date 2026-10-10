@@ -4,21 +4,13 @@ using ComfyUiRocmLauncher.Core.Models;
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
-/// 环境管理任务（SRS FR-6）：追踪包同步、依赖安装、ROCm/PyTorch 更新、程序更新。
+/// 环境管理任务（SRS FR-6）：追踪包同步、依赖安装、ROCm/PyTorch 更新。
 /// 所有 pip 操作统一为 <c>uv pip ... --python &lt;python.exe&gt;</c>。
 /// </summary>
 public static class UpdateService
 {
-    public const string UpdateRepoUrl = "https://github.com/patientx-cfz/comfyui-rocm";
     public const string RocmNightlyIndexUrl = "https://nightly.repo.amd.com/rocm/whl-next/";
     public const string MirrorIndexUrl = "https://mirrors.aliyun.com/pypi/simple/";
-
-    public static readonly string[] TrackedCustomNodes =
-    {
-        "ComfyUI-Manager",
-        "ComfyUI-INT8-Fast-ROCM",
-        "comfyui-h3-sla-attention-rocm",
-    };
 
     private static readonly Regex RequirementPinRegex = new(
         @"^\s*(?<name>[A-Za-z0-9_.\-]+)\s*(?<op>[=<>!~]=?)\s*(?<ver>[^\s;#]+)",
@@ -162,103 +154,6 @@ public static class UpdateService
         onOutput?.Invoke("√ ROCm / PyTorch 更新完成");
     }
 
-    /// <summary>FR-6.3：robocopy 覆盖式程序更新。</summary>
-    public static async Task UpdateProgramAsync(
-        AppConfig config,
-        bool includePackages,
-        Action<string>? onOutput = null,
-        CancellationToken cancellationToken = default)
-    {
-        var git = ToolLocator.FindGit();
-        if (git is null)
-        {
-            onOutput?.Invoke("[错误] 未找到 git.exe，请先安装 Git 后重试");
-            return;
-        }
-
-        onOutput?.Invoke("[1/5] 校验 git.exe / python.exe … OK");
-
-        var remote = new List<string>();
-        await ProcessService.RunCommandAsync(git, $"ls-remote {UpdateRepoUrl} HEAD", config.ComfyUiDir,
-            line => { remote.Add(line); onOutput?.Invoke(line); }, cancellationToken).ConfigureAwait(false);
-        var remoteHash = remote.FirstOrDefault()?.Split('\t', ' ')[0] ?? string.Empty;
-
-        var hashFile = Path.Combine(config.ComfyUiDir, ".last_update_hash");
-        var localHash = File.Exists(hashFile) ? File.ReadAllText(hashFile).Trim() : string.Empty;
-        onOutput?.Invoke($"[2/5] 远程 {remoteHash} / 本地 {localHash}");
-
-        if (string.IsNullOrEmpty(remoteHash))
-        {
-            onOutput?.Invoke("[错误] 无法获取远程版本，中止");
-            return;
-        }
-
-        if (string.Equals(remoteHash, localHash, StringComparison.OrdinalIgnoreCase))
-        {
-            onOutput?.Invoke("      版本一致，跳过核心更新");
-        }
-        else
-        {
-            var tempDir = Path.Combine(config.ComfyUiDir, "_update_temp");
-            if (Directory.Exists(tempDir))
-            {
-                try { Directory.Delete(tempDir, recursive: true); } catch (IOException) { }
-            }
-
-            onOutput?.Invoke("[3/5] git clone --depth 1 …");
-            await ProcessService.RunCommandAsync(
-                git, $"clone --depth 1 {UpdateRepoUrl} \"{tempDir}\"",
-                config.ComfyUiDir, onOutput, cancellationToken).ConfigureAwait(false);
-
-            onOutput?.Invoke("[4/5] robocopy 覆盖 …");
-            var code = await ProcessService.RunCommandAsync(
-                "robocopy",
-                $"\"{tempDir}\" \"{config.ComfyUiDir}\" /E /XD .venv models output input user custom_nodes _update_temp /XF comfyui-user.bat",
-                config.ComfyUiDir, onOutput, cancellationToken).ConfigureAwait(false);
-
-            if (IsRobocopySuccess(code))
-            {
-                onOutput?.Invoke($"      robocopy 成功（退出码 {code}）");
-                onOutput?.Invoke("[5/5] 清理临时目录并写入版本 …");
-                try { Directory.Delete(tempDir, recursive: true); } catch (IOException) { }
-                File.WriteAllText(hashFile, remoteHash);
-            }
-            else
-            {
-                // 覆盖失败不写入版本号，下次检查更新会重试
-                onOutput?.Invoke($"      robocopy 失败（退出码 {code}），未写入版本号");
-                try { Directory.Delete(tempDir, recursive: true); } catch (IOException) { }
-            }
-        }
-
-        onOutput?.Invoke("[仅代码] 更新追踪 custom_nodes …");
-        foreach (var node in TrackedCustomNodes)
-        {
-            var dir = Path.Combine(config.ComfyUiDir, "custom_nodes", node);
-            if (!Directory.Exists(dir))
-            {
-                await ProcessService.RunCommandAsync(git, $"clone --depth 1 {UpdateRepoUrl}/{node} \"{dir}\"",
-                    config.ComfyUiDir, onOutput, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-            if (!Directory.Exists(Path.Combine(dir, ".git")))
-            {
-                onOutput?.Invoke($"      {node}：目录存在但非 git 仓库，跳过");
-                continue;
-            }
-            await ProcessService.RunCommandAsync(git, "pull --ff-only", dir, onOutput, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        if (includePackages)
-        {
-            onOutput?.Invoke("[代码+包] 安装依赖 …");
-            await InstallDependenciesAsync(config, false, onOutput, cancellationToken).ConfigureAwait(false);
-        }
-
-        onOutput?.Invoke("√ 程序更新完成");
-    }
-
     /// <summary>按 arch 生成安装命令（FR-6.1 第 4 步分支）。</summary>
     public static string BuildInstallArgs(string arch, string pythonArg) => arch switch
     {
@@ -269,9 +164,6 @@ public static class UpdateService
         _ =>
             $"pip install \"torch[device-{arch}]\" \"torchvision[device-{arch}]\" torchaudio rocm-sdk-devel --pre --index-url {RocmNightlyIndexUrl} {pythonArg}",
     };
-
-    /// <summary>robocopy 退出码语义：0-7 成功，>=8 失败。</summary>
-    public static bool IsRobocopySuccess(int exitCode) => exitCode < 8;
 
     /// <summary>对比前后 pip freeze，输出 "pkg: old -> new"。</summary>
     public static IReadOnlyList<string> DiffPackages(

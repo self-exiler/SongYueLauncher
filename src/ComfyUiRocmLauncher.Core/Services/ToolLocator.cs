@@ -1,7 +1,7 @@
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
-/// 外部可执行依赖发现（SRS 第 6 章）：uv.exe 用于全部 pip 操作，git.exe 用于程序更新。
+/// 外部可执行依赖发现（SRS 第 6 章）：uv.exe 用于全部 pip 操作。
 /// </summary>
 public static class ToolLocator
 {
@@ -26,19 +26,6 @@ public static class ToolLocator
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "uv.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "uv", "uv.exe"),
-        };
-        return extra.FirstOrDefault(File.Exists);
-    }
-
-    public static string? FindGit()
-    {
-        var found = FindInPath("git.exe");
-        if (found is not null) return found;
-
-        var extra = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "cmd", "git.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Git", "cmd", "git.exe"),
         };
         return extra.FirstOrDefault(File.Exists);
     }

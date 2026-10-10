@@ -36,7 +36,7 @@ public sealed class CliArgsCatalog
 
     public static CliArgsCatalog Instance => _instance ??= Load();
 
-    public static CliArgsCatalog Load()
+    private static CliArgsCatalog Load()
     {
         var asm = typeof(CliArgsCatalog).Assembly;
         var name = asm.GetManifestResourceNames().First(n => n.EndsWith(ResourceSuffix, StringComparison.Ordinal));

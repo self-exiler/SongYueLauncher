@@ -26,24 +26,16 @@ public static class AnsiParser
 
         while (i < line.Length)
         {
-            if (line[i] == '\u001b' && i + 1 < line.Length && line[i + 1] == '[')
+            if (TryMatchSgr(line, i, out var code, out var next))
             {
-                var end = line.IndexOf('m', i + 2);
-                if (end < 0)
-                {
-                    current.Append(line[i]);
-                    i++;
-                    continue;
-                }
-
                 if (current.Length > 0)
                 {
                     runs.Add(new AnsiRun(current.ToString(), color));
                     current.Clear();
                 }
 
-                color = MapColor(line.Substring(i + 2, end - i - 2), color);
-                i = end + 1;
+                color = MapColor(code, color);
+                i = next;
                 continue;
             }
 
@@ -62,16 +54,31 @@ public static class AnsiParser
         var i = 0;
         while (i < line.Length)
         {
-            if (line[i] == '\u001b' && i + 1 < line.Length && line[i + 1] == '[')
+            if (TryMatchSgr(line, i, out _, out var next))
             {
-                var end = line.IndexOf('m', i + 2);
-                i = end < 0 ? line.Length : end + 1;
+                i = next;
                 continue;
             }
             sb.Append(line[i]);
             i++;
         }
         return sb.ToString();
+    }
+
+    /// <summary>仅识别 ESC [ 数字/分号 m 的 SGR 序列；其它转义按普通字符保留，防止吞正文。</summary>
+    private static bool TryMatchSgr(string line, int start, out string code, out int after)
+    {
+        code = string.Empty;
+        after = start + 1;
+        if (start + 1 >= line.Length || line[start] != '\u001b' || line[start + 1] != '[') return false;
+
+        var j = start + 2;
+        while (j < line.Length && (line[j] == ';' || char.IsAsciiDigit(line[j]))) j++;
+        if (j >= line.Length || line[j] != 'm') return false;
+
+        code = line.Substring(start + 2, j - start - 2);
+        after = j + 1;
+        return true;
     }
 
     private static string MapColor(string code, string fallback)

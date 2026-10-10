@@ -18,6 +18,16 @@ public sealed class LaunchService
             Log.Append(line);
             OutputReceived?.Invoke(line);
         };
+        // ComfyUI 崩溃或被外部关闭时复位状态，避免 UI 停留在"运行中"
+        _process.Exited += () =>
+        {
+            if (State is LaunchState.Starting or LaunchState.Running)
+            {
+                Log.Append("[启动器] 子进程已退出");
+                Log.EndSession();
+                SetState(LaunchState.Idle);
+            }
+        };
     }
 
     public LogService Log { get; }
@@ -30,15 +40,31 @@ public sealed class LaunchService
 
     private void SetState(LaunchState state)
     {
+        if (State == state) return;
         State = state;
         StateChanged?.Invoke(state);
     }
 
-    /// <summary>启动 ComfyUI；返回是否检测到就绪。</summary>
+    /// <summary>启动 ComfyUI；返回是否检测到就绪。失败时状态复位为 Idle 并重抛。</summary>
     public async Task<bool> StartAsync(AppConfig config, TimeSpan readyTimeout, CancellationToken cancellationToken = default)
     {
         if (State != LaunchState.Idle) return false;
+        try
+        {
+            return await StartCoreAsync(config, readyTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // 异常（如 uv 缺失、包同步失败）必须复位，否则 State 卡在 Starting，之后永远无法启动
+            await _process.StopAsync().ConfigureAwait(false);
+            Log.EndSession();
+            SetState(LaunchState.Idle);
+            throw;
+        }
+    }
 
+    private async Task<bool> StartCoreAsync(AppConfig config, TimeSpan readyTimeout, CancellationToken cancellationToken)
+    {
         var comfyDir = config.ComfyUiDir;
         var mainPy = Path.Combine(comfyDir, "main.py");
 
@@ -67,6 +93,8 @@ public sealed class LaunchService
         var tokens = ArgsBuilder.Build(config.Args, _catalog, config.ExtraArgs);
         var arguments = "main.py " + string.Join(' ', tokens.Select(ArgsBuilder.Quote));
         var logFile = Log.StartSession();
+        // FR-5.4 磁盘保护：每次开新会话前清理超限的旧日志
+        Log.ApplyRetention(config.LogRetainCount, config.LogRetainTotalMB);
         Log.Append($"[启动器] 会话日志：{logFile}");
         Log.Append($"[启动器] spawn: {config.PythonExe} {arguments}");
 
