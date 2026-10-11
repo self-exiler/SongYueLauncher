@@ -13,7 +13,7 @@
             <!-- ===== 固定注入层（只读） ===== -->
             <TextBlock Text="固定注入层（只读）" Style="{StaticResource SettingsSectionHeaderStyle}" Margin="0,0,0,8" />
             <Border Style="{StaticResource CardBorderStyle}">
-                <Grid Padding="16,12" ColumnSpacing="12" RowSpacing="10">
+                <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12" RowSpacing="10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="220" />
                         <ColumnDefinition Width="*" />

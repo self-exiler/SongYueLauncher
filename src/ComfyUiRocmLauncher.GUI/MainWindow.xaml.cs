@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using ComfyUiRocmLauncher.Core.Models;
 using ComfyUiRocmLauncher.Core.Services;
+using ComfyUiRocmLauncher.GUI.Helpers;
 using ComfyUiRocmLauncher.GUI.Views;
 
 namespace ComfyUiRocmLauncher.GUI;
@@ -17,6 +18,16 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+
+        // 免打包运行时显式设置窗口/任务栏图标（打包模式由 exe 的 ApplicationIcon 覆盖）
+        try
+        {
+            AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
+        }
+        catch
+        {
+            // 图标文件缺失或平台不支持时静默忽略，不影响启动
+        }
 
         NavView.SelectedItem = NavView.MenuItems[0];
         RefreshHeader();
@@ -57,21 +68,21 @@ public sealed partial class MainWindow : Window
         var state = App.Services.State;
         StateTextBlock.Text = LaunchStates.Text(state);
 
-        // 状态徽章配色：运行绿 / 启动黄 / 停止红 / 环境任务蓝（浅色底 + 同色文字）
-        var (color, tinted) = state switch
+        // 状态徽章配色：运行=成功绿 / 启动=提示黄 / 停止=危险红 / 环境任务=强调蓝（浅色底 + 同色文字）
+        var (key, tinted) = state switch
         {
-            LaunchState.Running => (Microsoft.UI.Colors.ForestGreen, true),
-            LaunchState.Starting => (Microsoft.UI.Colors.Goldenrod, true),
-            LaunchState.Stopping => (Microsoft.UI.Colors.IndianRed, true),
-            LaunchState.BusyEnv => (Microsoft.UI.Colors.SteelBlue, true),
-            _ => (Microsoft.UI.Colors.Transparent, false),
+            LaunchState.Running => ("SystemFillColorSuccessBrush", true),
+            LaunchState.Starting => ("SystemFillColorCautionBrush", true),
+            LaunchState.Stopping => ("SystemFillColorCriticalBrush", true),
+            LaunchState.BusyEnv => ("AccentFillColorDefaultBrush", true),
+            _ => (null, false),
         };
         StateBadge.Background = tinted
-            ? new SolidColorBrush(color) { Opacity = 0.25 }
-            : (Brush)Application.Current.Resources["ControlFillColorSecondaryBrush"];
+            ? ThemeHelper.Tint(key!, 0.25)
+            : ThemeHelper.Brush("ControlFillColorSecondaryBrush");
         StateTextBlock.Foreground = tinted
-            ? new SolidColorBrush(color)
-            : (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+            ? ThemeHelper.Brush(key!)
+            : ThemeHelper.Brush("TextFillColorPrimaryBrush");
 
         VersionText.Text = "版本 " + App.Services.CurrentVersionHash();
     }

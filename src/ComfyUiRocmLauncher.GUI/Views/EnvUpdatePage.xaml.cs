@@ -144,9 +144,8 @@ public sealed partial class EnvUpdatePage : Page
                 text.Children.Add(new TextBlock
                 {
                     Text = tool.Path,
-                    FontSize = 12,
-                    Opacity = 0.6,
                     TextTrimming = TextTrimming.CharacterEllipsis,
+                    Style = (Style)Application.Current.Resources["SecondaryTextStyle"],
                 });
             Grid.SetColumn(text, 1);
             row.Children.Add(text);

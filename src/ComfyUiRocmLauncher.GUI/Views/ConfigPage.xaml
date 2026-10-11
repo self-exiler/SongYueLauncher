@@ -24,10 +24,10 @@
                         <Button x:Name="SaveAsButton" Content="当前配置另存为自定义模板" Click="SaveAs_Click" />
                         <Button x:Name="DeleteButton" Content="删除自定义模板" IsEnabled="False" Click="Delete_Click" />
                     </StackPanel>
-                    <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" Opacity="0.7"
+                    <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
                                Text="自定义模板保存当前环境变量与启动参数的全量快照，其中的 ComfyUI 目录 / venv 路径存为 {comfyUiDir} / {venvDir} 占位符，换目录后仍可用。" />
                     <TextBlock x:Name="SelectedInfoText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
-                    <TextBlock x:Name="ActionStatusText" FontSize="12" TextWrapping="Wrap" Opacity="0.85" />
+                    <TextBlock x:Name="ActionStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 

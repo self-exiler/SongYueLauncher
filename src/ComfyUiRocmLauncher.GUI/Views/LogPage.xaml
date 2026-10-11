@@ -33,13 +33,13 @@
             </StackPanel>
         </Grid>
 
-        <!-- 控制台：保留深色底以保证 ANSI 调色板对比度 -->
-        <Border Grid.Row="1" Margin="36,0,36,24" Style="{StaticResource CardBorderStyle}" Background="#FF161616">
+        <!-- 控制台：保留终端深色底以保证 ANSI 调色板对比度（颜色取自 App.xaml 令牌） -->
+        <Border Grid.Row="1" Margin="36,0,36,24" Style="{StaticResource CardBorderStyle}" Background="{StaticResource ConsoleBackgroundBrush}">
             <ScrollViewer x:Name="LogScroll" Padding="12">
                 <TextBlock x:Name="LogText"
                            FontFamily="{StaticResource MonoFontFamily}"
                            FontSize="12.5"
-                           Foreground="#FFE8E8E8"
+                           Foreground="{StaticResource ConsoleForegroundBrush}"
                            TextWrapping="Wrap"
                            IsTextSelectionEnabled="True" />
             </ScrollViewer>

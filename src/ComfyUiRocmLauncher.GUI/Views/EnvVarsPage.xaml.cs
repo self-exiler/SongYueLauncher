@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ComfyUiRocmLauncher.Core.Models;
 using ComfyUiRocmLauncher.Core.Services;
+using ComfyUiRocmLauncher.GUI.Helpers;
 
 namespace ComfyUiRocmLauncher.GUI.Views;
 
@@ -33,14 +34,14 @@ public sealed partial class EnvVarsPage : Page
             Text = key,
             Width = 260,
             PlaceholderText = "VAR_NAME",
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = ThemeHelper.Mono,
         };
         var valueBox = new TextBox
         {
             Text = value,
             MinWidth = 260,
             PlaceholderText = "值",
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = ThemeHelper.Mono,
         };
         var delete = new Button { Content = "删除" };
 

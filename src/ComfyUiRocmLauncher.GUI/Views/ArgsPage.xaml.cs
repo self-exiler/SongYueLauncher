@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using ComfyUiRocmLauncher.Core.Models;
 using ComfyUiRocmLauncher.Core.Services;
+using ComfyUiRocmLauncher.GUI.Helpers;
 
 namespace ComfyUiRocmLauncher.GUI.Views;
 
@@ -163,7 +164,7 @@ public sealed partial class ArgsPage : Page
             UpdatePreview();
         };
 
-        var nameText = new TextBlock { FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas") };
+        var nameText = new TextBlock { FontFamily = ThemeHelper.Mono };
         nameText.Inlines.Add(new Run
         {
             Text = "--" + arg.Name,
@@ -189,11 +190,14 @@ public sealed partial class ArgsPage : Page
         var control = BuildControl(arg);
 
         // 设置应用行布局：左侧「参数名 + 说明」，右侧「取值控件 + 启用开关」
+        // 列宽随窗体比例伸缩：文本列 2*（有下限），控件列 1*（控件本身设上下限），开关列 Auto
         var grid = new Grid { ColumnSpacing = 12, Padding = new Thickness(16, 10, 16, 10) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star), MinWidth = 300 });
         if (control is not null)
         {
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
+            control.MinWidth = 220;
+            control.MaxWidth = 460;
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         }
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
@@ -295,7 +299,7 @@ public sealed partial class ArgsPage : Page
                     AcceptsReturn = true,
                     MinHeight = 52,
                     PlaceholderText = "每行一条",
-                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
+                    FontFamily = ThemeHelper.Mono,
                 };
                 box.Text = string.Join(Environment.NewLine, Settings.Args.LinesOf(arg.Name));
                 box.TextChanged += (_, _) =>
@@ -319,7 +323,7 @@ public sealed partial class ArgsPage : Page
                     PlaceholderText = arg.Type is ArgType.OptionalString or ArgType.OptionalInt
                         ? $"留空 = 无值传递（const {arg.Const}）"
                         : (arg.Default ?? "值"),
-                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
+                    FontFamily = ThemeHelper.Mono,
                 };
                 box.Text = Settings.Args.Value(arg.Name);
                 box.TextChanged += (_, _) =>

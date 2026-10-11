@@ -54,14 +54,15 @@ public sealed partial class HomePage : Page
         BrowserButton.IsEnabled = state == LaunchState.Running;
         VersionHashText.Text = App.Services.CurrentVersionHash();
 
-        // 状态点配色：停止灰 / 启动黄 / 运行绿 / 停止红
-        RunStateDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(state switch
+        // 状态点配色：运行=成功绿 / 启动=提示黄 / 停止=危险红 / 空闲=次级灰（皆取主题色）
+        var dotKey = state switch
         {
-            LaunchState.Running => Windows.UI.Color.FromArgb(255, 108, 203, 95),
-            LaunchState.Starting => Windows.UI.Color.FromArgb(255, 252, 225, 0),
-            LaunchState.Stopping => Windows.UI.Color.FromArgb(255, 255, 153, 164),
-            _ => Windows.UI.Color.FromArgb(255, 138, 138, 138),
-        });
+            LaunchState.Running => "SystemFillColorSuccessBrush",
+            LaunchState.Starting => "SystemFillColorCautionBrush",
+            LaunchState.Stopping => "SystemFillColorCriticalBrush",
+            _ => "TextFillColorDisabledBrush",
+        };
+        RunStateDot.Fill = ThemeHelper.Brush(dotKey);
     }
 
     /// <summary>FR-1.4：快捷目录不存在时对应按钮禁用。</summary>

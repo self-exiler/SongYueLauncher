@@ -11,20 +11,20 @@
                 <!-- Other merged dictionaries here -->
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- ===== Windows 设置（Settings）风格统一度量 ===== -->
-            <x:Double x:Key="SettingsPageMaxWidth">1180</x:Double>
-            <Thickness x:Key="SettingsPagePadding">36,4,36,24</Thickness>
+            <!-- ===== Windows 11 设置（Settings）风格统一度量 ===== -->
+            <x:Double x:Key="SettingsPageMaxWidth">1000</x:Double>
+            <Thickness x:Key="SettingsPagePadding">36,4,36,36</Thickness>
             <Thickness x:Key="SettingsCardPadding">16</Thickness>
+            <x:Double x:Key="SettingsCardMinHeight">48</x:Double>
 
-            <!-- 分组标题：设置应用里的小节标题（15px 半粗，上疏下密） -->
-            <Style x:Key="SettingsSectionHeaderStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="15" />
-                <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Margin" Value="0,20,0,8" />
+            <!-- 分组标题：基于内置 Subtitle 文本样式（上疏下密） -->
+            <Style x:Key="SettingsSectionHeaderStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource SubtitleTextBlockStyle}">
+                <Setter Property="Margin" Value="0,24,0,8" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
-            <!-- 卡片容器：WinUI 3 未内置 SettingsCard，这里统一定义 -->
+            <!-- 卡片容器：无内边距（供分隔线全幅贴边）；行内边距由 SettingsRowStyle 负责 -->
             <Style x:Key="CardBorderStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
@@ -33,19 +33,28 @@
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
             </Style>
 
-            <!-- 卡片内标题（14px 半粗） -->
-            <Style x:Key="CardTitleStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="14" />
-                <Setter Property="FontWeight" Value="SemiBold" />
+            <!-- 卡片内一行：统一水平/垂直内边距与最小行高（Windows 设置行节奏） -->
+            <Style x:Key="SettingsRowStyle" TargetType="Grid">
+                <Setter Property="Padding" Value="16,12" />
+                <Setter Property="MinHeight" Value="{StaticResource SettingsCardMinHeight}" />
+            </Style>
+
+            <!-- 卡片内标题（基于内置 BodyStrong） -->
+            <Style x:Key="CardTitleStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource BodyStrongTextBlockStyle}">
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
-            <!-- 卡片内次级说明文字 -->
-            <Style x:Key="SecondaryTextStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="12" />
+            <!-- 卡片内次级说明文字（基于内置 Caption + 次级前景） -->
+            <Style x:Key="SecondaryTextStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource CaptionTextBlockStyle}">
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
+
+            <!-- 行内描述（等价 SecondaryTextStyle，语义命名） -->
+            <Style x:Key="RowDescriptionStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource SecondaryTextStyle}" />
 
             <!-- 卡片内行分隔线 -->
             <Style x:Key="CardDividerStyle" TargetType="Border">
@@ -56,6 +65,10 @@
 
             <!-- 等宽（命令 / 路径 / 日志） -->
             <FontFamily x:Key="MonoFontFamily">Cascadia Mono, Consolas</FontFamily>
+
+            <!-- 任务/日志控制台：始终终端配色（单点定义，浅/深主题下不变） -->
+            <SolidColorBrush x:Key="ConsoleBackgroundBrush" Color="#161616" />
+            <SolidColorBrush x:Key="ConsoleForegroundBrush" Color="#E8E8E8" />
             <!-- Other app resources here -->
         </ResourceDictionary>
     </Application.Resources>

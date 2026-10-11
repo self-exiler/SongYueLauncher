@@ -7,155 +7,143 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid RowSpacing="8" Padding="20,16">
+    <Grid RowSpacing="8" Padding="36,4,36,24">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Pivot x:Name="Tabs" Grid.Row="0">
+        <ScrollViewer Grid.Row="0">
+            <StackPanel MaxWidth="{StaticResource SettingsPageMaxWidth}" HorizontalAlignment="Stretch" Spacing="0">
 
-            <!-- ============ 标签一：工具链 ============ -->
-            <PivotItem Header="工具链">
-                <ScrollViewer>
-                    <StackPanel Spacing="12" MaxWidth="900" HorizontalAlignment="Left">
-                        <Border Style="{StaticResource CardBorderStyle}">
-                            <StackPanel Padding="16,12" Spacing="10">
-                                <TextBlock Text="外部工具" Style="{StaticResource CardTitleStyle}" />
-                                <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
-                                           Text="检测 PATH 与已知安装路径。安装经 winget（可能弹 UAC）；uv 亦支持用户级安装免 UAC。" />
-                                <StackPanel x:Name="ToolList" Spacing="6" />
-                                <Button x:Name="RedetectButton" Content="重新检测" Click="Redetect_Click" HorizontalAlignment="Left" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource CardBorderStyle}">
-                            <StackPanel Padding="16,12" Spacing="8">
-                                <TextBlock Text="GPU 架构（WMI 内置映射）" Style="{StaticResource CardTitleStyle}" />
-                                <TextBlock x:Name="ArchText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource CardBorderStyle}">
-                            <StackPanel Padding="16,12" Spacing="10">
-                                <TextBlock Text="镜像（三分法）" Style="{StaticResource CardTitleStyle}" />
-                                <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
-                                           Text="GitHub 镜像仅作用于 git clone 与 GitHub release 轮子；PyPI 镜像仅作用于通用包与项目依赖；AMD 官方源永远直连。留空 = 直连/官方。" />
-                                <ComboBox x:Name="GithubMirrorBox" Header="GitHub 加速镜像（前缀，留空直连）" IsEditable="True" Width="520" HorizontalAlignment="Left"
-                                          LosingFocus="GithubMirrorBox_LosingFocus">
-                                    <ComboBoxItem Content="" />
-                                    <ComboBoxItem Content="https://ghproxy.net/" />
-                                    <ComboBoxItem Content="https://gh-proxy.com/" />
-                                </ComboBox>
-                                <ComboBox x:Name="PypiMirrorBox" Header="PyPI 镜像（留空用官方源）" IsEditable="True" Width="520" HorizontalAlignment="Left"
-                                          LosingFocus="PypiMirrorBox_LosingFocus">
-                                    <ComboBoxItem Content="" />
-                                    <ComboBoxItem Content="https://mirrors.aliyun.com/pypi/simple/" />
-                                    <ComboBoxItem Content="https://pypi.tuna.tsinghua.edu.cn/simple/" />
-                                </ComboBox>
-                            </StackPanel>
-                        </Border>
+                <!-- ============ 工具链 ============ -->
+                <TextBlock Text="工具链" Style="{StaticResource SettingsSectionHeaderStyle}" Margin="0,0,0,8" />
+                <Border Style="{StaticResource CardBorderStyle}">
+                    <StackPanel Padding="16,12" Spacing="10">
+                        <TextBlock Text="外部工具" Style="{StaticResource CardTitleStyle}" />
+                        <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
+                                   Text="检测 PATH 与已知安装路径。安装经 winget（可能弹 UAC）；uv 亦支持用户级安装免 UAC。" />
+                        <StackPanel x:Name="ToolList" Spacing="6" />
+                        <Button x:Name="RedetectButton" Content="重新检测" Click="Redetect_Click" HorizontalAlignment="Left" />
                     </StackPanel>
-                </ScrollViewer>
-            </PivotItem>
+                </Border>
 
-            <!-- ============ 标签二：ComfyUI 项目 ============ -->
-            <PivotItem Header="ComfyUI 项目">
-                <ScrollViewer>
-                    <StackPanel Spacing="12" MaxWidth="900" HorizontalAlignment="Left">
-                        <Border Style="{StaticResource CardBorderStyle}">
-                            <StackPanel Padding="16,12" Spacing="10">
-                                <TextBlock Text="仓库与安装" Style="{StaticResource CardTitleStyle}" />
-                                <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
-                                           Text="上游默认仓库已删除，仓库地址需自行指定。安装目录取主页「ComfyUI 目录」。" />
-                                <TextBox x:Name="RepoUrlBox" Header="仓库地址（HTTPS git URL）" PlaceholderText="https://github.com/owner/repo.git" TextChanged="RepoUrlBox_TextChanged" />
-                                <TextBlock x:Name="ProjectStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <Button x:Name="CheckButton" Content="检查更新" Click="CheckUpdate_Click" />
-                                    <Button x:Name="CloneButton" Content="克隆安装" Style="{StaticResource AccentButtonStyle}" Click="Clone_Click" />
-                                    <Button x:Name="PullButton" Content="拉取更新" Click="Pull_Click" />
-                                    <Button x:Name="ForceButton" Content="强制覆盖更新" Click="Force_Click" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
+                <Border Style="{StaticResource CardBorderStyle}" Margin="0,8,0,0">
+                    <StackPanel Padding="16,12" Spacing="8">
+                        <TextBlock Text="GPU 架构（WMI 内置映射）" Style="{StaticResource CardTitleStyle}" />
+                        <TextBlock x:Name="ArchText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
                     </StackPanel>
-                </ScrollViewer>
-            </PivotItem>
+                </Border>
 
-            <!-- ============ 标签三：Python 轮子 ============ -->
-            <PivotItem Header="Python 轮子">
-                <ScrollViewer>
-                    <StackPanel Spacing="12" MaxWidth="900" HorizontalAlignment="Left">
-
-                        <Border Style="{StaticResource CardBorderStyle}">
-                            <StackPanel Padding="16,12" Spacing="8">
-                                <TextBlock Text="Python 虚拟环境" Style="{StaticResource CardTitleStyle}" />
-                                <TextBlock x:Name="VenvStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
-                                <Button x:Name="CreateVenvButton" Content="创建 .venv（Python 3.12）" Click="CreateVenv_Click" HorizontalAlignment="Left" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource CardBorderStyle}">
-                            <StackPanel Padding="16,12" Spacing="8">
-                                <TextBlock Text="PyTorch for ROCm（nightly）" Style="{StaticResource CardTitleStyle}" />
-                                <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
-                                           Text="先下载验证再卸载；中断可尽力回滚到快照（原版本可能已下架）。AMD 源直连。" />
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <Button x:Name="TorchUpdateButton" Content="更新 torch" Style="{StaticResource AccentButtonStyle}" Click="TorchUpdate_Click" />
-                                    <Button x:Name="RollbackButton" Content="回滚到快照" Click="Rollback_Click" IsEnabled="False" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource CardBorderStyle}">
-                            <StackPanel Padding="16,12" Spacing="8">
-                                <TextBlock Text="作者专用轮子与项目依赖" Style="{StaticResource CardTitleStyle}" />
-                                <TextBlock x:Name="CatalogVersionText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
-                                <TextBlock x:Name="WheelListText" FontFamily="{StaticResource MonoFontFamily}" TextWrapping="Wrap" Opacity="0.85" />
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <Button x:Name="WheelsButton" Content="安装专用轮子" Click="InstallWheels_Click" />
-                                    <Button x:Name="DepsButton" Content="同步项目依赖" Click="SyncDeps_Click" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource CardBorderStyle}">
-                            <StackPanel Padding="16,12" Spacing="8">
-                                <TextBlock Text="通用 PyPI 包" Style="{StaticResource CardTitleStyle}" />
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <Button x:Name="RefreshListButton" Content="刷新已装列表" Click="RefreshPackages_Click" />
-                                </StackPanel>
-                                <TextBox x:Name="PackageListText" AcceptsReturn="True" IsReadOnly="True" MinHeight="120"
-                                         FontFamily="{StaticResource MonoFontFamily}" />
-                                <TextBox x:Name="PackageInputBox" Header="安装 / 卸载（包名、包名==版本 或 whl URL）" PlaceholderText="einops==0.8.0" />
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <Button x:Name="PkgInstallButton" Content="安装" Click="InstallPackage_Click" />
-                                    <Button x:Name="PkgUninstallButton" Content="卸载" Click="UninstallPackage_Click" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
+                <Border Style="{StaticResource CardBorderStyle}" Margin="0,8,0,0">
+                    <StackPanel Padding="16,12" Spacing="10">
+                        <TextBlock Text="镜像（三分法）" Style="{StaticResource CardTitleStyle}" />
+                        <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
+                                   Text="GitHub 镜像仅作用于 git clone 与 GitHub release 轮子；PyPI 镜像仅作用于通用包与项目依赖；AMD 官方源永远直连。留空 = 直连/官方。" />
+                        <ComboBox x:Name="GithubMirrorBox" Header="GitHub 加速镜像（前缀，留空直连）" IsEditable="True" Width="520"
+                                  HorizontalAlignment="Left" LosingFocus="GithubMirrorBox_LosingFocus">
+                            <ComboBoxItem Content="" />
+                            <ComboBoxItem Content="https://ghproxy.net/" />
+                            <ComboBoxItem Content="https://gh-proxy.com/" />
+                        </ComboBox>
+                        <ComboBox x:Name="PypiMirrorBox" Header="PyPI 镜像（留空用官方源）" IsEditable="True" Width="520"
+                                  HorizontalAlignment="Left" LosingFocus="PypiMirrorBox_LosingFocus">
+                            <ComboBoxItem Content="" />
+                            <ComboBoxItem Content="https://mirrors.aliyun.com/pypi/simple/" />
+                            <ComboBoxItem Content="https://pypi.tuna.tsinghua.edu.cn/simple/" />
+                        </ComboBox>
                     </StackPanel>
-                </ScrollViewer>
-            </PivotItem>
-        </Pivot>
+                </Border>
 
-        <!-- ============ 底部共享任务控制台 ============ -->
-        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}">
+                <!-- ============ ComfyUI 项目 ============ -->
+                <TextBlock Text="ComfyUI 项目" Style="{StaticResource SettingsSectionHeaderStyle}" />
+                <Border Style="{StaticResource CardBorderStyle}">
+                    <StackPanel Padding="16,12" Spacing="10">
+                        <TextBlock Text="仓库与安装" Style="{StaticResource CardTitleStyle}" />
+                        <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
+                                   Text="上游默认仓库已删除，仓库地址需自行指定。安装目录取主页「ComfyUI 目录」。" />
+                        <TextBox x:Name="RepoUrlBox" Header="仓库地址（HTTPS git URL）" PlaceholderText="https://github.com/owner/repo.git"
+                                 TextChanged="RepoUrlBox_TextChanged" />
+                        <TextBlock x:Name="ProjectStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="CheckButton" Content="检查更新" Click="CheckUpdate_Click" />
+                            <Button x:Name="CloneButton" Content="克隆安装" Style="{StaticResource AccentButtonStyle}" Click="Clone_Click" />
+                            <Button x:Name="PullButton" Content="拉取更新" Click="Pull_Click" />
+                            <Button x:Name="ForceButton" Content="强制覆盖更新" Click="Force_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ============ Python 轮子 ============ -->
+                <TextBlock Text="Python 轮子" Style="{StaticResource SettingsSectionHeaderStyle}" />
+
+                <Border Style="{StaticResource CardBorderStyle}">
+                    <StackPanel Padding="16,12" Spacing="8">
+                        <TextBlock Text="Python 虚拟环境" Style="{StaticResource CardTitleStyle}" />
+                        <TextBlock x:Name="VenvStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                        <Button x:Name="CreateVenvButton" Content="创建 .venv（Python 3.12）" Click="CreateVenv_Click" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardBorderStyle}" Margin="0,8,0,0">
+                    <StackPanel Padding="16,12" Spacing="8">
+                        <TextBlock Text="PyTorch for ROCm（nightly）" Style="{StaticResource CardTitleStyle}" />
+                        <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
+                                   Text="先下载验证再卸载；中断可尽力回滚到快照（原版本可能已下架）。AMD 源直连。" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="TorchUpdateButton" Content="更新 torch" Style="{StaticResource AccentButtonStyle}" Click="TorchUpdate_Click" />
+                            <Button x:Name="RollbackButton" Content="回滚到快照" Click="Rollback_Click" IsEnabled="False" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardBorderStyle}" Margin="0,8,0,0">
+                    <StackPanel Padding="16,12" Spacing="8">
+                        <TextBlock Text="作者专用轮子与项目依赖" Style="{StaticResource CardTitleStyle}" />
+                        <TextBlock x:Name="CatalogVersionText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="WheelListText" FontFamily="{StaticResource MonoFontFamily}" Style="{StaticResource SecondaryTextStyle}" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="WheelsButton" Content="安装专用轮子" Click="InstallWheels_Click" />
+                            <Button x:Name="DepsButton" Content="同步项目依赖" Click="SyncDeps_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardBorderStyle}" Margin="0,8,0,0">
+                    <StackPanel Padding="16,12" Spacing="8">
+                        <TextBlock Text="通用 PyPI 包" Style="{StaticResource CardTitleStyle}" />
+                        <Button x:Name="RefreshListButton" Content="刷新已装列表" Click="RefreshPackages_Click" HorizontalAlignment="Left" />
+                        <TextBox x:Name="PackageListText" AcceptsReturn="True" IsReadOnly="True" MinHeight="120"
+                                 FontFamily="{StaticResource MonoFontFamily}" />
+                        <TextBox x:Name="PackageInputBox" Header="安装 / 卸载（包名、包名==版本 或 whl URL）" PlaceholderText="einops==0.8.0" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="PkgInstallButton" Content="安装" Click="InstallPackage_Click" />
+                            <Button x:Name="PkgUninstallButton" Content="卸载" Click="UninstallPackage_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ============ 共享任务控制台（始终终端深色） ============ -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Padding="0" Background="{StaticResource ConsoleBackgroundBrush}">
             <Grid Padding="12,8" RowSpacing="6">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="220" />
                 </Grid.RowDefinitions>
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
-                    <TextBlock Text="任务输出" Style="{StaticResource CardTitleStyle}" VerticalAlignment="Center" />
+                    <TextBlock Text="任务输出" Style="{StaticResource CardTitleStyle}" VerticalAlignment="Center"
+                               Foreground="{StaticResource ConsoleForegroundBrush}" />
                     <Button x:Name="CancelButton" Content="取消" Click="Cancel_Click" IsEnabled="False" />
                     <Button Content="清空" Click="ClearConsole_Click" />
-                    <TextBlock x:Name="ConsoleHintText" VerticalAlignment="Center" Opacity="0.7" FontSize="12" />
+                    <TextBlock x:Name="ConsoleHintText" VerticalAlignment="Center" Style="{StaticResource SecondaryTextStyle}"
+                               Foreground="{StaticResource ConsoleForegroundBrush}" />
                 </StackPanel>
-                <ScrollViewer x:Name="ConsoleScroll" Grid.Row="1" Background="#161616" Padding="8"
-                              FontFamily="{StaticResource MonoFontFamily}" FontSize="12">
-                    <TextBlock x:Name="ConsoleText" Foreground="#E8E8E8" TextWrapping="Wrap" />
+                <ScrollViewer x:Name="ConsoleScroll" Grid.Row="1">
+                    <TextBlock x:Name="ConsoleText" FontFamily="{StaticResource MonoFontFamily}" FontSize="12"
+                               Foreground="{StaticResource ConsoleForegroundBrush}" TextWrapping="Wrap" />
                 </ScrollViewer>
             </Grid>
         </Border>
