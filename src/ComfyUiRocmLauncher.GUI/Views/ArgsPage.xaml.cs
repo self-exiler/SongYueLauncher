@@ -7,21 +7,27 @@ using ComfyUiRocmLauncher.Core.Services;
 
 namespace ComfyUiRocmLauncher.GUI.Views;
 
-/// <summary>启动参数页（SRS FR-2）：数据驱动生成全部参数控件 + 实时命令预览。</summary>
+/// <summary>启动参数页（SRS FR-2）：数据驱动生成全部参数控件 + 实时命令预览。分组懒加载以避免进入页面卡顿。</summary>
 public sealed partial class ArgsPage : Page
 {
     private readonly CliArgsCatalog _catalog = CliArgsCatalog.Instance;
     private readonly Dictionary<string, RowUi> _rows = new(StringComparer.Ordinal);
     private readonly List<GroupUi> _groups = new();
+    private bool _syncing;
+    private bool _shellBuilt;
 
-    /// <summary>一个参数分组的 UI 引用（容器 / 折叠体 / 头部 / 头部文本 / 参数名集合）。</summary>
-    private sealed record GroupUi(
-        StackPanel Container,
-        StackPanel Body,
-        Button Header,
-        TextBlock HeaderText,
-        string Title,
-        IReadOnlyList<string> ArgNames);
+    /// <summary>一个参数分组的 UI 引用；行控件在首次展开时才创建（懒加载）。</summary>
+    private sealed class GroupUi(CliArgGroup definition)
+    {
+        public readonly CliArgGroup Definition = definition;
+        public StackPanel? Body;
+        public TextBlock HeaderText = null!;
+        public Button Header = null!;
+        public FontIcon Chevron = null!;
+        public StackPanel Container = null!;
+        public bool Built;
+        public IReadOnlyList<string> ArgNames => Definition.Args.Select(a => a.Name).ToList();
+    }
 
     /// <summary>一个参数行的 UI 引用（卡片 / 开关 / 取值控件）。</summary>
     private sealed record RowUi(Border Card, ToggleSwitch Toggle, FrameworkElement? Control);
@@ -29,12 +35,17 @@ public sealed partial class ArgsPage : Page
     public ArgsPage()
     {
         InitializeComponent();
-        Loaded += (_, _) => BuildGroups();
+        Loaded += (_, _) =>
+        {
+            if (_shellBuilt) SyncControlsFromSettings(); // 复用实例：只就地同步，不重建
+            else { BuildShell(); _shellBuilt = true; }
+        };
     }
 
     private AppConfig Settings => App.Services.Settings;
 
-    private void BuildGroups()
+    /// <summary>轻量构建：只创建分组外壳（头部+空折叠体），行控件延迟到首次展开时生成。</summary>
+    private void BuildShell()
     {
         GroupsHost.Children.Clear();
         _rows.Clear();
@@ -43,16 +54,13 @@ public sealed partial class ArgsPage : Page
 
         foreach (var group in _catalog.Groups)
         {
-            var body = new StackPanel { Spacing = 4, Margin = new Thickness(0, 4, 0, 0) };
-            foreach (var arg in group.Args)
-            {
-                body.Children.Add(BuildRow(arg));
-            }
+            var info = new GroupUi(group);
+            info.Body = new StackPanel { Spacing = 4, Margin = new Thickness(0, 4, 0, 0), Visibility = Visibility.Collapsed };
 
-            var headerText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
-            var chevron = new FontIcon
+            info.HeaderText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+            info.Chevron = new FontIcon
             {
-                Glyph = "\uE76C", // ChevronDown：展开朝下，折叠时旋转 -90° 朝右
+                Glyph = "\uE70D", // ChevronRight：折叠态；展开时旋转 90°
                 FontSize = 12,
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -62,11 +70,11 @@ public sealed partial class ArgsPage : Page
             var headerContent = new Grid { ColumnSpacing = 12 };
             headerContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             headerContent.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            headerContent.Children.Add(headerText);
-            Grid.SetColumn(chevron, 1);
-            headerContent.Children.Add(chevron);
+            headerContent.Children.Add(info.HeaderText);
+            Grid.SetColumn(info.Chevron, 1);
+            headerContent.Children.Add(info.Chevron);
 
-            var header = new Button
+            info.Header = new Button
             {
                 Content = headerContent,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -77,23 +85,41 @@ public sealed partial class ArgsPage : Page
                 BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
                 BorderThickness = new Thickness(1),
             };
-            header.Click += (_, _) =>
-            {
-                var expanded = body.Visibility == Visibility.Visible;
-                body.Visibility = expanded ? Visibility.Collapsed : Visibility.Visible;
-                chevron.RenderTransform = new Microsoft.UI.Xaml.Media.RotateTransform { Angle = expanded ? -90 : 0 };
-            };
+            info.Header.Click += (_, _) => SetExpanded(info, info.Body!.Visibility != Visibility.Visible);
 
-            var container = new StackPanel { Spacing = 0 };
-            container.Children.Add(header);
-            container.Children.Add(body);
-            GroupsHost.Children.Add(container);
+            info.Container = new StackPanel { Spacing = 0 };
+            info.Container.Children.Add(info.Header);
+            info.Container.Children.Add(info.Body);
+            GroupsHost.Children.Add(info.Container);
 
-            _groups.Add(new GroupUi(container, body, header, headerText, group.Title, group.Args.Select(a => a.Name).ToList()));
+            _groups.Add(info);
         }
 
         ArgCountText.Text = $"共 {_catalog.Count} 项参数（来源 ComfyUI cli_args.py 快照）";
+        UpdateGroupCounts();
+
+        // 含已启用参数的组自动展开（懒建），其余保持折叠
+        foreach (var g in _groups)
+            if (g.ArgNames.Any(Settings.Args.IsEnabled))
+                SetExpanded(g, true);
+
         UpdatePreview();
+    }
+
+    private void SetExpanded(GroupUi group, bool expanded)
+    {
+        EnsureBodyBuilt(group);
+        group.Body!.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        group.Chevron.RenderTransform = new Microsoft.UI.Xaml.Media.RotateTransform { Angle = expanded ? 90 : 0 };
+    }
+
+    /// <summary>首次展开时才创建该组的行控件。</summary>
+    private void EnsureBodyBuilt(GroupUi group)
+    {
+        if (group.Built) return;
+        group.Built = true;
+        foreach (var arg in group.Definition.Args)
+            group.Body!.Children.Add(BuildRow(arg));
     }
 
     /// <summary>组头计数：N 启用 · M 项。</summary>
@@ -103,8 +129,8 @@ public sealed partial class ArgsPage : Page
         {
             var on = g.ArgNames.Count(n => Settings.Args.IsEnabled(n));
             var text = on > 0
-                ? $"{g.Title}（{on} 启用 · {g.ArgNames.Count} 项）"
-                : $"{g.Title}（{g.ArgNames.Count} 项）";
+                ? $"{g.Definition.Title}（{on} 启用 · {g.ArgNames.Count} 项）"
+                : $"{g.Definition.Title}（{g.ArgNames.Count} 项）";
             g.HeaderText.Text = text;
             // 头部内容是 Grid，需手动给按钮一个自动化名称（屏幕阅读器 / UI 自动化）
             AutomationProperties.SetName(g.Header, text);
@@ -122,6 +148,7 @@ public sealed partial class ArgsPage : Page
         toggle.IsOn = Settings.Args.IsEnabled(arg.Name);
         toggle.Toggled += (_, _) =>
         {
+            if (_syncing) return;
             Settings.Args.Enable(arg.Name, toggle.IsOn);
             if (toggle.IsOn)
             {
@@ -219,6 +246,7 @@ public sealed partial class ArgsPage : Page
                     .FirstOrDefault(i => (string)i.Content == Settings.Args.Value(arg.Name));
                 combo.SelectionChanged += (_, _) =>
                 {
+                    if (_syncing) return;
                     if (combo.SelectedItem is ComboBoxItem item)
                     {
                         Settings.Args.SetValue(arg.Name, (string)item.Content);
@@ -233,6 +261,7 @@ public sealed partial class ArgsPage : Page
                 fileBox.Text = Settings.Args.Value(arg.Name + ":file");
                 fileBox.TextChanged += (_, _) =>
                 {
+                    if (_syncing) return;
                     Settings.Args.SetValue(arg.Name + ":file", fileBox.Text.Trim());
                     App.Services.Save();
                     UpdatePreview();
@@ -271,6 +300,7 @@ public sealed partial class ArgsPage : Page
                 box.Text = string.Join(Environment.NewLine, Settings.Args.LinesOf(arg.Name));
                 box.TextChanged += (_, _) =>
                 {
+                    if (_syncing) return;
                     Settings.Args.Lines[arg.Name] = box.Text
                         .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                         .Select(l => l.Trim())
@@ -294,6 +324,7 @@ public sealed partial class ArgsPage : Page
                 box.Text = Settings.Args.Value(arg.Name);
                 box.TextChanged += (_, _) =>
                 {
+                    if (_syncing) return;
                     Settings.Args.SetValue(arg.Name, box.Text.Trim());
                     App.Services.Save();
                     UpdatePreview();
@@ -305,6 +336,7 @@ public sealed partial class ArgsPage : Page
 
     private void UpdateMulti(CliArgDefinition arg, StackPanel panel)
     {
+        if (_syncing) return;
         Settings.Args.Multi[arg.Name] = panel.Children
             .OfType<CheckBox>()
             .Where(c => c.IsChecked == true)
@@ -345,17 +377,24 @@ public sealed partial class ArgsPage : Page
         var query = SearchBox.Text.Trim();
         foreach (var g in _groups)
         {
-            var anyVisible = false;
-            foreach (var name in g.ArgNames)
-            {
-                if (!_rows.TryGetValue(name, out var row)) continue;
-                var visible = query.Length == 0 || name.Contains(query, StringComparison.OrdinalIgnoreCase);
-                row.Card.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-                anyVisible |= visible;
-            }
-            // 无匹配的分组整体隐藏；有匹配时自动展开
+            var matches = g.ArgNames.Where(n => query.Length == 0 || n.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+            var anyVisible = matches.Count > 0;
             g.Container.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
-            if (query.Length > 0 && anyVisible) g.Body.Visibility = Visibility.Visible;
+            if (!anyVisible) continue;
+
+            if (query.Length > 0) SetExpanded(g, true);
+            else
+            {
+                // 空查询：恢复各行可见
+                foreach (var name in g.ArgNames)
+                    if (_rows.TryGetValue(name, out var row)) row.Card.Visibility = Visibility.Visible;
+                continue;
+            }
+
+            EnsureBodyBuilt(g);
+            foreach (var name in g.ArgNames)
+                if (_rows.TryGetValue(name, out var row))
+                    row.Card.Visibility = matches.Contains(name) ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -363,15 +402,6 @@ public sealed partial class ArgsPage : Page
     {
         Settings.ExtraArgs = ExtraArgsBox.Text;
         App.Services.Save();
-        UpdatePreview();
-    }
-
-    private void ApplyTemplate_Click(object sender, RoutedEventArgs e)
-    {
-        var tag = (TemplateCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "rdna3";
-        TemplateCatalog.Instance.ApplyArgs(tag, Settings.Args, _catalog);
-        App.Services.Save();
-        SyncControlsFromSettings();
         UpdatePreview();
     }
 
@@ -393,6 +423,55 @@ public sealed partial class ArgsPage : Page
         UpdatePreview();
     }
 
-    /// <summary>配置变更后重建全部控件（模板应用 / 恢复默认）。</summary>
-    private void SyncControlsFromSettings() => BuildGroups();
+    /// <summary>
+    /// 配置被外部整体变更（bat 默认 / 恢复默认 / 模板应用）后，就地同步控件状态；
+    /// 全程 _syncing 抑制写回，不重建控件树。
+    /// </summary>
+    private void SyncControlsFromSettings()
+    {
+        _syncing = true;
+        try
+        {
+            foreach (var name in Settings.Args.Enabled.ToList())
+                if (_rows.TryGetValue(name, out var row) && row.Toggle.IsOn)
+                    row.Toggle.IsOn = false; // 事件被抑制，Enabled 稍后整体覆盖
+            foreach (var name in Settings.Args.Enabled)
+                if (_rows.TryGetValue(name, out var row) && !row.Toggle.IsOn)
+                    row.Toggle.IsOn = true;
+        }
+        finally { _syncing = false; }
+
+        foreach (var (name, row) in _rows)
+            SyncControlValue(name, row.Control);
+        UpdatePreview();
+    }
+
+    /// <summary>把 Settings 中的取值写回已展开的控件（未展开组无需处理，展开时会按 Settings 创建）。</summary>
+    private void SyncControlValue(string name, FrameworkElement? control)
+    {
+        switch (control)
+        {
+            case StackPanel { Children.Count: > 0 } stack when stack.Children[0] is ComboBox cf:
+                cf.SelectedItem = cf.Items.OfType<ComboBoxItem>()
+                    .FirstOrDefault(i => (string)i.Content == Settings.Args.Value(name));
+                if (stack.Children.Count > 1 && stack.Children[1] is TextBox ff)
+                    ff.Text = Settings.Args.Value(name + ":file");
+                break;
+            case StackPanel checks when checks.Children.OfType<CheckBox>().Any():
+                var selected = Settings.Args.MultiOf(name);
+                foreach (var child in checks.Children.OfType<CheckBox>())
+                    child.IsChecked = selected.Contains((string)child.Content);
+                break;
+            case ComboBox c:
+                c.SelectedItem = c.Items.OfType<ComboBoxItem>()
+                    .FirstOrDefault(i => (string)i.Content == Settings.Args.Value(name));
+                break;
+            case TextBox t when !t.AcceptsReturn:
+                t.Text = Settings.Args.Value(name);
+                break;
+            case TextBox t:
+                t.Text = string.Join(Environment.NewLine, Settings.Args.LinesOf(name));
+                break;
+        }
+    }
 }

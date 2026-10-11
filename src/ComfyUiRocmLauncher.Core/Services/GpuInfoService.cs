@@ -3,7 +3,7 @@ using System.Management;
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
-/// GPU 信息（SRS FR-1.3 / FR-6.1）：WMI 读显卡型号；detect_gpu.py 读 arch。
+/// GPU 信息（SRS FR-1.3）：WMI 读显卡型号。
 /// </summary>
 public static class GpuInfoService
 {
@@ -35,55 +35,5 @@ public static class GpuInfoService
         }
 
         return Unknown;
-    }
-
-    /// <summary>执行 detect_gpu.py 取 arch（stderr 落 gpu_detect_debug.log，失败返回 null）。</summary>
-    public static async Task<string?> DetectArchAsync(
-        string pythonExe,
-        string comfyUiDir,
-        Action<string>? onOutput = null,
-        CancellationToken cancellationToken = default)
-    {
-        var script = Path.Combine(comfyUiDir, "detect_gpu.py");
-        if (!File.Exists(script))
-        {
-            onOutput?.Invoke($"[错误] 未找到 detect_gpu.py：{script}");
-            return null;
-        }
-
-        var captured = new List<string>();
-        var code = await ProcessService.RunCommandAsync(
-            pythonExe,
-            "detect_gpu.py",
-            comfyUiDir,
-            line =>
-            {
-                captured.Add(line);
-                onOutput?.Invoke(line);
-            },
-            cancellationToken).ConfigureAwait(false);
-
-        if (code != 0)
-        {
-            try
-            {
-                File.WriteAllLines(Path.Combine(comfyUiDir, "gpu_detect_debug.log"), captured);
-            }
-            catch (IOException) { }
-            return null;
-        }
-
-        foreach (var line in captured)
-        {
-            var text = line.Trim();
-            if (text.StartsWith("gfx", StringComparison.OrdinalIgnoreCase)) return text;
-            var idx = text.IndexOf("arch", StringComparison.OrdinalIgnoreCase);
-            if (idx >= 0)
-            {
-                var tail = text[(idx + 4)..].Trim(' ', '=', ':');
-                if (tail.StartsWith("gfx", StringComparison.OrdinalIgnoreCase)) return tail;
-            }
-        }
-        return null;
     }
 }

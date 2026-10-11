@@ -5,7 +5,7 @@ using ComfyUiRocmLauncher.Core.Models;
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
-/// GPU 模板（附录 B）加载与应用：模板的环境变量与启动参数写入普通配置，之后可自由编辑（FR-3.2）。
+/// GPU 模板（SRS FR-7 配置管理页）：内置模板（附录 B）+ 用户自定义模板的统一解析、应用（全量替换）与捕获。
 /// </summary>
 public sealed class TemplateCatalog
 {
@@ -25,6 +25,9 @@ public sealed class TemplateCatalog
         Templates = file.Templates;
         CommonEnvVars = file.CommonEnvVars;
     }
+
+    /// <summary>内置 GPU 模板（只读）。</summary>
+    public IReadOnlyList<GpuTemplate> BuiltinTemplates => Templates;
 
     private IReadOnlyList<GpuTemplate> Templates { get; }
 
@@ -79,6 +82,108 @@ public sealed class TemplateCatalog
             args.Enable(a.Name, true);
             if (!string.IsNullOrEmpty(a.Value)) args.SetValue(a.Name, a.Value!);
         }
+    }
+
+    /// <summary>内置 + 自定义模板的合并列表（供配置管理页下拉）。</summary>
+    public IReadOnlyList<GpuTemplate> AllTemplates(AppConfig config) =>
+        BuiltinTemplates.Concat(config.CustomTemplates).ToList();
+
+    /// <summary>按 id 查找模板，先内置后自定义；未找到返回 null。</summary>
+    public GpuTemplate? Resolve(string id, AppConfig config)
+    {
+        var builtin = Get(id);
+        if (builtin is not null) return builtin;
+        return config.CustomTemplates.FirstOrDefault(
+            t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>展开模板环境变量：内置走公共层组合，自定义取快照并替换占位符。</summary>
+    public Dictionary<string, string> ResolveEnv(GpuTemplate tpl, AppConfig config)
+    {
+        var comfyDir = config.ComfyUiDir;
+        var venvDir = LaunchEnvBuilder.VenvDirFrom(config.PythonExe);
+        if (tpl.IsCustom)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in tpl.EnvSnapshot!)
+                result[kv.Key] = Expand(kv.Value, comfyDir, venvDir);
+            return result;
+        }
+        return ExpandEnvVars(tpl.Id, comfyDir, venvDir);
+    }
+
+    /// <summary>
+    /// 全量替换语义（FR-7.2）：把模板的环境变量与启动参数整体写入 config，
+    /// 覆盖并清除既有自定义项（模板应用后仍可在各页自由编辑）。
+    /// </summary>
+    public void ApplyTo(GpuTemplate tpl, AppConfig config, CliArgsCatalog catalog)
+    {
+        var env = ResolveEnv(tpl, config);
+        config.CustomEnvVars.Clear();
+        foreach (var kv in env) config.CustomEnvVars[kv.Key] = kv.Value;
+
+        if (tpl.ArgsSnapshot is { } snapshot)
+        {
+            OverwriteArgs(config.Args, snapshot);
+        }
+        else
+        {
+            catalog.ClearAll(config.Args);
+            ApplyArgs(tpl.Id, config.Args, catalog);
+        }
+    }
+
+    /// <summary>把当前配置捕获为自定义模板（FR-7.3）：环境变量反写占位符 + 参数深拷贝。</summary>
+    public GpuTemplate CaptureAsTemplate(AppConfig config, string title, string id) => new()
+    {
+        Id = id,
+        Title = title,
+        EnvSnapshot = CaptureEnvSnapshot(config),
+        ArgsSnapshot = CaptureArgs(config),
+    };
+
+    /// <summary>深拷贝当前结构化参数。</summary>
+    public StructuredArgs CaptureArgs(AppConfig config)
+    {
+        var snapshot = new StructuredArgs();
+        OverwriteArgs(snapshot, config.Args);
+        return snapshot;
+    }
+
+    /// <summary>把 CustomEnvVars 中的 ComfyUI / venv 绝对路径反写为 {comfyUiDir}/{venvDir} 占位符。</summary>
+    public Dictionary<string, string> CaptureEnvSnapshot(AppConfig config)
+    {
+        var comfyDir = config.ComfyUiDir;
+        var venvDir = LaunchEnvBuilder.VenvDirFrom(config.PythonExe);
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in config.CustomEnvVars)
+        {
+            var value = kv.Value;
+            // venvDir 通常以 comfyDir 为前缀，先替换较长的 venvDir
+            if (!string.IsNullOrEmpty(venvDir)) value = value.Replace(venvDir, "{venvDir}", StringComparison.Ordinal);
+            if (!string.IsNullOrEmpty(comfyDir)) value = value.Replace(comfyDir, "{comfyUiDir}", StringComparison.Ordinal);
+            result[kv.Key] = value;
+        }
+        return result;
+    }
+
+    /// <summary>由标题生成模板 id，重名追加 _2 / _3 …</summary>
+    public static string CaptureId(string title, AppConfig config)
+    {
+        var slug = new string(title.Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
+        if (slug.Length == 0) slug = "custom";
+        var id = slug;
+        for (var i = 2; config.CustomTemplates.Any(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase)); i++)
+            id = slug + "_" + i;
+        return id;
+    }
+
+    private static void OverwriteArgs(StructuredArgs target, StructuredArgs source)
+    {
+        target.Enabled = new HashSet<string>(source.Enabled, StringComparer.Ordinal);
+        target.Values = new Dictionary<string, string>(source.Values, StringComparer.Ordinal);
+        target.Multi = source.Multi.ToDictionary(kv => kv.Key, kv => new List<string>(kv.Value), StringComparer.Ordinal);
+        target.Lines = source.Lines.ToDictionary(kv => kv.Key, kv => new List<string>(kv.Value), StringComparer.Ordinal);
     }
 
     private static string Expand(string value, string comfyUiDir, string venvDir) =>

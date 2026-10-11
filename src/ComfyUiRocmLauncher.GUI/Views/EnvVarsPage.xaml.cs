@@ -5,11 +5,9 @@ using ComfyUiRocmLauncher.Core.Services;
 
 namespace ComfyUiRocmLauncher.GUI.Views;
 
-/// <summary>环境变量页（SRS FR-3）：固定注入层只读 + 模板层 + 可编辑自定义层。</summary>
+/// <summary>环境变量页（SRS FR-3）：固定注入层只读 + 可编辑自定义层。GPU 模板应用已移至配置管理页（FR-7）。</summary>
 public sealed partial class EnvVarsPage : Page
 {
-    private readonly CliArgsCatalog _catalog = CliArgsCatalog.Instance;
-
     public EnvVarsPage()
     {
         InitializeComponent();
@@ -97,22 +95,6 @@ public sealed partial class EnvVarsPage : Page
         var key = "NEW_VAR";
         for (var i = 1; Settings.CustomEnvVars.ContainsKey(key); i++) key = "NEW_VAR_" + i;
         Settings.CustomEnvVars[key] = string.Empty;
-        App.Services.Save();
-        RebuildRows();
-    }
-
-    private void ApplyTemplate_Click(object sender, RoutedEventArgs e)
-    {
-        var tag = (TemplateCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "rdna3";
-        var venvDir = LaunchEnvBuilder.VenvDirFrom(Settings.PythonExe);
-
-        var vars = TemplateCatalog.Instance.ExpandEnvVars(tag, Settings.ComfyUiDir, venvDir);
-        foreach (var kv in vars)
-        {
-            Settings.CustomEnvVars[kv.Key] = kv.Value;
-        }
-
-        TemplateCatalog.Instance.ApplyArgs(tag, Settings.Args, _catalog);
         App.Services.Save();
         RebuildRows();
     }

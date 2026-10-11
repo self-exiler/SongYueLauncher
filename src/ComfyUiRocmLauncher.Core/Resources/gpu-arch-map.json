@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "updated": "2026-10-11",
+  "comment": "WMI 显卡名称片段 → ROCm arch 映射（SRS FR-8.2）。仅随软件发版更新。archAvailable=false 的架构在轮子页禁用 torch 安装。",
+  "legacy": ["gfx942", "gfx950"],
+  "rules": [
+    { "match": "Radeon AI PRO R9700", "arch": "gfx1201", "template": "rdna4" },
+    { "match": "Radeon 8060S", "arch": "gfx1151", "archAvailable": false },
+    { "match": "Radeon 8050S", "arch": "gfx1151", "archAvailable": false },
+    { "match": "Radeon RX 90", "arch": "gfx1201", "template": "rdna4" },
+    { "match": "Radeon RX 79", "arch": "gfx1100", "template": "rdna3" },
+    { "match": "Radeon RX 78", "arch": "gfx1100", "template": "rdna3" },
+    { "match": "Radeon RX 77", "arch": "gfx1101", "template": "rdna3" },
+    { "match": "Radeon RX 76", "arch": "gfx1102", "template": "rdna3" },
+    { "match": "Radeon RX 69", "arch": "gfx1030", "template": "rdna12" },
+    { "match": "Radeon RX 68", "arch": "gfx1030", "template": "rdna12" },
+    { "match": "Radeon RX 67", "arch": "gfx1032", "template": "rdna12" },
+    { "match": "Radeon RX 66", "arch": "gfx1034", "template": "rdna12" },
+    { "match": "Radeon RX 65", "arch": "gfx1034", "template": "rdna12" },
+    { "match": "Radeon RX 5", "arch": "gfx1012", "template": "rdna12" },
+    { "match": "Radeon RX Vega", "arch": "gfx908", "template": "rdna12" },
+    { "match": "Instinct MI300", "arch": "gfx942", "template": "rdna3" },
+    { "match": "Instinct MI325", "arch": "gfx950", "template": "rdna3" }
+  ]
+}

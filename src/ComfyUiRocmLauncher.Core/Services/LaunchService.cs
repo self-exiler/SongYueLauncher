@@ -85,11 +85,6 @@ public sealed class LaunchService
         var created = LaunchEnvBuilder.EnsureCacheDirs(comfyDir, env);
         foreach (var dir in created) Log.Append($"[启动器] 已创建缓存目录：{dir}");
 
-        if (config.SyncTrackedPackagesOnStart)
-        {
-            await UpdateService.SyncTrackedPackagesAsync(config, Log.Append, cancellationToken).ConfigureAwait(false);
-        }
-
         var tokens = ArgsBuilder.Build(config.Args, _catalog, config.ExtraArgs);
         var arguments = "main.py " + string.Join(' ', tokens.Select(ArgsBuilder.Quote));
         var logFile = Log.StartSession();

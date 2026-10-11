@@ -9,6 +9,9 @@ namespace ComfyUiRocmLauncher.GUI;
 
 public sealed partial class MainWindow : Window
 {
+    /// <summary>页面实例缓存：导航只复用，避免 ArgsPage 每次导航重建 110 组控件（NFR-1）。</summary>
+    private readonly Dictionary<Type, Page> _pageCache = new();
+
     public MainWindow()
     {
         InitializeComponent();
@@ -24,18 +27,27 @@ public sealed partial class MainWindow : Window
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
+        if (args.IsSettingsSelected) return;
         if (args.SelectedItem is not NavigationViewItem item) return;
 
         var pageType = item.Tag?.ToString() switch
         {
+            "EnvUpdatePage" => typeof(EnvUpdatePage),
+            "ConfigPage" => typeof(ConfigPage),
             "ArgsPage" => typeof(ArgsPage),
             "EnvVarsPage" => typeof(EnvVarsPage),
             "LogPage" => typeof(LogPage),
-            "EnvManagerPage" => typeof(EnvManagerPage),
             _ => typeof(HomePage),
         };
 
-        RootFrame.Navigate(pageType);
+        if (!_pageCache.TryGetValue(pageType, out var page))
+            _pageCache[pageType] = page = (Page)Activator.CreateInstance(pageType)!;
+
+        if (!ReferenceEquals(RootFrame.Content, page))
+        {
+            RootFrame.Content = page;
+            RootFrame.BackStack.Clear();
+        }
         PageTitle.Text = item.Content?.ToString() ?? string.Empty;
         RefreshHeader();
     }

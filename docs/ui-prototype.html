@@ -207,6 +207,16 @@ table.kv .v{font-family:"Cascadia Mono",Consolas,monospace;color:var(--text-2);w
   border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:-3px;
 }
 @keyframes spin{to{transform:rotate(360deg)}}
+/* ===== 环境与更新页：标签页 ===== */
+.tab-row{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap}
+.tab-btn{
+  background:transparent;border:none;color:var(--text-2);font-size:13.5px;
+  padding:8px 14px;cursor:pointer;border-bottom:2px solid transparent;font-family:inherit;
+}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--text);font-weight:600;border-bottom-color:var(--accent)}
+.tab-panel{display:none}
+.tab-panel.active{display:block;animation:fade .18s ease}
 /* Toast */
 #toast{
   position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);
@@ -229,7 +239,7 @@ ol.steps code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent)
 <header id="titlebar">
   <svg class="appicon" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11L9.5 22 19.5 9.5H12.5L13 2z"/></svg>
   <span class="appname">ComfyUI ROCm Launcher</span>
-  <span class="proto-tag">界面原型 v1.0</span>
+  <span class="proto-tag">界面原型 v1.2</span>
   <span id="stateBadge" class="s-idle">已停止</span>
   <span class="spacer"></span>
   <button id="themeToggle" onclick="toggleTheme()">切换浅色</button>
@@ -242,6 +252,10 @@ ol.steps code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent)
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 7.5 8 2l6 5.5V14H9.5v-4h-3v4H2z"/></svg>
       主页
     </button>
+    <button class="nav-item" data-page="envupd">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 2v8m0 0 3-3M8 10 5 7M2.5 13.5h11"/></svg>
+      环境与更新
+    </button>
     <button class="nav-item" data-page="args">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="6" cy="4" r="1.8" fill="var(--bg-layer)"/><circle cx="11" cy="8" r="1.8" fill="var(--bg-layer)"/><circle cx="4.5" cy="12" r="1.8" fill="var(--bg-layer)"/></svg>
       启动参数
@@ -250,17 +264,17 @@ ol.steps code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent)
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M5 6h6M5 8.5h6M5 11h4"/></svg>
       环境变量
     </button>
+    <button class="nav-item" data-page="config">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6 5 5M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4"/></svg>
+      配置管理
+    </button>
     <button class="nav-item" data-page="log">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="m4.5 6 2.5 2-2.5 2M8 11h3.5"/></svg>
       日志
     </button>
-    <button class="nav-item" data-page="manage">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.8 13.5 5v6L8 14.2 2.5 11V5z"/><path d="M8 1.8V8m0 0 5.5-3M8 8 2.5 5"/></svg>
-      环境管理
-    </button>
     <div class="nav-footer">
       技术栈：C# / .NET 10 + WinUI 3<br>
-      依据：SRS v1.0（2026-10-06）<br>
+      依据：SRS v1.6（2026-10-11）<br>
       原型仅演示交互，无真实后端
     </div>
   </nav>
@@ -307,10 +321,6 @@ ol.steps code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent)
           <button class="btn btn-lg" id="btnBrowser" disabled onclick="openBrowser()">打开浏览器</button>
         </div>
         <div class="frow" style="margin-top:6px">
-          <label class="toggle"><input type="checkbox" id="tglSyncPkgs" checked><span class="track"></span></label>
-          <span>启动前同步追踪包<span class="hint">（6 个包按 requirements.txt 校验版本，默认开）</span></span>
-        </div>
-        <div class="frow">
           <label class="toggle"><input type="checkbox" id="tglAutoBrowser"><span class="track"></span></label>
           <span>启动后自动打开浏览器<span class="hint">（默认关，与 ComfyUI --auto-launch 互不影响）</span></span>
         </div>
@@ -336,20 +346,55 @@ ol.steps code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent)
       </div>
     </div>
 
+    <!-- ========== 配置管理页 ========== -->
+    <div class="page" id="page-config">
+      <h1>配置管理</h1>
+      <div class="page-sub">GPU 架构模板集中管理 · 应用 = 全量替换环境变量与启动参数 · 纯手动选择，不做 GPU 自动检测推荐</div>
+
+      <div class="card">
+        <h2>模板选择</h2>
+        <div class="frow">
+          <label>GPU 模板</label>
+          <div class="grow">
+            <select id="selGpuTemplate" style="max-width:280px" onchange="updateTplSummary(this.value)">
+              <option value="rdna12">RDNA1/2（gfx101x / gfx103x）</option>
+              <option value="rdna3" selected>RDNA3（gfx110x）</option>
+              <option value="rdna4">RDNA4（gfx120x）</option>
+              <option value="my-rdna3">我的 RDNA3（自定义）</option>
+            </select>
+            <button class="btn btn-accent task-btn" onclick="applyGpuTemplate()">应用模板</button>
+          </div>
+        </div>
+        <div class="hint" id="tplSummary">RDNA3（内置）：17 个环境变量 · 8 个启动参数</div>
+        <div style="margin-top:12px;display:flex;gap:10px">
+          <button class="btn" onclick="toast('原型演示：捕获当前环境变量 + 已启用参数为快照，绝对路径反写为 {comfyUiDir} / {venvDir} 占位符')">另存为自定义模板</button>
+          <button class="btn btn-danger" onclick="toast('原型演示：删除选中的自定义模板（内置模板只读，删除需确认）')">删除自定义模板</button>
+        </div>
+        <div class="hint" style="margin-top:8px">应用模板 = 自定义环境变量与结构化参数被<b>整体替换</b>（旧无关键清除），之后可在各页自由编辑；ComfyUI 运行中禁用应用 / 另存。</div>
+      </div>
+
+      <div class="card">
+        <h2>自定义模板</h2>
+        <div class="task-grid">
+          <div class="task-card">
+            <h3>我的 RDNA3</h3>
+            <div class="t-desc">18 个环境变量 · 9 个启动参数 · 创建于 2026-10-08。值内含 {comfyUiDir} / {venvDir} 占位符，更换目录后仍可用。</div>
+            <div class="t-actions"><button class="btn btn-danger" onclick="toast('原型演示：删除自定义模板「我的 RDNA3」（不影响已写入的配置）')">删除</button></div>
+          </div>
+        </div>
+        <div class="hint" style="margin-top:6px">内置模板（RDNA1/2、RDNA3、RDNA4）只读，由 Core 内嵌 gpu-templates.json 提供，不落配置文件。</div>
+      </div>
+    </div>
+
     <!-- ========== 启动参数页 ========== -->
     <div class="page" id="page-args">
       <h1>启动参数</h1>
-      <div class="page-sub">数据驱动：内置 JSON 清单，来源 ComfyUI 上游 cli_args.py（2026-10 快照），共 <b>110</b> 项 · 同组互斥参数开启一个自动关闭其余</div>
+      <div class="page-sub">数据驱动：内置 JSON 清单，来源 ComfyUI 上游 cli_args.py（2026-10 快照），共 <b>110</b> 项 · 同组互斥参数开启一个自动关闭其余 · GPU 模板批量应用见「配置管理」页</div>
 
       <div class="args-toolbar">
         <input type="text" id="argSearch" placeholder="按参数名搜索…" oninput="filterArgs(this.value)">
-        <button class="btn" onclick="applyArgsTemplate()">应用模板</button>
-        <select id="selArgsTemplate" style="width:210px">
-          <option value="rdna12">RDNA1/2（gfx101x / gfx103x）</option>
-          <option value="rdna3" selected>RDNA3（gfx110x）</option>
-          <option value="rdna4">RDNA4（gfx120x）</option>
-        </select>
         <button class="btn btn-danger" onclick="resetArgs()">恢复默认（全不启用）</button>
+        <span class="hint">结构化参数随配置持久化，仅保存非默认项</span>
       </div>
 
       <div id="argGroups"></div>
@@ -369,7 +414,7 @@ ol.steps code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent)
     <!-- ========== 环境变量页 ========== -->
     <div class="page" id="page-env">
       <h1>环境变量</h1>
-      <div class="page-sub">三层结构自上而下合成最终环境：固定注入 → 模板 → 自定义</div>
+      <div class="page-sub">两层结构自上而下合成最终环境：固定注入 → 自定义 · GPU 模板已移至「配置管理」页</div>
 
       <div class="card">
         <h2>固定注入层 <span class="lock-tag">只读</span></h2>
@@ -381,22 +426,6 @@ ol.steps code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent)
           <tr><td class="k">HIP_PATH</td><td class="v">启动时执行 rocm-sdk path --root 的输出</td></tr>
           <tr><td class="k">ROCM_PATH</td><td class="v">同上</td></tr>
         </table>
-      </div>
-
-      <div class="card">
-        <h2>模板层</h2>
-        <div class="frow">
-          <label>GPU 模板</label>
-          <div class="grow">
-            <select id="selEnvTemplate" style="max-width:280px">
-              <option value="rdna12">RDNA1/2（gfx101x / gfx103x）</option>
-              <option value="rdna3" selected>RDNA3（gfx110x）</option>
-              <option value="rdna4">RDNA4（gfx120x）</option>
-            </select>
-            <button class="btn btn-accent" onclick="applyEnvTemplate()">应用模板</button>
-          </div>
-        </div>
-        <div class="hint">应用模板 = 把模板中的环境变量与启动参数写入普通配置，之后与自定义项无区别、可自由编辑。纯手动选择，不做 GPU 自动检测推荐。</div>
       </div>
 
       <div class="card">
@@ -438,41 +467,213 @@ ol.steps code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent)
 </div>
     </div>
 
-    <!-- ========== 环境管理页 ========== -->
-    <div class="page" id="page-manage">
-      <h1>环境管理</h1>
-      <div class="page-sub">ROCm / PyTorch 组件更新 · 通用依赖安装 · 整合包程序更新（运行中保护：ComfyUI 运行时本页全部操作禁用）</div>
+    <!-- ========== 环境与更新页 ========== -->
+    <div class="page" id="page-envupd">
+      <h1>环境与更新</h1>
+      <div class="page-sub">工具链检查 · ComfyUI 项目安装与更新 · Python 轮子管理（全局单任务互斥：任务进行中禁止启动 ComfyUI，运行中本页操作禁用）</div>
 
-      <div id="manageGuard" style="display:none" class="card">
-        <span class="warn-text">⚠ ComfyUI 正在运行 / 环境任务进行中，环境管理操作已禁用（FR-6.4 运行中保护）</span>
+      <div id="envupdGuard" style="display:none" class="card">
+        <span class="warn-text">⚠ ComfyUI 正在运行 / 环境任务进行中，本页操作已禁用（全局单任务互斥）</span>
       </div>
 
-      <div class="task-grid" id="taskGrid">
-        <div class="task-card">
-          <h3>ROCm / PyTorch 更新</h3>
-          <div class="t-desc">复刻 rocm-pytorch-package-updater.bat：detect_gpu.py 取 arch → 卸载旧组件 → 按 arch 分支从 AMD nightly 源安装 → rocm-sdk init → 验证 torch / HIP / 设备名。</div>
-          <div class="t-actions">
-            <button class="btn btn-accent task-btn" data-task="rocm" onclick="runTask('rocm',this)">开始更新</button>
+      <div class="tab-row">
+        <button class="tab-btn active" data-tab="t-tool" onclick="switchTab(this)">工具链检查</button>
+        <button class="tab-btn" data-tab="t-repo" onclick="switchTab(this)">ComfyUI 项目</button>
+        <button class="tab-btn" data-tab="t-wheels" onclick="switchTab(this)">Python 轮子</button>
+      </div>
+
+      <!-- ===== Tab 1：工具链检查 ===== -->
+      <div class="tab-panel active" id="t-tool">
+        <div class="card">
+          <h2>工具链状态</h2>
+          <div class="frow">
+            <label>git</label>
+            <div class="grow"><span class="hint ok-text">✓ 已安装：git version 2.47.1.windows.1</span><span class="hint">（PATH 自动发现）</span></div>
+          </div>
+          <div class="frow">
+            <label>uv</label>
+            <div class="grow">
+              <span class="hint" id="uvStatus"><span class="err-text">✕ 未安装</span></span>
+              <button class="btn task-btn" onclick="installTool('uv','user')">用户级脚本安装（免 UAC）</button>
+              <button class="btn task-btn" onclick="installTool('uv','winget')">通过 winget 安装（UAC）</button>
+              <button class="btn" onclick="toast('原型演示：重新检测 PATH 中的 git / uv / winget')">重新检测</button>
+            </div>
+          </div>
+          <div class="frow">
+            <label>winget</label>
+            <div class="grow"><span class="hint ok-text">✓ 可用：App Installer v1.9</span><span class="hint">（不可用时降级为官网下载引导；需提权时拉起 UAC 子进程执行。检测除 PATH 外还查已知安装路径，避免装完后当前进程 PATH 未刷新的误报）</span></div>
           </div>
         </div>
-        <div class="task-card">
-          <h3>通用依赖安装</h3>
-          <div class="t-desc">从 requirements.txt 过滤 torch 系后 uv pip install，完成后对比 pip freeze 输出变更包列表。支持国内镜像源加速。</div>
-          <div class="t-actions">
-            <button class="btn btn-accent task-btn" data-task="deps" onclick="runTask('deps',this)">开始安装</button>
-            <label style="font-size:12.5px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="chkMirror"> 使用国内镜像源</label>
+
+        <div class="card">
+          <h2>GPU 架构检测</h2>
+          <div class="frow">
+            <label>检测结果</label>
+            <div class="grow">
+              <span>AMD Radeon RX 7900 XTX</span>
+              <span class="mono" style="color:var(--accent)">gfx1100</span>
+              <span class="hint">（WMI 名称 → 架构内置映射，不依赖项目文件 / venv / detect_gpu.py）</span>
+            </div>
+          </div>
+          <div class="hint">gfx942 / gfx950 使用 legacy 专用源（rocm.nightlies.amd.com v2-staging）；gfx1250 / gfx115x 暂无可用 PyTorch 构建，检测到时轮子页将禁用安装并提示。可选：与项目内 detect_gpu.py 交叉验证。</div>
+        </div>
+
+        <div class="card">
+          <h2>网络加速镜像</h2>
+          <div class="frow">
+            <label>GitHub 加速</label>
+            <div class="grow">
+              <select id="selGhMirror" style="max-width:320px">
+                <option value="" selected>直连（不加速）</option>
+                <option value="https://ghproxy.net/">ghproxy.net 前缀</option>
+                <option value="https://mirror.ghproxy.com/">mirror.ghproxy.com 前缀</option>
+                <option value="custom">自定义前缀…</option>
+              </select>
+              <span class="hint">作用于 git clone 与作者 release 轮子下载</span>
+            </div>
+          </div>
+          <div class="frow">
+            <label>PyPI 镜像</label>
+            <div class="grow">
+              <select id="selPypiMirror" style="max-width:320px">
+                <option value="" selected>官方源（不加速）</option>
+                <option value="https://pypi.tuna.tsinghua.edu.cn/simple">清华大学</option>
+                <option value="https://mirrors.aliyun.com/pypi/simple/">阿里云</option>
+                <option value="custom">自定义 URL…</option>
+              </select>
+              <span class="hint">作用于通用 PyPI 包与项目依赖安装</span>
+            </div>
+          </div>
+          <div class="hint"><b>AMD 官方源（nightly.repo.amd.com / rocm.nightlies.amd.com）永远直连</b>，不受镜像影响——torch 系安装走镜像必 404，此为硬规则。</div>
+        </div>
+      </div>
+
+      <!-- ===== Tab 2：ComfyUI 项目 ===== -->
+      <div class="tab-panel" id="t-repo">
+        <div class="card">
+          <h2>项目安装状态</h2>
+          <div class="frow">
+            <label>安装状态</label>
+            <div class="grow"><span class="ok-text">✓ 已安装</span><span class="hint">（检测 &lt;ComfyUI目录&gt;\main.py；未安装时此处显示「克隆项目」入口）</span></div>
+          </div>
+          <div class="frow">
+            <label>本地版本</label>
+            <div class="grow"><span class="mono">a1b2c3d4e5</span><span class="hint">（.last_update_hash 前 10 位）</span></div>
+          </div>
+          <div class="frow">
+            <label>远端版本</label>
+            <div class="grow"><span class="mono" id="remoteHash">—</span><span class="hint" id="remoteHint">点击「检查更新」查询（git ls-remote，走 GitHub 镜像）</span></div>
+          </div>
+          <div class="frow">
+            <button class="btn task-btn" onclick="repoCheck()">检查更新</button>
+            <button class="btn btn-accent task-btn" id="btnRepoPull" onclick="repoPull()" disabled>拉取更新</button>
           </div>
         </div>
-        <div class="task-card">
-          <h3>程序更新</h3>
-          <div class="t-desc">复刻 comfyui-rocm-updater.bat：git ls-remote 比对 hash → clone --depth 1 → robocopy 覆盖（排除 .venv/models/output/user 等）→ 更新 3 个追踪 custom_nodes。</div>
-          <div class="radio-row">
-            <label><input type="radio" name="updMode" value="code" checked> 仅代码（默认）</label>
-            <label><input type="radio" name="updMode" value="full"> 代码 + Python 包</label>
+
+        <div class="card">
+          <h2>安装来源</h2>
+          <div class="frow">
+            <label>仓库地址</label>
+            <div class="grow"><input type="text" class="mono" id="repoUrl" value="https://github.com/patientx-cfz/comfyui-rocm"><span class="hint">（用户指定，无内置默认——上游原仓库已删除，见 SRS v1.2 变更记录）</span></div>
           </div>
-          <div class="t-actions">
-            <button class="btn btn-accent task-btn" data-task="update" onclick="runTask('update',this)">检查并更新</button>
+          <div class="frow">
+            <label>安装目录</label>
+            <div class="grow"><input type="text" class="mono" value="D:\AI\comfyui-rocm" disabled><span class="hint">（取自主页 ComfyUI 目录，安装完成后写回配置）</span></div>
           </div>
+          <div class="hint">全新安装 = <span class="mono">git clone --depth 1</span>（走 GitHub 镜像）到安装目录。更新按目录形态<b>双策略</b>：是 git 检出（本启动器装的）→ <span class="mono">git pull --ff-only</span> 秒级增量（失败时提示并可转强制覆盖）；非 git 检出（手动解压 zip）→ shallow clone 到 _update_temp + robocopy 覆盖（排除 .venv / models / output / input / user / custom_nodes / _update_temp，退出码 0–7 视为成功）。<b>custom_nodes 更新不在本页范围</b>。</div>
+        </div>
+      </div>
+
+      <!-- ===== Tab 3：Python 轮子 ===== -->
+      <div class="tab-panel" id="t-wheels">
+        <div class="card">
+          <h2>Python 虚拟环境</h2>
+          <div class="frow">
+            <label>venv 状态</label>
+            <div class="grow">
+              <span class="hint ok-text">✓ 已创建：D:\AI\comfyui-rocm\.venv（Python 3.12.11）</span>
+              <span class="hint">（未创建时此处提供「创建 .venv」按钮：uv venv --python 3.12 + 补装 setuptools / wheel / mpmath）</span>
+            </div>
+          </div>
+          <div class="hint">Python 版本<b>钉死 3.12</b>：sageattention gfx1201、bitsandbytes 等专用轮子为 cp312 构建，其他版本无法安装。所有轮子操作前置校验 venv 与 python.exe。</div>
+        </div>
+
+        <div class="card">
+          <h2>PyTorch for ROCm（nightly）</h2>
+          <div class="frow">
+            <label>目标架构</label>
+            <div class="grow"><span class="mono" style="color:var(--accent)">gfx1100</span><span class="hint">（取自「工具链检查」检测结果；gfx942/gfx950 走 legacy 源分支）</span></div>
+          </div>
+          <div class="frow">
+            <label>当前版本</label>
+            <div class="grow"><span class="mono" id="torchVer">torch 2.10.0.dev20261005+rocm7.2</span></div>
+          </div>
+          <div class="frow">
+            <button class="btn btn-accent task-btn" onclick="runTask('torch')">检查并更新</button>
+            <button class="btn btn-danger task-btn" onclick="runTask('rollback')">回滚到快照</button>
+          </div>
+          <div class="hint">更新流程：<b>① uv pip freeze 快照 → ② 下载验证门（新包全部下载成功才卸载，网络类失败时旧环境完整）→ ③ 卸载旧组件 → ④ 按 arch 重装（走 uv 缓存）→ ⑤ rocm-sdk init → ⑥ 验证</b>。AMD nightly 永远直连不走镜像。卸载后阶段失败/取消可「回滚到快照」——<b>尽力恢复</b>：旧 dev 版本已从 index 下架时提示改装最新 nightly 恢复可运行。venv 钉死 Python 3.12（cp312 专用轮子硬约束）。</div>
+        </div>
+
+        <div class="card">
+          <h2>作者专用轮子 <span class="lock-tag">内置清单 v2026.10 · 仅随软件发版更新</span></h2>
+          <table class="kv" id="wheelTable">
+            <tr><th style="width:24%">轮子</th><th>说明 / 适用架构</th><th style="width:130px">已装版本</th><th style="width:64px"></th></tr>
+            <tr>
+              <td class="k">sageattention</td>
+              <td class="v">gfx1201 用原生编译轮子（cp312），其余架构用 autotune 通用轮子；releases/latest 动态 URL · GitHub 镜像适用</td>
+              <td class="v">2.2.0</td>
+              <td><button class="btn task-btn" style="padding:3px 10px" onclick="runTask('wheel-sage')">更新</button></td>
+            </tr>
+            <tr>
+              <td class="k">triton-windows</td>
+              <td class="v">版本钉死 3.7.0.post26：≥3.7.1.post27 会自动激活 triton 后端，与 bat 启动策略冲突</td>
+              <td class="v">3.7.0.post26</td>
+              <td><button class="btn task-btn" style="padding:3px 10px" onclick="runTask('wheel-triton')">更新</button></td>
+            </tr>
+            <tr>
+              <td class="k">bitsandbytes</td>
+              <td class="v">0xDELUXA win-rocm 构建（cp312）· releases 固定 URL · GitHub 镜像适用</td>
+              <td class="v">0.50.2.dev0</td>
+              <td><button class="btn task-btn" style="padding:3px 10px" onclick="runTask('wheel-bnb')">更新</button></td>
+            </tr>
+            <tr>
+              <td class="k">flash-attn + amd_aiter</td>
+              <td class="v">aiter triton 后端；可选组件，安装失败仅警告跳过 · GitHub 镜像适用</td>
+              <td class="v">2.8.4 / 0.0.0</td>
+              <td><button class="btn task-btn" style="padding:3px 10px" onclick="runTask('wheel-fa')">更新</button></td>
+            </tr>
+          </table>
+          <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+            <button class="btn" onclick="addWheelRow()">＋ 添加自定义轮子</button>
+            <span class="hint">名称 + whl URL / 包名规格，随配置持久化；内置清单仅随软件发版更新（钉死版本随上游过时时请升级本软件）</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>项目依赖</h2>
+          <div class="frow">
+            <button class="btn btn-accent task-btn" onclick="runTask('deps')">同步 requirements.txt</button>
+            <span class="hint">过滤 torch / torchvision / torchaudio 后 <span class="mono">uv pip install -r</span>；完成后对比 freeze 报告变更包（整合包升级后的必要收尾）</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>通用 PyPI 包</h2>
+          <div class="frow">
+            <label>安装包</label>
+            <div class="grow">
+              <input type="text" class="mono" id="pkgInput" placeholder="包名（可含版本，如 diffusers==0.35.0）或 whl 路径 / URL">
+              <button class="btn btn-accent task-btn" onclick="installPkg()">安装</button>
+            </div>
+          </div>
+          <table class="kv" id="pkgTable">
+            <tr><th style="width:38%">包名</th><th>版本</th><th style="width:36px"></th></tr>
+            <tr><td class="k">einops</td><td class="v">0.8.1</td><td><button class="del-btn" onclick="uninstallPkg(this,'einops')">✕</button></td></tr>
+            <tr><td class="k">diffusers</td><td class="v">0.35.0</td><td><button class="del-btn" onclick="uninstallPkg(this,'diffusers')">✕</button></td></tr>
+            <tr><td class="k">aiohttp</td><td class="v">3.12.15</td><td><button class="del-btn" onclick="uninstallPkg(this,'aiohttp')">✕</button></td></tr>
+          </table>
+          <div class="hint" style="margin-top:8px">列表来自 <span class="mono">uv pip list</span>；安装走「工具链检查」页选择的 PyPI 镜像；卸载 = <span class="mono">uv pip uninstall</span>。</div>
         </div>
       </div>
 
@@ -484,8 +685,7 @@ ol.steps code{font-family:"Cascadia Mono",Consolas,monospace;color:var(--accent)
           <button class="btn" id="btnCancelTask" disabled onclick="cancelTask()">取消（终止子进程）</button>
           <button class="btn" onclick="document.getElementById('taskConsole').innerHTML=''">清屏</button>
         </div>
-        <div class="console" id="taskConsole" style="height:280px"><span class="c-dim">— 选择上方任务卡片开始执行；所有 pip 操作统一为 uv pip … --python &lt;python.exe&gt; —</span>
-</div>
+        <div class="console" id="taskConsole" style="height:280px"><span class="c-dim">— 选择上方任务开始执行；所有 pip 操作统一为 uv pip … --python &lt;python.exe&gt; —</span></div>
       </div>
     </div>
 
@@ -513,9 +713,12 @@ function setState(s){
   document.getElementById('btnStart').disabled = busy;
   document.getElementById('btnStop').disabled = !(s==='Starting'||s==='Running');
   document.getElementById('btnBrowser').disabled = (s!=='Running');
-  // FR-6.4：运行中保护环境管理页
-  document.getElementById('manageGuard').style.display = busy ? 'block' : 'none';
+  // 全局单任务互斥：任务进行中 / 运行中禁用环境与更新页操作
+  document.getElementById('envupdGuard').style.display = busy ? 'block' : 'none';
   document.querySelectorAll('.task-btn').forEach(b=> b.disabled = busy);
+  // FR-7.5：运行中保护配置管理页的「应用模板 / 另存」
+  const btnApply = document.getElementById('selGpuTemplate');
+  if(btnApply) btnApply.disabled = busy;
 }
 
 /* ================================================================
@@ -791,11 +994,21 @@ function filterArgs(q){
   });
 }
 
-function applyArgsTemplate(){
-  const tpl = TEMPLATES[document.getElementById('selArgsTemplate').value];
+function applyGpuTemplate(){
+  const key = document.getElementById('selGpuTemplate').value;
+  if(!TEMPLATES[key]){
+    toast('原型演示：自定义模板应用逻辑同内置模板（快照 + {comfyUiDir}/{venvDir} 占位符替换，全量替换语义）');
+    return;
+  }
+  const tpl = TEMPLATES[key];
+  // 全量替换：清空自定义环境变量层
+  const tbl = document.getElementById('customEnvTable');
+  [...tbl.querySelectorAll('tr')].slice(1).forEach(r=>r.remove());
+  Object.entries(tpl.env).forEach(([k,v])=>addEnvRow(k,v));
+  // 全量替换：重置结构化参数后应用模板参数
+  Object.keys(argState).forEach(n=>{ argState[n].on=false; setRow(n,false); });
   tpl.args.forEach(([n,v])=>{
     const a = findArg(n); if(!a) return;
-    // 先关同互斥组
     if(a.m) G.forEach(g=>g.args.forEach(x=>{ if(x.m===a.m){ argState[x.n].on=false; setRow(x.n,false);} }));
     argState[n].on = true; setRow(n,true);
     if(v!==undefined){
@@ -804,7 +1017,16 @@ function applyArgsTemplate(){
     }
   });
   refreshCounts(); updatePreview();
-  toast('模板参数已写入（与自定义项无区别，可继续编辑）');
+  toast('模板已应用（全量替换）：'+Object.keys(tpl.env).length+' 个环境变量 · '+tpl.args.length+' 个启动参数');
+}
+function updateTplSummary(key){
+  const names = {rdna12:'RDNA1/2（内置）', rdna3:'RDNA3（内置）', rdna4:'RDNA4（内置）', 'my-rdna3':'我的 RDNA3（自定义）'};
+  if(TEMPLATES[key]){
+    document.getElementById('tplSummary').textContent =
+      names[key]+'：'+Object.keys(TEMPLATES[key].env).length+' 个环境变量 · '+TEMPLATES[key].args.length+' 个启动参数';
+  } else {
+    document.getElementById('tplSummary').textContent = names[key]+'：18 个环境变量 · 9 个启动参数 · 2026-10-08 快照';
+  }
 }
 function findArg(n){ for(const g of G){ const a=g.args.find(x=>x.n===n); if(a) return a; } return null; }
 function setRow(n,on){
@@ -833,11 +1055,6 @@ function checkEnvConflict(inp){
   const bad = FIXED_KEYS.includes(inp.value.trim().toUpperCase());
   inp.classList.toggle('conflict', bad);
   if(bad) toast('⚠ key 与固定注入层冲突，禁止保存：'+inp.value.trim().toUpperCase());
-}
-function applyEnvTemplate(){
-  const tpl = TEMPLATES[document.getElementById('selEnvTemplate').value];
-  Object.entries(tpl.env).forEach(([k,v])=>addEnvRow(k,v));
-  toast('模板环境变量已写入自定义层（'+Object.keys(tpl.env).length+' 项）');
 }
 
 /* ================= 日志页 ================= */
@@ -901,9 +1118,6 @@ function startComfy(){
   appendLog('<span class="c-dim">[启动器] 校验 python.exe / main.py … OK</span>');
   appendLog('<span class="c-dim">[启动器] 合成环境变量（固定注入 + 自定义层）…</span>');
   appendLog('<span class="c-dim">[启动器] rocm-sdk init … OK；rocm-sdk path --root → HIP_PATH=C:\\…\\_rocm_sdk_core</span>');
-  if(document.getElementById('tglSyncPkgs').checked){
-    appendLog('<span class="c-dim">[启动器] 同步追踪包：comfyui-frontend-package==1.32.9（一致，跳过）、comfyui-workflow-templates（一致，跳过）、comfyui-embedded-docs（一致，跳过）、comfy-kitchen（一致，跳过）、comfy-aimdo（一致，跳过）、av（一致，跳过）</span>');
-  }
   appendLog('<span class="c-dim">[启动器] spawn: '+escHtml(document.getElementById('inpPython').value)+' main.py …（日志落盘 logs\\comfyui_2026-10-07_22-00-00.log）</span>');
   appendLog('');
   let i = 0;
@@ -939,70 +1153,173 @@ function stopComfy(){
 }
 function openBrowser(){ toast('原型演示：打开浏览器 '+deriveUrl()); }
 
-/* ================= 环境管理任务（FR-6） ================= */
+/* ================= 环境与更新任务（FR-8） ================= */
 const taskConsole = document.getElementById('taskConsole');
 let taskTimer = null;
+
+/* 镜像适用说明（三分法：GitHub / PyPI 可加速，AMD 源永远直连） */
+function ghNote(){ const v=document.getElementById('selGhMirror').value; return v&&v!=='custom' ? '（GitHub 镜像 '+v+'…）' : '（GitHub 直连）'; }
+function pypiNote(){ const v=document.getElementById('selPypiMirror').value; return v&&v!=='custom' ? '（PyPI 镜像 '+v+'）' : '（官方 PyPI 源）'; }
+
 const TASKS = {
- rocm:[
-  ['c-dim','[1/6] 校验 python.exe … OK（Python 3.12.11）'],
-  ['c-dim','[2/6] 执行 detect_gpu.py … arch = gfx1100（debug 落盘 gpu_detect_debug.log）'],
-  ['c-dim','[3/6] 卸载旧组件：uv pip uninstall rocm rocm-sdk-devel rocm-sdk-core rocm-sdk-libraries torch torchaudio torchvision --python <python.exe>'],
-  ['c-gray','    - torch-2.9.1+rocm7.1  - torchvision-0.24.1  - rocm_sdk_core-7.1.0 …'],
-  ['c-dim','[4/6] 安装（arch=gfx1100）：uv pip install "torch[device-gfx1100]" "torchvision[device-gfx1100]" torchaudio rocm-sdk-devel --pre'],
-  ['c-dim','         --index-url https://nightly.repo.amd.com/rocm/whl-next/'],
-  ['c-gray','    Resolved 24 packages in 3.12s   Downloaded 24 packages (2.41 GB)   Installed 24 packages'],
-  ['c-dim','[5/6] rocm-sdk init … OK；rocm_kpack.dll 已存在，无需复制'],
-  ['c-dim','[6/6] 验证：python -c "import torch; …"'],
-  ['c-green','    torch 2.10.0.dev20261006+rocm7.2 | ROCm 可用: True | HIP 7.2.0 | 设备: AMD Radeon RX 7900 XTX'],
-  ['c-green','✔ ROCm / PyTorch 更新完成']
+ /* torch nightly：快照 → 卸载 → 重装 → 验证（快照可回滚） */
+ torch:[
+  ['c-dim','[1/7] 生成回滚快照：uv pip freeze > _pre_update_freeze.txt（17 条已记录）'],
+  ['c-dim','[2/7] 下载验证门：uv pip download "torch[device-gfx1100]" "torchvision[device-gfx1100]" torchaudio rocm-sdk-devel --pre'],
+  ['c-dim','         --index-url https://nightly.repo.amd.com/rocm/whl-next/（AMD 官方源直连、不走镜像）'],
+  ['c-gray','    Downloaded 24 packages (2.41 GB) → 全部成功，进入卸载阶段'],
+  ['c-dim','[3/7] 动态扫描并卸载旧组件：torch torchaudio torchvision rocm-sdk-devel rocm-sdk-core rocm-sdk-libraries …'],
+  ['c-dim','[4/7] 按 arch 重装（uv 缓存命中，无重复下载）：uv pip install … --python <python.exe>'],
+  ['c-gray','    Installed 24 packages'],
+  ['c-dim','[5/7] rocm-sdk init … OK；rocm_kpack.dll 位置检查 … 已存在，无需复制'],
+  ['c-dim','[6/7] 验证：python -c "import torch; …"'],
+  ['c-green','    torch 2.10.0.dev20261011+rocm7.2 | ROCm 可用: True | HIP 7.2.0 | 设备: AMD Radeon RX 7900 XTX'],
+  ['c-dim','[7/7] 刷新版本快照 … 完成'],
+  ['c-green','✔ PyTorch for ROCm 更新完成']
  ],
+ rollback:[
+  ['c-dim','读取快照 _pre_update_freeze.txt（17 条）…'],
+  ['c-dim','尽力回滚：uv pip install torch==2.10.0.dev20261005+rocm7.2 … --python <python.exe>（原版本仍在 index 上）'],
+  ['c-gray','    Installed 24 packages'],
+  ['c-green','✔ 已回滚到更新前版本'],
+  ['c-dim','（若旧 dev 版本已下架：提示并改用「安装当前最新 nightly 恢复可运行」）']
+ ],
+ /* 核心仓库更新（仅核心仓库，custom_nodes 不在范围；按目录形态双策略） */
+ repo:[
+  ['c-dim','[1/4] git ls-remote <用户指定仓库> HEAD'+ghNote()+' → 4f8a9c2d1e'],
+  ['c-dim','      本地 .last_update_hash = a1b2c3d4e5 → 需要更新'],
+  ['c-dim','[2/4] 目录含 .git（本启动器 clone 安装）→ git pull --ff-only（秒级增量）'],
+  ['c-gray','    Updating a1b2c3d4e5..4f8a9c2d1e   Fast-forward: 12 files changed'],
+  ['c-dim','[3/4] 写入 .last_update_hash = 4f8a9c2d1e'],
+  ['c-dim','      （pull 失败时提示原因，可转「强制覆盖」= shallow clone + robocopy 全量流程）'],
+  ['c-dim','[4/4] custom_nodes 不在本页范围；requirements 依赖请到「Python 轮子」页同步'],
+  ['c-green','✔ 核心仓库更新完成']
+ ],
+ /* 作者专用轮子 */
+ 'wheel-sage':[
+  ['c-dim','arch=gfx1100 → 选用 sageattention-autotune 通用轮子（gfx1201 才用原生 cp312 编译轮子）'],
+  ['c-dim','uv pip install --upgrade --force-reinstall --no-deps https://github.com/patientx/sageattention-autotune/releases/latest/download/sageattention-2.2.0-py3-none-any.whl --python <python.exe>'+ghNote()],
+  ['c-gray','    版本号不变（2.2.0），必须 --force-reinstall 才会真正覆盖更新'],
+  ['c-green','✔ sageattention 已更新到最新构建']
+ ],
+ 'wheel-triton':[
+  ['c-dim','uv pip install triton-windows==3.7.0.post26 --python <python.exe>'+pypiNote()],
+  ['c-green','✔ triton-windows 3.7.0.post26（版本钉死，不升级）']
+ ],
+ 'wheel-bnb':[
+  ['c-dim','uv pip install https://github.com/0xDELUXA/bitsandbytes_win_rocm/releases/download/0.50.2.dev0-py3.12-rocm7.16-win_amd64_all/bitsandbytes-0.50.2.dev0-cp312-cp312-win_amd64.whl --python <python.exe>'+ghNote()],
+  ['c-gray','    Installed bitsandbytes 0.50.2.dev0 (cp312)'],
+  ['c-green','✔ bitsandbytes 更新完成']
+ ],
+ 'wheel-fa':[
+  ['c-dim','uv pip install https://github.com/0xDELUXA/flash-attention/releases/download/v2.8.4_win-rocm/flash_attn-2.8.4-py3-none-win_amd64.whl --python <python.exe>'+ghNote()],
+  ['c-dim','uv pip install …/amd_aiter-0.0.0-py3-none-win_amd64.whl --python <python.exe>'+ghNote()],
+  ['c-yellow','[!] amd_aiter 安装失败（可选组件，仅警告跳过，flash-attention 仍可用）'],
+  ['c-green','✔ flash-attention 2.8.4 完成']
+ ],
+ /* 项目依赖同步（归 Python 轮子页） */
  deps:function(){
-  const mirror = document.getElementById('chkMirror').checked;
   return [
   ['c-dim','过滤 requirements.txt（正则 ^(torch|torchvision|torchaudio)）→ requirements_filtered.txt（42 项）'],
-  ['c-dim','uv pip install -r requirements_filtered.txt --python <python.exe>'+(mirror?'（使用镜像 https://mirrors.aliyun.com/pypi/simple/）':'')],
-  ['c-gray','Resolved 42 packages in 1.24s'],
-  ['c-gray','Downloaded 3 packages in 2.02s'],
-  ['c-gray','Installed 3 packages in 856ms'],
-  ['c-dim','对比 pip freeze，变更包列表：'],
+  ['c-dim','uv pip install -r requirements_filtered.txt --python <python.exe>'+pypiNote()],
+  ['c-gray','    Resolved 42 packages in 1.24s   Downloaded 3 packages   Installed 3 packages'],
+  ['c-dim','对比 uv pip freeze，变更包列表：'],
   ['c-yellow','  einops: 0.8.0 -> 0.8.1'],
   ['c-yellow','  safetensors: 0.5.3 -> 0.6.2'],
-  ['c-yellow','  aiohttp: 3.11.12 -> 3.12.15'],
-  ['c-green','✔ 依赖安装完成']
+  ['c-green','✔ 依赖同步完成']
   ];
  },
- update:null // 动态生成（区分模式）
+ /* 通用 PyPI 包安装（installPkg 动态注入） */
+ pkg:null
 };
-function buildUpdateLog(){
-  const full = document.querySelector('input[name=updMode]:checked').value === 'full';
-  const lines = [
-   ['c-dim','[1/5] 校验 git.exe / python.exe … OK'],
-   ['c-dim','[2/5] git ls-remote https://github.com/patientx-cfz/comfyui-rocm HEAD → 4f8a9c2d1e'],
-   ['c-dim','      本地 .last_update_hash = a1b2c3d4e5 → 需要更新'],
-   ['c-dim','[3/5] git clone --depth 1 → D:\\AI\\comfyui-rocm\\_update_temp'],
-   ['c-dim','[4/5] robocopy 覆盖（排除 .venv/models/output/input/user/custom_nodes/_update_temp 与 comfyui-user.bat）'],
-   ['c-gray','    robocopy 退出码 1（0–7 视为成功）'],
-   ['c-dim','[5/5] 清理 _update_temp；写入 .last_update_hash = 4f8a9c2d1e'],
-   ['c-dim','[仅代码] 更新 3 个追踪 custom_nodes：'],
-   ['c-gray','    ComfyUI-Manager: git pull --ff-only → 已是最新'],
-   ['c-gray','    ComfyUI-INT8-Fast-ROCM: git pull --ff-only → 更新 3 个提交'],
-   ['c-gray','    comfyui-h3-sla-attention-rocm: git pull --ff-only → 已是最新']
-  ];
-  if(full){
-    lines.push(['c-dim','[代码+包] sageattention wheel 强制更新（arch=gfx1100 → patientx/sageattention-autotune releases latest）']);
-    lines.push(['c-gray','    uv pip install --force-reinstall --no-deps sageattention-2.2.0+cu128torch2.7-cp312-win_amd64.whl']);
-    lines.push(['c-dim','[代码+包] 执行过滤 requirements 安装（见「通用依赖安装」流程）']);
-  }
-  lines.push(['c-green','✔ 程序更新完成']);
-  return lines;
+
+/* ================= 标签页切换 ================= */
+function switchTab(btn){
+  document.querySelectorAll('#page-envupd .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#page-envupd .tab-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById(btn.dataset.tab).classList.add('active');
 }
-function runTask(name, btn){
+
+/* ================= 工具链检查 ================= */
+function installTool(tool, mode){
+  const el = document.getElementById('uvStatus');
+  el.innerHTML = '<span class="spinner"></span> 安装中…';
+  setTimeout(()=>{
+    el.innerHTML = '<span class="ok-text">✓ 已安装：uv 0.9.5（C:\\Users\\dioha\\.local\\bin\\uv.exe）</span>';
+    toast(mode==='winget'
+      ? '原型演示：UAC 提权子进程执行 winget install astral-sh.uv 完成，已回到普通权限'
+      : '原型演示：用户级 PowerShell 安装脚本完成（无需 UAC）');
+  }, 1600);
+}
+
+/* ================= ComfyUI 项目 ================= */
+function repoCheck(){
+  const el = document.getElementById('remoteHash');
+  el.innerHTML = '<span class="spinner"></span>';
+  setTimeout(()=>{
+    el.textContent = '4f8a9c2d1e';
+    document.getElementById('remoteHint').textContent = '与本地 a1b2c3d4e5 不一致，可拉取更新';
+    document.getElementById('btnRepoPull').disabled = false;
+    document.getElementById('btnRepoPull').classList.remove('task-btn'); // 避免被 busy 重置逻辑误伤
+    toast('发现新版本：4f8a9c2d1e');
+  }, 1200);
+}
+function repoPull(){
+  runTask('repo');
+  setTimeout(()=>{
+    document.getElementById('remoteHash').textContent = '4f8a9c2d1e';
+    document.getElementById('remoteHint').textContent = '与本地一致，已是最新';
+    document.getElementById('btnRepoPull').disabled = true;
+  }, 2000);
+}
+
+/* ================= 专用轮子 / 通用包 ================= */
+function addWheelRow(){
+  const tbl = document.getElementById('wheelTable');
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input class="kv-input" placeholder="显示名"></td>'+
+    '<td><input class="kv-input" placeholder="whl URL 或 包名==版本"></td>'+
+    '<td class="v">—</td>'+
+    '<td><button class="del-btn" title="删除" onclick="this.closest(\'tr\').remove()">✕</button></td>';
+  tbl.appendChild(tr);
+}
+function installPkg(){
+  const v = document.getElementById('pkgInput').value.trim();
+  if(!v){ toast('请输入包名或 whl 路径'); return; }
+  const name = v.split('==')[0].trim();
+  const ver = v.includes('==') ? v.split('==')[1].trim() : '0.0.0';
+  TASKS.pkg = ()=>[
+    ['c-dim','uv pip install '+v+' --python <python.exe>'+pypiNote()],
+    ['c-gray','    Resolved 1 package in 0.31s   Installed 1 package'],
+    ['c-green','✔ 安装完成：'+name+' '+ver]
+  ];
+  runTask('pkg');
+  const tbl = document.getElementById('pkgTable');
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td class="k">'+escHtml(name)+'</td><td class="v">'+escHtml(ver)+'</td>'+
+    '<td><button class="del-btn" onclick="uninstallPkg(this,\''+escHtml(name).replace(/'/g,"\\'")+'\')">✕</button></td>';
+  tbl.appendChild(tr);
+  document.getElementById('pkgInput').value = '';
+}
+function uninstallPkg(btn, name){
+  TASKS.pkg = ()=>[
+    ['c-dim','uv pip uninstall '+name+' --python <python.exe>'],
+    ['c-gray','    Uninstalled '+name],
+    ['c-green','✔ 已卸载：'+name]
+  ];
+  runTask('pkg');
+  btn.closest('tr').remove();
+}
+
+function runTask(name){
   if(appState!=='Idle') return;
   setState('BusyEnv');
   document.getElementById('btnCancelTask').disabled = false;
   document.getElementById('taskStatus').innerHTML = '<span class="spinner"></span> 任务进行中…';
   taskConsole.innerHTML = '';
-  const lines = name==='update' ? buildUpdateLog() : (typeof TASKS[name]==='function' ? TASKS[name]() : TASKS[name]);
+  const lines = typeof TASKS[name]==='function' ? TASKS[name]() : TASKS[name];
   let i = 0;
   taskTimer = setInterval(()=>{
     if(i>=lines.length){ finishTask(); return; }
@@ -1020,7 +1337,7 @@ function finishTask(){
 }
 function cancelTask(){
   if(taskTimer){ clearInterval(taskTimer); taskTimer=null; }
-  taskConsole.insertAdjacentHTML('beforeend','<span class="c-red">✕ 已取消：当前子进程已终止（取消 = 终止当前子进程）</span>\n');
+  taskConsole.insertAdjacentHTML('beforeend','<span class="c-red">✕ 已取消：当前子进程已终止。若为 torch 更新卸载后阶段取消，可用「回滚到快照」尽力恢复原版本</span>\n');
   document.getElementById('btnCancelTask').disabled = true;
   document.getElementById('taskStatus').textContent = '已取消';
   setState('Idle');

@@ -21,6 +21,14 @@ public sealed class AppServices
         Launch = new LaunchService(Log);
         Launch.StateChanged += s => SetState(s);
 
+        Tasks = new TaskRunner();
+        Tasks.BusyChanged += busy =>
+        {
+            // 环境任务仅在 Idle 下发起（FR-8.1 互斥）：置 BusyEnv / 完成后回 Idle
+            if (busy) SetState(LaunchState.BusyEnv);
+            else if (State == LaunchState.BusyEnv) SetState(LaunchState.Idle);
+        };
+
         _saveTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _saveTimer.Interval = TimeSpan.FromMilliseconds(400);
         _saveTimer.IsRepeating = false;
@@ -33,9 +41,12 @@ public sealed class AppServices
 
     public LaunchService Launch { get; }
 
+    /// <summary>环境任务调度器（全局单任务互斥，供环境与更新页使用）。</summary>
+    public TaskRunner Tasks { get; }
+
     public AppConfig Settings { get; }
 
-    /// <summary>展示状态：启动流程以 LaunchService 为权威经事件同步，环境任务由页面直接置位。</summary>
+    /// <summary>展示状态：启动流程以 LaunchService 为权威经事件同步，环境任务经 TaskRunner.BusyChanged 置位。</summary>
     public LaunchState State { get; private set; } = LaunchState.Idle;
 
     public event Action<LaunchState>? StateChanged;

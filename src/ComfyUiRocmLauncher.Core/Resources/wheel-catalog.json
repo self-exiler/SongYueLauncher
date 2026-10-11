@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "updated": "2026-10-11",
+  "comment": "作者专用轮子清单（SRS FR-8.6）。仅随软件发版更新。archRules 命中顺序：先匹配具体 arch，'*' 为兜底。ghRepo 项走 releases/latest 动态解析，属 GitHub release → 适用 GitHub 镜像。spec 项直接交给 uv pip（PyPI，适用 PyPI 镜像）。",
+  "wheels": [
+    {
+      "key": "sageattention",
+      "displayName": "SageAttention",
+      "optional": false,
+      "forceReinstall": true,
+      "archRules": [
+        { "arch": "gfx1201", "ghRepo": "thehybrid1337/sageattention-rocm-gfx1201-win", "assetMatch": "cp312", "useGhMirror": true },
+        { "arch": "*", "ghRepo": "patientx/sageattention-autotune", "assetMatch": "cp312", "useGhMirror": true }
+      ]
+    },
+    {
+      "key": "triton-windows",
+      "displayName": "Triton Windows (钉死版本)",
+      "optional": false,
+      "pinVersion": "3.7.0.post26",
+      "spec": "triton-windows==3.7.0.post26",
+      "useGhMirror": false
+    },
+    {
+      "key": "bitsandbytes",
+      "displayName": "bitsandbytes (win-rocm)",
+      "optional": false,
+      "archRules": [
+        { "arch": "*", "ghRepo": "0xDELUXE/bitsandbytes", "assetMatch": "cp312", "useGhMirror": true }
+      ]
+    },
+    {
+      "key": "flash-attn",
+      "displayName": "FlashAttention（可选）",
+      "optional": true,
+      "archRules": [
+        { "arch": "*", "ghRepo": "patientx/flash-attention-rocm", "assetMatch": "cp312", "useGhMirror": true }
+      ]
+    },
+    {
+      "key": "amd_aiter",
+      "displayName": "AMD AIter（可选）",
+      "optional": true,
+      "archRules": [
+        { "arch": "*", "ghRepo": "ROCm/aiter", "assetMatch": "cp312", "useGhMirror": true }
+      ]
+    }
+  ]
+}

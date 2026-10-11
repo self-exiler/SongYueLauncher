@@ -1,0 +1,54 @@
+using ComfyUiRocmLauncher.Core.Models;
+
+namespace ComfyUiRocmLauncher.Core.Services;
+
+/// <summary>工具链项状态。</summary>
+public sealed record ToolStatus(string Name, string? Path, string? Version, bool Installed);
+
+/// <summary>
+/// 工具链检测与安装（SRS FR-8.2）：git / uv / winget 发现（含已知路径），版本查询，
+/// winget 安装（需 UAC 提权子进程），uv 用户级安装引导。检测为一次性命令，安装经 TaskRunner。
+/// </summary>
+public static class ToolchainService
+{
+    public static async Task<IReadOnlyList<ToolStatus>> DetectAsync(CancellationToken cancellationToken = default)
+    {
+        var git = ToolLocator.FindGit();
+        var uv = ToolLocator.FindUv();
+        var winget = ToolLocator.FindWinget();
+
+        return new List<ToolStatus>
+        {
+            new("git", git, await QueryVersionAsync(git, "--version", cancellationToken), git is not null),
+            new("uv", uv, await QueryVersionAsync(uv, "--version", cancellationToken), uv is not null),
+            new("winget", winget, await QueryVersionAsync(winget, "--version", cancellationToken), winget is not null),
+        };
+    }
+
+    /// <summary>GPU arch 解析（复用 WMI 名称 + 内置映射，不依赖项目文件 / venv）。</summary>
+    public static ArchInfo DetectArch() =>
+        GpuArchService.Instance.Map(GpuInfoService.GetAmdGpuName());
+
+    private static async Task<string?> QueryVersionAsync(string? exe, string args, CancellationToken ct)
+    {
+        if (exe is null) return null;
+        try
+        {
+            var lines = new List<string>();
+            await ProcessService.RunCommandAsync(exe, args, Environment.CurrentDirectory,
+                line => { if (lines.Count == 0) lines.Add(line); }, ct).ConfigureAwait(false);
+            return lines.FirstOrDefault()?.Trim();
+        }
+        catch
+        {
+            return "已安装（版本读取失败）";
+        }
+    }
+
+    /// <summary>winget 安装参数（--source winget 避免命中 Store 版本）。</summary>
+    public static string WingetInstallArgs(string packageId) =>
+        $"install --id {packageId} --source winget -e --accept-source-agreements --accept-package-agreements";
+
+    public const string GitWingetId = "Git.Git";
+    public const string UvWingetId = "astral-sh.uv";
+}

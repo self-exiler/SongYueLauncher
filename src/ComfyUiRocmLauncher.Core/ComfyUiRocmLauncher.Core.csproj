@@ -17,6 +17,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\cli-args.json" />
     <EmbeddedResource Include="Resources\gpu-templates.json" />
+    <EmbeddedResource Include="Resources\wheel-catalog.json" />
+    <EmbeddedResource Include="Resources\gpu-arch-map.json" />
   </ItemGroup>
 
 </Project>

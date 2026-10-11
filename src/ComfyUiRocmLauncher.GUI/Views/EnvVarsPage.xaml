@@ -34,30 +34,6 @@
                 </Grid>
             </Border>
 
-            <!-- ===== 模板层 ===== -->
-            <TextBlock Text="模板层" Style="{StaticResource SettingsSectionHeaderStyle}" />
-            <Border Style="{StaticResource CardBorderStyle}">
-                <Grid Padding="16,12" ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Spacing="2" VerticalAlignment="Center">
-                        <TextBlock Text="GPU 模板" Style="{StaticResource CardTitleStyle}" />
-                        <TextBlock Text="应用模板 = 把模板中的环境变量与启动参数写入普通配置，之后与自定义项无区别、可自由编辑。纯手动选择，不做 GPU 自动检测推荐。"
-                                   Style="{StaticResource SecondaryTextStyle}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                        <ComboBox x:Name="TemplateCombo" Width="260" SelectedIndex="1">
-                            <ComboBoxItem Content="RDNA1/2（gfx101x / gfx103x）" Tag="rdna12" />
-                            <ComboBoxItem Content="RDNA3（gfx110x）" Tag="rdna3" />
-                            <ComboBoxItem Content="RDNA4（gfx120x）" Tag="rdna4" />
-                        </ComboBox>
-                        <Button Content="应用模板" Style="{StaticResource AccentButtonStyle}" Click="ApplyTemplate_Click" />
-                    </StackPanel>
-                </Grid>
-            </Border>
-
             <!-- ===== 自定义层 ===== -->
             <TextBlock Text="自定义层" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <Border Style="{StaticResource CardBorderStyle}">

@@ -22,7 +22,6 @@ public sealed partial class HomePage : Page
     {
         ComfyDirBox.Text = Settings.ComfyUiDir;
         PythonBox.Text = Settings.PythonExe;
-        SyncPackagesToggle.IsOn = Settings.SyncTrackedPackagesOnStart;
         AutoBrowserToggle.IsOn = Settings.AutoOpenBrowser;
 
         var uv = ToolLocator.FindUv();
@@ -55,13 +54,12 @@ public sealed partial class HomePage : Page
         BrowserButton.IsEnabled = state == LaunchState.Running;
         VersionHashText.Text = App.Services.CurrentVersionHash();
 
-        // 状态点配色：停止灰 / 启动黄 / 运行绿 / 停止红 / 环境任务蓝
+        // 状态点配色：停止灰 / 启动黄 / 运行绿 / 停止红
         RunStateDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(state switch
         {
             LaunchState.Running => Windows.UI.Color.FromArgb(255, 108, 203, 95),
             LaunchState.Starting => Windows.UI.Color.FromArgb(255, 252, 225, 0),
             LaunchState.Stopping => Windows.UI.Color.FromArgb(255, 255, 153, 164),
-            LaunchState.BusyEnv => Windows.UI.Color.FromArgb(255, 118, 185, 237),
             _ => Windows.UI.Color.FromArgb(255, 138, 138, 138),
         });
     }
@@ -173,12 +171,6 @@ public sealed partial class HomePage : Page
 
     private void OpenBrowser_Click(object sender, RoutedEventArgs e) =>
         UiHelpers.OpenUrl(ArgsBuilder.DeriveBrowserUrl(Settings.Args));
-
-    private void SyncPackagesToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        Settings.SyncTrackedPackagesOnStart = SyncPackagesToggle.IsOn;
-        App.Services.Save();
-    }
 
     private void AutoBrowserToggle_Toggled(object sender, RoutedEventArgs e)
     {

@@ -90,6 +90,16 @@ public class EnvAndConfigTests : IDisposable
         };
         config.Args.Enable("enable-manager", true);
         config.CustomEnvVars["MIOPEN_FIND_MODE"] = "2";
+        var customTemplate = new GpuTemplate
+        {
+            Id = "mine",
+            Title = "我的模板",
+            EnvSnapshot = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["HACK"] = @"{comfyUiDir}\x" },
+            ArgsSnapshot = new StructuredArgs(),
+        };
+        customTemplate.ArgsSnapshot.Enable("port", true);
+        customTemplate.ArgsSnapshot.SetValue("port", "8188");
+        config.CustomTemplates.Add(customTemplate);
 
         svc.Save(config);
         var loaded = svc.Load();
@@ -99,6 +109,13 @@ public class EnvAndConfigTests : IDisposable
         Assert.Equal("--verbose", loaded.ExtraArgs);
         Assert.True(loaded.Args.IsEnabled("enable-manager"));
         Assert.Equal("2", loaded.CustomEnvVars["MIOPEN_FIND_MODE"]);
+
+        var tpl = Assert.Single(loaded.CustomTemplates);
+        Assert.Equal("我的模板", tpl.Title);
+        Assert.True(tpl.IsCustom);
+        Assert.Equal(@"{comfyUiDir}\x", tpl.EnvSnapshot!["HACK"]);
+        Assert.True(tpl.ArgsSnapshot!.IsEnabled("port"));
+        Assert.Equal("8188", tpl.ArgsSnapshot.Value("port"));
     }
 
     [Fact]
@@ -141,6 +158,13 @@ public class EnvAndConfigTests : IDisposable
 
         Assert.Equal(3, deleted);
         Assert.Equal(2, Directory.GetFiles(dir, "comfyui_*.log").Length);
+    }
+
+    [Fact]
+    public void LaunchStates_TextMapping()
+    {
+        Assert.Equal("运行中", LaunchStates.Text(LaunchState.Running));
+        Assert.Equal("已停止", LaunchStates.Text(LaunchState.Idle));
     }
 
     [Fact]

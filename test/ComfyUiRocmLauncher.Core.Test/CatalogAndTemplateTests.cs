@@ -92,4 +92,101 @@ public class CatalogAndTemplateTests
         Assert.False(args.IsEnabled("use-ck-attention"));
         Assert.True(args.IsEnabled("use-quad-cross-attention"));
     }
+
+    private static AppConfig NewConfig() => new()
+    {
+        ComfyUiDir = @"D:\AI\comfyui-rocm",
+        PythonExe = @"D:\AI\comfyui-rocm\.venv\Scripts\python.exe",
+    };
+
+    [Fact]
+    public void ApplyTo_Builtin_ReplacesEnvAndArgsEntirely()
+    {
+        var config = NewConfig();
+        config.CustomEnvVars["OLD_KEY"] = "x";
+        config.Args.Enable("use-ck-attention", true);
+
+        var tpl = TemplateCatalog.Instance.Resolve("rdna12", config)!;
+        TemplateCatalog.Instance.ApplyTo(tpl, config, Catalog);
+
+        Assert.False(config.CustomEnvVars.ContainsKey("OLD_KEY"));
+        Assert.True(config.CustomEnvVars.ContainsKey("TRITON_CACHE_DIR"));
+        Assert.True(config.Args.IsEnabled("use-quad-cross-attention"));
+        Assert.False(config.Args.IsEnabled("use-ck-attention"));
+    }
+
+    [Fact]
+    public void CaptureAsTemplate_WritesPlaceholdersIntoSnapshot()
+    {
+        var config = NewConfig();
+        config.CustomEnvVars["MY_VAR"] = @"D:\AI\comfyui-rocm\some\path";
+        config.CustomEnvVars["VENV_VAR"] = @"D:\AI\comfyui-rocm\.venv\Lib";
+
+        var tpl = TemplateCatalog.Instance.CaptureAsTemplate(config, "我的模板", "mine");
+
+        Assert.True(tpl.IsCustom);
+        Assert.Equal(@"{comfyUiDir}\some\path", tpl.EnvSnapshot!["MY_VAR"]);
+        Assert.Equal(@"{venvDir}\Lib", tpl.EnvSnapshot["VENV_VAR"]);
+    }
+
+    [Fact]
+    public void ApplyTo_Custom_RestoresWithNewDirsAndClearsJunk()
+    {
+        var config = NewConfig();
+        config.CustomEnvVars["MY_VAR"] = @"D:\AI\comfyui-rocm\some\path";
+        config.Args.Enable("cache-lru", true);
+        config.Args.SetValue("cache-lru", "20");
+
+        var tpl = TemplateCatalog.Instance.CaptureAsTemplate(config, "mine", "mine");
+
+        // 换目录 + 塞入无关变量/参数后再应用，应恢复快照并整体替换
+        config.ComfyUiDir = @"E:\New\comfyui";
+        config.PythonExe = @"E:\New\comfyui\.venv\Scripts\python.exe";
+        config.CustomEnvVars.Clear();
+        config.CustomEnvVars["JUNK"] = "1";
+        config.Args.Enable("preview-method", true);
+        TemplateCatalog.Instance.ApplyTo(tpl, config, Catalog);
+
+        Assert.False(config.CustomEnvVars.ContainsKey("JUNK"));
+        Assert.Equal(@"E:\New\comfyui\some\path", config.CustomEnvVars["MY_VAR"]);
+        Assert.False(config.Args.IsEnabled("preview-method"));
+        Assert.True(config.Args.IsEnabled("cache-lru"));
+        Assert.Equal("20", config.Args.Value("cache-lru"));
+    }
+
+    [Fact]
+    public void CaptureArgs_IsDeepCopy()
+    {
+        var config = NewConfig();
+        config.Args.Enable("port", true);
+        config.Args.SetValue("port", "8188");
+
+        var snapshot = TemplateCatalog.Instance.CaptureArgs(config);
+        config.Args.Enable("port", false);
+
+        Assert.True(snapshot.IsEnabled("port"));
+        Assert.Equal("8188", snapshot.Value("port"));
+    }
+
+    [Fact]
+    public void CaptureId_DeduplicatesBySuffix()
+    {
+        var config = new AppConfig();
+        config.CustomTemplates.Add(new GpuTemplate { Id = "My-Tpl", Title = "My Tpl" });
+
+        Assert.Equal("My-Tpl_2", TemplateCatalog.CaptureId("My Tpl", config));
+    }
+
+    [Fact]
+    public void Resolve_FindsBuiltinAndCustom()
+    {
+        var config = new AppConfig();
+        var custom = new GpuTemplate { Id = "zz", Title = "zz", EnvSnapshot = new() { ["A"] = "1" } };
+        config.CustomTemplates.Add(custom);
+
+        Assert.NotNull(TemplateCatalog.Instance.Resolve("rdna3", config));
+        Assert.Same(custom, TemplateCatalog.Instance.Resolve("zz", config));
+        Assert.Null(TemplateCatalog.Instance.Resolve("nope", config));
+        Assert.Equal(4, TemplateCatalog.Instance.AllTemplates(config).Count);
+    }
 }

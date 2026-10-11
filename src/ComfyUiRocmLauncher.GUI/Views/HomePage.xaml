@@ -85,22 +85,6 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="2" VerticalAlignment="Center">
-                            <TextBlock Text="启动前同步追踪包" Style="{StaticResource CardTitleStyle}" />
-                            <TextBlock Text="6 个追踪包按 requirements.txt 校验后再拉起 ComfyUI"
-                                       Style="{StaticResource SecondaryTextStyle}" />
-                        </StackPanel>
-                        <ToggleSwitch x:Name="SyncPackagesToggle" Grid.Column="1" VerticalAlignment="Center"
-                                      OnContent="" OffContent="" Toggled="SyncPackagesToggle_Toggled" />
-                    </Grid>
-
-                    <Border Style="{StaticResource CardDividerStyle}" Margin="16,0" />
-
-                    <Grid Padding="16,12" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="2" VerticalAlignment="Center">
                             <TextBlock Text="启动后自动打开浏览器" Style="{StaticResource CardTitleStyle}" />
                             <TextBlock Text="与 ComfyUI --auto-launch 互不影响"
                                        Style="{StaticResource SecondaryTextStyle}" />
