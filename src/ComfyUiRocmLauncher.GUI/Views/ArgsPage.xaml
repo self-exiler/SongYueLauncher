@@ -17,8 +17,6 @@
         <Border Grid.Row="0" Padding="16,12" Style="{StaticResource CardBorderStyle}" Margin="20,20,20,8">
             <StackPanel Orientation="Horizontal" Spacing="10">
                 <TextBox x:Name="SearchBox" Width="240" PlaceholderText="按参数名搜索…" TextChanged="SearchBox_TextChanged" />
-                <Button Content="bat 默认参数" Click="ApplyBat_Click" />
-                <Button Content="恢复默认（全不启用）" Click="Reset_Click" />
                 <TextBlock x:Name="ArgCountText" VerticalAlignment="Center" Opacity="0.7" FontSize="12" />
             </StackPanel>
         </Border>

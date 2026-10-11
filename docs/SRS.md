@@ -2,9 +2,9 @@
 
 | 项目     | 内容                                                                                                                                                                                     |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 文档版本 | v1.6                                                                                                                                                                                     |
+| 文档版本 | v1.7                                                                                                                                                                                     |
 | 日期     | 2026-10-11                                                                                                                                                                               |
-| 变更说明 | v1.6：复审修正——torch 更新改为「先下载验证后卸载 + 尽力回滚」（AMD nightly 旧版本可能下架，快照语义降级）；ComfyUI 项目更新按目录形态双策略（git 检出→pull --ff-only，非检出→clone+robocopy）；导航顺序再调整为 主页→环境与更新→启动参数→环境变量→配置管理→日志；wheel-catalog 仅随软件发版更新；修复 FR-8.5「刷新主页版本显示」错误。v1.5：新增 §4.7 环境与更新页（FR-8），重建 v1.3 移除的环境安装/更新能力：Python 环境（uv 建 .venv，钉死 3.12）、镜像三分法、工具链检查（winget + UAC）、核心仓库安装/更新（仓库地址用户指定）、torch nightly 快照回滚、专用轮子内置清单 + 自定义、项目依赖同步、通用 PyPI 包管理；恢复 BusyEnv 状态与全局单任务互斥；作废「启动器不做网络访问」约束（NFR-4 修订）。v1.4：新增 §4.6 配置管理页（FR-7）集中 GPU 模板选择/应用（全量替换语义）/另存与删除自定义模板；ArgsPage 与 EnvVarsPage 移除模板入口，config.json 增加 `customTemplates`。v1.3：移除 FR-6 环境管理（ROCm/PyTorch 更新、依赖安装页）与 FR-4.1 启动前追踪包同步，删除 BusyEnv 状态与 UpdateService/RequirementsFilter/GpuInfoService.DetectArch，功能待重建（v1.5 已重建）。v1.2：移除 FR-6.3 程序更新（上游 patientx-cfz/comfyui-rocm 仓库已删除，整合包不再 git 自更新）。v1.1：新增 3.3 解决方案结构（GUI / Core / Core.Test 三项目划分与依赖约束）；参数清单与 GPU 模板定为 Core 内嵌资源（EmbeddedResource）                                                |
+| 变更说明 | v1.7：配置管理页移至导航第三（主页→环境与更新→配置管理→启动参数→环境变量→日志）；启动参数页移除「bat 默认参数」「恢复默认（全不启用）」两个按钮（保留搜索 / 命令预览 / 结构化参数）；工具链状态行改为版本+路径分行并省略号裁剪，避免长路径溢出。v1.6：复审修正——torch 更新改为「先下载验证后卸载 + 尽力回滚」（AMD nightly 旧版本可能下架，快照语义降级）；ComfyUI 项目更新按目录形态双策略（git 检出→pull --ff-only，非检出→clone+robocopy）；导航顺序再调整为 主页→环境与更新→启动参数→环境变量→配置管理→日志；wheel-catalog 仅随软件发版更新；修复 FR-8.5「刷新主页版本显示」错误。v1.5：新增 §4.7 环境与更新页（FR-8），重建 v1.3 移除的环境安装/更新能力：Python 环境（uv 建 .venv，钉死 3.12）、镜像三分法、工具链检查（winget + UAC）、核心仓库安装/更新（仓库地址用户指定）、torch nightly 快照回滚、专用轮子内置清单 + 自定义、项目依赖同步、通用 PyPI 包管理；恢复 BusyEnv 状态与全局单任务互斥；作废「启动器不做网络访问」约束（NFR-4 修订）。v1.4：新增 §4.6 配置管理页（FR-7）集中 GPU 模板选择/应用（全量替换语义）/另存与删除自定义模板；ArgsPage 与 EnvVarsPage 移除模板入口，config.json 增加 `customTemplates`。v1.3：移除 FR-6 环境管理（ROCm/PyTorch 更新、依赖安装页）与 FR-4.1 启动前追踪包同步，删除 BusyEnv 状态与 UpdateService/RequirementsFilter/GpuInfoService.DetectArch，功能待重建（v1.5 已重建）。v1.2：移除 FR-6.3 程序更新（上游 patientx-cfz/comfyui-rocm 仓库已删除，整合包不再 git 自更新）。v1.1：新增 3.3 解决方案结构（GUI / Core / Core.Test 三项目划分与依赖约束）；参数清单与 GPU 模板定为 Core 内嵌资源（EmbeddedResource）                                                |
 | 状态     | 已评审（v1.5 经 grill-me 三轮需求评审收敛，决策见 `docs/需求变更记录.md`）                                                                                                               |
 | 应用名称 | ComfyUI ROCm Launcher（暂定）                                                                                                                                                            |
 | 技术栈   | C# / .NET 10 LTS + WinUI 3（Windows App SDK）                                                                                                                                            |
@@ -75,9 +75,9 @@ Idle ──环境任务──▶ BusyEnv ──完成/取消/失败──▶ Idl
 Views (WinUI 3 XAML)
  ├─ HomePage          主页
  ├─ EnvUpdatePage     环境与更新（工具链检查 / ComfyUI 项目 / Python 轮子 三标签）
+ ├─ ConfigPage        配置管理（GPU 模板选择 / 应用 / 自定义模板）
  ├─ ArgsPage          启动参数
  ├─ EnvVarsPage       环境变量（可并入 ArgsPage 为两个 Tab，实现时定）
- ├─ ConfigPage        配置管理（GPU 模板选择 / 应用 / 自定义模板）
  └─ LogPage           日志
 ViewModels (MVVM, CommunityToolkit.Mvvm)
 Services
@@ -164,7 +164,7 @@ ComfyUiRocmLauncher.sln（根目录，经典 sln 格式）
 
 **FR-2.4 命令预览**：只读文本实时显示最终命令行 `<python.exe> main.py <args>`。
 
-**FR-2.5** 参数随配置持久化；提供"bat 默认参数"与"恢复默认（全不启用）"。GPU 模板的批量参数应用见 §4.6 配置管理页（FR-7）。
+**FR-2.5** 参数随配置持久化（仅存"非默认"项）；页面提供按参数名搜索与命令实时预览。GPU 模板的批量参数应用见 §4.6 配置管理页（FR-7）。
 
 ### 4.3 环境变量页（EnvVarsPage）
 
@@ -226,7 +226,7 @@ spawn: <python.exe> main.py <ArgsBuilder输出>
 
 ### 4.6 配置管理页（ConfigPage）
 
-集中原分散在启动参数页与环境变量页的 GPU 架构模板能力（导航第五项）。
+集中原分散在启动参数页与环境变量页的 GPU 架构模板能力（导航第三项）。
 
 **FR-7.1 模板选择**：单一下拉列出内置模板（RDNA1/2、RDNA3、RDNA4，内容见**附录 B**）与全部自定义模板；纯手动选择，不做 GPU 自动检测推荐。选中项展示环境变量数 / 启动参数数摘要。
 
@@ -240,7 +240,7 @@ spawn: <python.exe> main.py <ArgsBuilder输出>
 
 ### 4.7 环境与更新页（EnvUpdatePage）
 
-导航第二项（顺序：主页 → 环境与更新 → 启动参数 → 环境变量 → 配置管理 → 日志）。页面为三个标签页 + 底部共享任务输出控制台。**全局单任务互斥**（见 §2.4）：任意安装/更新任务运行中禁用「启动」；ComfyUI 运行中禁用本页全部操作；同一时间仅一个任务，不排队。
+导航第二项（顺序：主页 → 环境与更新 → 配置管理 → 启动参数 → 环境变量 → 日志）。页面为三个标签页 + 底部共享任务输出控制台。**全局单任务互斥**（见 §2.4）：任意安装/更新任务运行中禁用「启动」；ComfyUI 运行中禁用本页全部操作；同一时间仅一个任务，不排队。
 
 **FR-8.1 任务执行模型**：所有安装/更新操作经 TaskRunner 以子进程执行（git / uv / winget / robocopy / python）；实时输出流入任务控制台（复用日志页 ANSI 渲染与落盘设施）；提供「取消」= 终止当前子进程；失败时显示错误与可执行的下一步引导。**前置校验**：每个操作执行前校验依赖链（工具链 → 仓库 → venv → 轮子），前置缺失时对应按钮禁用并提示「请先完成 XX」（如轮子页操作要求 venv 存在，clone 要求 git 可用）。
 

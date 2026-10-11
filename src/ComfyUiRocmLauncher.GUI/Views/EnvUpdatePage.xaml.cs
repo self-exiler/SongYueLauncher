@@ -122,23 +122,38 @@ public sealed partial class EnvUpdatePage : Page
         foreach (var tool in _tools)
         {
             var row = new Grid { ColumnSpacing = 12 };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            row.Children.Add(new TextBlock { Text = tool.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
-            var info = new TextBlock
+            row.Children.Add(new TextBlock
             {
-                Text = tool.Installed ? (tool.Version ?? "已安装") + $"  ·  {tool.Path}" : "未安装",
+                Text = tool.Name,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = TextWrapping.Wrap,
-                Opacity = tool.Installed ? 0.85 : 1,
-            };
-            row.Children.Add(info);
+            });
+
+            // 版本与路径分行；路径用省略号裁剪，避免长路径把行撑破窗体
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 0 };
+            text.Children.Add(new TextBlock
+            {
+                Text = tool.Installed ? (tool.Version ?? "已安装") : "未安装",
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            if (tool.Installed && !string.IsNullOrEmpty(tool.Path))
+                text.Children.Add(new TextBlock
+                {
+                    Text = tool.Path,
+                    FontSize = 12,
+                    Opacity = 0.6,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                });
+            Grid.SetColumn(text, 1);
+            row.Children.Add(text);
 
             if (!tool.Installed && tool.Name != "winget")
             {
-                var btn = new Button { Content = "安装", Tag = tool.Name };
+                var btn = new Button { Content = "安装", Tag = tool.Name, VerticalAlignment = VerticalAlignment.Center };
                 btn.Click += InstallTool_Click;
                 Grid.SetColumn(btn, 2);
                 row.Children.Add(btn);

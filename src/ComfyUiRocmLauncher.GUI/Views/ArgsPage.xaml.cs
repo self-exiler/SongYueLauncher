@@ -405,24 +405,6 @@ public sealed partial class ArgsPage : Page
         UpdatePreview();
     }
 
-    private void ApplyBat_Click(object sender, RoutedEventArgs e)
-    {
-        _catalog.ApplyBatDefaults(Settings.Args);
-        App.Services.Save();
-        SyncControlsFromSettings();
-        UpdatePreview();
-    }
-
-    private void Reset_Click(object sender, RoutedEventArgs e)
-    {
-        _catalog.ClearAll(Settings.Args);
-        Settings.ExtraArgs = string.Empty;
-        ExtraArgsBox.Text = string.Empty;
-        App.Services.Save();
-        SyncControlsFromSettings();
-        UpdatePreview();
-    }
-
     /// <summary>
     /// 配置被外部整体变更（bat 默认 / 恢复默认 / 模板应用）后，就地同步控件状态；
     /// 全程 _syncing 抑制写回，不重建控件树。
