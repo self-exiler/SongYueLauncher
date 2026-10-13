@@ -14,7 +14,6 @@
             <!-- ===== Windows 11 设置（Settings）风格统一度量 ===== -->
             <x:Double x:Key="SettingsPageMaxWidth">1000</x:Double>
             <Thickness x:Key="SettingsPagePadding">36,4,36,36</Thickness>
-            <Thickness x:Key="SettingsCardPadding">16</Thickness>
             <x:Double x:Key="SettingsCardMinHeight">48</x:Double>
 
             <!-- 分组标题：基于内置 Subtitle 文本样式（上疏下密） -->
@@ -51,10 +50,6 @@
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
-
-            <!-- 行内描述（等价 SecondaryTextStyle，语义命名） -->
-            <Style x:Key="RowDescriptionStyle" TargetType="TextBlock"
-                   BasedOn="{StaticResource SecondaryTextStyle}" />
 
             <!-- 卡片内行分隔线 -->
             <Style x:Key="CardDividerStyle" TargetType="Border">

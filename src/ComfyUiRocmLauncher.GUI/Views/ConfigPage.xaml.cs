@@ -39,10 +39,12 @@ public sealed partial class ConfigPage : Page
     {
         var list = Catalog.AllTemplates(Settings);
         var keep = keepId ?? Selected?.Id;
+        // 默认预选：按检测到的显卡架构映射模板（ArchInfo.TemplateId），识别不到退回 rdna3
+        var fallback = ToolchainService.DetectArch().TemplateId ?? "rdna3";
         TemplateCombo.ItemsSource = list;
         TemplateCombo.SelectedItem =
             list.FirstOrDefault(t => string.Equals(t.Id, keep, StringComparison.OrdinalIgnoreCase))
-            ?? list.FirstOrDefault(t => t.Id == "rdna3")
+            ?? list.FirstOrDefault(t => string.Equals(t.Id, fallback, StringComparison.OrdinalIgnoreCase))
             ?? list.FirstOrDefault();
     }
 

@@ -37,24 +37,15 @@ public class CatalogAndTemplateTests
     }
 
     [Fact]
-    public void ApplyBatDefaults_EnablesBaseGroup()
-    {
-        var args = new StructuredArgs();
-        Catalog.ApplyBatDefaults(args);
-
-        Assert.True(args.IsEnabled("cache-lru"));
-        Assert.Equal("20", args.Value("cache-lru"));
-        Assert.True(args.IsEnabled("disable-api-nodes"));
-        Assert.True(args.IsEnabled("enable-manager-legacy-ui"));
-    }
-
-    [Fact]
     public void ClearAll_RemovesEverything()
     {
         var args = new StructuredArgs();
-        Catalog.ApplyBatDefaults(args);
+        args.Enable("cache-lru", true);
+        args.SetValue("cache-lru", "20");
+        args.Enable("use-ck-attention", true);
         Catalog.ClearAll(args);
         Assert.Empty(args.Enabled);
+        Assert.Empty(args.Values);
     }
 
     [Fact]

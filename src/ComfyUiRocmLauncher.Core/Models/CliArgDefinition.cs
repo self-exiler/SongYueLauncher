@@ -31,12 +31,6 @@ public sealed class CliArgDefinition
     public int? Mutex { get; set; }
     public bool Bat { get; set; }
     public string? BatValue { get; set; }
-
-    /// <summary>是否需要额外取值输入（flag 型只有开关）。</summary>
-    public bool HasValue => Type != ArgType.Flag;
-
-    /// <summary>取值以多行文本录入。</summary>
-    public bool IsMultiLine => Type is ArgType.RepeatableStringList or ArgType.RepeatableKeyValue;
 }
 
 public sealed class CliArgGroup

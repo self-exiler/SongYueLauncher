@@ -139,6 +139,9 @@ public sealed class ProcessService
             WorkingDirectory = workingDirectory,
             UseShellExecute = false,
             CreateNoWindow = true,
+            // GUI 宿主自身无控制台，默认继承的 stdin 是无效句柄；Python 的 subprocess
+            // 在 DuplicateHandle 时会抛 WinError 6。显式重定向以提供有效的匿名管道。
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = System.Text.Encoding.UTF8,

@@ -72,17 +72,6 @@ public sealed class CliArgsCatalog
         return closed;
     }
 
-    /// <summary>按 comfyui-rocm.bat 的基础参数组预填（bat=true 的项）。</summary>
-    public void ApplyBatDefaults(StructuredArgs args)
-    {
-        foreach (var def in All.Where(a => a.Bat))
-        {
-            EnforceMutex(args, def.Name);
-            args.Enable(def.Name, true);
-            if (!string.IsNullOrEmpty(def.BatValue)) args.SetValue(def.Name, def.BatValue!);
-        }
-    }
-
     /// <summary>清空全部启用项（"恢复默认"）。</summary>
     public void ClearAll(StructuredArgs args)
     {

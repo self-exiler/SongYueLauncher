@@ -81,7 +81,10 @@
                     <StackPanel Padding="16,12" Spacing="8">
                         <TextBlock Text="Python 虚拟环境" Style="{StaticResource CardTitleStyle}" />
                         <TextBlock x:Name="VenvStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
-                        <Button x:Name="CreateVenvButton" Content="创建 .venv（Python 3.12）" Click="CreateVenv_Click" HorizontalAlignment="Left" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button x:Name="CreateVenvButton" Content="创建 .venv（Python 3.12）" Click="CreateVenv_Click" />
+                            <Button x:Name="OpenTerminalButton" Content="在终端中激活环境" Click="OpenTerminal_Click" ToolTipService.ToolTip="打开 Windows Terminal，工作目录为 ComfyUI 目录并激活 .venv" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 

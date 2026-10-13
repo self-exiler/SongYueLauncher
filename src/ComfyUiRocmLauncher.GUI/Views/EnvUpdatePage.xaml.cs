@@ -244,6 +244,11 @@ public sealed partial class EnvUpdatePage : Page
         });
     }
 
+    private void OpenTerminal_Click(object sender, RoutedEventArgs e)
+    {
+        TerminalService.OpenVenvTerminal(Settings.ComfyUiDir, Append);
+    }
+
     private async void TorchUpdate_Click(object sender, RoutedEventArgs e)
     {
         SyncMirrors();
@@ -335,6 +340,7 @@ public sealed partial class EnvUpdatePage : Page
         PullButton.IsEnabled = idle && hasGit && installed;
         ForceButton.IsEnabled = idle && hasGit && installed;
         CreateVenvButton.IsEnabled = idle && hasUv && installed;
+        OpenTerminalButton.IsEnabled = venv;
 
         TorchUpdateButton.IsEnabled = idle && venv && arch.Known && arch.IsAvailable;
         WheelsButton.IsEnabled = idle && venv;

@@ -1,3 +1,5 @@
+using System.Net.Http;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using ComfyUiRocmLauncher.Core.Models;
 
@@ -17,6 +19,16 @@ public static class WheelService
     private static readonly string[] TorchFixed = { "torch", "torchvision", "torchaudio" };
     private static readonly string[] RocmFixed = { "rocm", "rocm-sdk-devel", "rocm-sdk-core", "rocm-sdk-libraries" };
     private static readonly string[] TorchFreezePrefixes = { "rocm", "amd-torch", "amd-torchvision" };
+
+    private static readonly HttpClient Http = CreateHttp();
+
+    private static HttpClient CreateHttp()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("ComfyUiRocmLauncher");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        return client;
+    }
 
     /// <summary>torch 更新卸载清单：固定 rocm/torch 名单 + freeze 中匹配前缀的包。</summary>
     public static IReadOnlyList<string> BuildTorchUninstallList(IEnumerable<string> freezeNames)
@@ -49,6 +61,35 @@ public static class WheelService
             if (hit.Url is not null) return hit.Url;
         }
         return whls.FirstOrDefault().Url;
+    }
+
+    /// <summary>解析 GitHub releases API 响应中的 assets[].name / browser_download_url。</summary>
+    public static IReadOnlyList<(string Name, string Url)> ParseReleaseAssets(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("assets", out var assets) ||
+            assets.ValueKind != JsonValueKind.Array)
+            return Array.Empty<(string, string)>();
+
+        var list = new List<(string, string)>();
+        foreach (var a in assets.EnumerateArray())
+        {
+            var name = a.TryGetProperty("name", out var n) ? n.GetString() : null;
+            var url = a.TryGetProperty("browser_download_url", out var u) ? u.GetString() : null;
+            if (name is not null && url is not null) list.Add((name, url));
+        }
+        return list;
+    }
+
+    /// <summary>查询仓库 latest release 的 whl 直链；API 直连，镜像前缀由调用方作用于资产 URL。</summary>
+    public static async Task<string?> FetchLatestWheelUrlAsync(string ghRepo, string? assetMatch, CancellationToken ct)
+    {
+        using var resp = await Http
+            .GetAsync($"https://api.github.com/repos/{ghRepo}/releases/latest", ct)
+            .ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        return SelectReleaseAsset(ParseReleaseAssets(json), assetMatch);
     }
 
     private static string PythonArg(AppConfig config) => $"--python \"{config.PythonExe}\"";
@@ -207,10 +248,23 @@ public static class WheelService
             else if (rule?.Spec is not null) target = rule.Spec;
             else if (rule?.GhRepo is not null)
             {
-                // 动态 URL 由 GUI 侧解析 release；此处给出仓库页提示（无法在离线单测中访问网络）
-                target = $"{rule.GhRepo} (releases/latest, asset~{rule.AssetMatch})";
-                onOutput?.Invoke($"      {entry.DisplayName}：请从 GitHub {rule.GhRepo} 最新 release 取 cp312 轮子");
-                continue;
+                string? url;
+                try
+                {
+                    url = await FetchLatestWheelUrlAsync(rule.GhRepo, rule.AssetMatch, runner.Token)
+                        .ConfigureAwait(false);
+                    if (url is null)
+                        onOutput?.Invoke($"      [跳过] {rule.GhRepo} 最新 release 未找到可用 .whl");
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    url = null;
+                    onOutput?.Invoke($"      [警告] {entry.DisplayName}：查询 GitHub release 失败（{ex.Message}）");
+                }
+                if (url is null) continue;
+                target = rule.UseGhMirror ? MirrorPolicy.Github(url, config.EnvUpdate.GithubMirror) : url;
+                onOutput?.Invoke($"      {entry.DisplayName}：{target}");
             }
             else { continue; }
 

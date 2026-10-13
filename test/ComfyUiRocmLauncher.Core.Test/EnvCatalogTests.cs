@@ -134,6 +134,21 @@ public class EnvCatalogTests
     }
 
     [Fact]
+    public void ParseReleaseAssets_ExtractsNameAndDownloadUrl()
+    {
+        var json = """
+        {"assets":[
+          {"name":"notes.txt","browser_download_url":"https://x/notes.txt"},
+          {"name":"sage-2.2-cp312-win_amd64.whl","browser_download_url":"https://x/sage.whl"}
+        ]}
+        """;
+        var assets = WheelService.ParseReleaseAssets(json);
+        Assert.Equal(2, assets.Count);
+        Assert.Equal("https://x/sage.whl", WheelService.SelectReleaseAsset(assets, "cp312"));
+        Assert.Empty(WheelService.ParseReleaseAssets("{}"));
+    }
+
+    [Fact]
     public void ParseFreezeAndDiff_Work()
     {
         var before = WheelService.ParseFreeze(new[] { "einops==0.8.0", "gone==1.0", "# c" });

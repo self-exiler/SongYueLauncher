@@ -57,4 +57,14 @@ public static class ToolLocator
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         return FindFirst(Path.Combine(local, "Microsoft", "WindowsApps", "winget.exe"));
     }
+
+    /// <summary>wt.exe（Windows Terminal）：PATH → WindowsApps 别名目录。</summary>
+    public static string? FindWindowsTerminal()
+    {
+        var found = FindInPath("wt.exe");
+        if (found is not null) return found;
+
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return FindFirst(Path.Combine(local, "Microsoft", "WindowsApps", "wt.exe"));
+    }
 }

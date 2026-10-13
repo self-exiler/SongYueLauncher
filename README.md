@@ -8,9 +8,9 @@
 
 本项目基于该整合包与其上游 ComfyUI，做如下三点优化，目标是让 ROCm 用户**不必手写命令行与改脚本**：
 
-1. **调参可视化** —— 把 ComfyUI `main.py` 的 110 项启动参数、GPU 代际环境变量模板全部做成图形开关/输入，实时预览最终命令行，一键套用不同显卡架构的预设。
+1. **调参可视化** —— 在整合包中，会根据用户GPU型号进行一系列参数优化（包括python主程序的附加启动参数和启动环境变量），但这也是一家之言，本启动器支持可视化精细调参。
 2. **国内镜像** —— 将 GitHub 访问与 Python (PyPI) 源替换为国内镜像，解决国内下载整合包、专用轮子与依赖慢/失败的问题（采用"三分法"作用域，见下）。
-3. **uv 管理 Python 项目** —— 用 [uv](https://github.com/astral-sh/uv) 创建 venv（Python 钉死 3.12）并统一执行所有 `pip` 操作，替代原整合包的内嵌 Python 方案，更快更稳。
+3. **uv 管理 Python 项目** —— 用 [uv](https://github.com/astral-sh/uv) 创建 venv（Python 钉死 3.12）并统一执行所有 `pip` 操作，替代原整合包的内嵌 Python 方案，更快更稳。由于部分包安装不适合使用`uv add`，所谓未全局使用。
 
 ## 主要特性
 
@@ -87,3 +87,5 @@ dotnet publish -p:UseUnpackaged=false
 - [patientx](https://github.com/patientx) 的 comfyui-rocm 整合包与配套脚本，是本项目的功能蓝本。
 - ComfyUI 上游（`comfy/cli_args.py`）提供启动参数定义。
 - AMD ROCm、uv 与各国内镜像社区。
+- 受到其他启动器的启发：[晓启动器](https://space.bilibili.com/141452636)、[KK启动器](https://space.bilibili.com/397341218)。
+- 主体架构由我和Kimi K3进行评审完成，执行由Qwen 3.8 flash完成。
