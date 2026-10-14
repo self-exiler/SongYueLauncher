@@ -54,10 +54,18 @@ if ($SkipPublish) {
 }
 else {
     if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
-    dotnet publish $project -c Release -o $publishDir --nologo -v minimal
+    # 必须显式 --self-contained：本地开发靠 Properties\PublishProfiles\win-x64.pubxml 带上该设置，
+    # 但 *.pubxml 被 .gitignore 忽略，云端拿不到就会发布成框架依赖版，缺整个 .NET 运行时（坏包）
+    dotnet publish $project -c Release --self-contained true -o $publishDir --nologo -v minimal
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish 失败（退出码 $LASTEXITCODE）" }
     if (-not (Test-Path (Join-Path $publishDir 'ComfyUiRocmLauncher.GUI.exe'))) {
         throw "发布产物缺少 ComfyUiRocmLauncher.GUI.exe"
+    }
+    # 自包含与 XAML 资源索引是两类静默坏包：缺了本机能跑、别人机器打不开
+    foreach ($required in @('coreclr.dll', 'ComfyUiRocmLauncher.GUI.pri')) {
+        if (-not (Test-Path (Join-Path $publishDir $required))) {
+            throw "发布产物缺少 $required，产物不是可用的自包含包"
+        }
     }
 }
 
