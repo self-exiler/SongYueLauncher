@@ -10,11 +10,14 @@ namespace ComfyUiRocmLauncher.GUI.Views;
 public sealed partial class EnvUpdatePage : Page
 {
     private bool _toolsDetected;
+    private bool _mirrorsReady;
     private IReadOnlyList<ToolStatus> _tools = Array.Empty<ToolStatus>();
 
     public EnvUpdatePage()
     {
         InitializeComponent();
+        GithubMirrorBox.ItemsSource = MirrorCatalog.GithubMirrors;
+        PypiMirrorBox.ItemsSource = MirrorCatalog.PypiMirrors;
         Loaded += OnLoaded;
         Unloaded += (_, _) => App.Services.StateChanged -= OnStateChanged;
     }
@@ -25,8 +28,19 @@ public sealed partial class EnvUpdatePage : Page
     {
         App.Services.StateChanged += OnStateChanged;
         RepoUrlBox.Text = Settings.EnvUpdate.RepoUrl;
-        GithubMirrorBox.Text = Settings.EnvUpdate.GithubMirror;
-        PypiMirrorBox.Text = Settings.EnvUpdate.PypiMirror;
+
+        // 清单外的历史自定义镜像地址回落首项（直连 / 官方），并把归一化结果写回配置
+        GithubMirrorBox.SelectedIndex = MirrorCatalog.IndexOf(MirrorCatalog.GithubMirrors, Settings.EnvUpdate.GithubMirror);
+        PypiMirrorBox.SelectedIndex = MirrorCatalog.IndexOf(MirrorCatalog.PypiMirrors, Settings.EnvUpdate.PypiMirror);
+        var gh = SelectedMirrorUrl(GithubMirrorBox);
+        var py = SelectedMirrorUrl(PypiMirrorBox);
+        if (gh != Settings.EnvUpdate.GithubMirror || py != Settings.EnvUpdate.PypiMirror)
+        {
+            Settings.EnvUpdate.GithubMirror = gh;
+            Settings.EnvUpdate.PypiMirror = py;
+            App.Services.Save();
+        }
+        _mirrorsReady = true;
 
         var arch = ToolchainService.DetectArch();
         ArchText.Text = DescribeArch(arch);
@@ -185,9 +199,21 @@ public sealed partial class EnvUpdatePage : Page
         });
     }
 
-    private void GithubMirrorBox_LosingFocus(object sender, RoutedEventArgs e) => SyncMirrors();
+    private void GithubMirrorBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_mirrorsReady) return;
+        Settings.EnvUpdate.GithubMirror = SelectedMirrorUrl(GithubMirrorBox);
+        App.Services.Save();
+    }
 
-    private void PypiMirrorBox_LosingFocus(object sender, RoutedEventArgs e) => SyncMirrors();
+    private void PypiMirrorBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_mirrorsReady) return;
+        Settings.EnvUpdate.PypiMirror = SelectedMirrorUrl(PypiMirrorBox);
+        App.Services.Save();
+    }
+
+    private static string SelectedMirrorUrl(ComboBox box) => (box.SelectedItem as MirrorOption)?.Url ?? string.Empty;
 
     // ---------- 标签二：ComfyUI 项目 ----------
     private void RepoUrlBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -196,16 +222,8 @@ public sealed partial class EnvUpdatePage : Page
         App.Services.Save();
     }
 
-    private void SyncMirrors()
-    {
-        Settings.EnvUpdate.GithubMirror = GithubMirrorBox.Text?.Trim() ?? string.Empty;
-        Settings.EnvUpdate.PypiMirror = PypiMirrorBox.Text?.Trim() ?? string.Empty;
-        App.Services.Save();
-    }
-
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
-        SyncMirrors();
         await RunOpAsync("检查更新", async () =>
         {
             var remote = await RepoService.QueryRemoteHashAsync(App.Services.Tasks, Settings, Append);
@@ -217,26 +235,22 @@ public sealed partial class EnvUpdatePage : Page
 
     private async void Clone_Click(object sender, RoutedEventArgs e)
     {
-        SyncMirrors();
         await RunOpAsync("克隆安装", () => RepoService.CloneAsync(App.Services.Tasks, Settings, Append));
     }
 
     private async void Pull_Click(object sender, RoutedEventArgs e)
     {
-        SyncMirrors();
         await RunOpAsync("拉取更新", () => RepoService.UpdateAsync(App.Services.Tasks, Settings, false, Append));
     }
 
     private async void Force_Click(object sender, RoutedEventArgs e)
     {
-        SyncMirrors();
         await RunOpAsync("强制覆盖更新", () => RepoService.UpdateAsync(App.Services.Tasks, Settings, true, Append));
     }
 
     // ---------- 标签三：Python 轮子 ----------
     private async void CreateVenv_Click(object sender, RoutedEventArgs e)
     {
-        SyncMirrors();
         await RunOpAsync("创建 venv", async () =>
         {
             if (await VenvService.CreateAsync(App.Services.Tasks, Settings, Append))
@@ -251,7 +265,6 @@ public sealed partial class EnvUpdatePage : Page
 
     private async void TorchUpdate_Click(object sender, RoutedEventArgs e)
     {
-        SyncMirrors();
         var arch = ToolchainService.DetectArch();
         await RunOpAsync("torch 更新", async () =>
         {
@@ -270,14 +283,12 @@ public sealed partial class EnvUpdatePage : Page
 
     private async void InstallWheels_Click(object sender, RoutedEventArgs e)
     {
-        SyncMirrors();
         var arch = ToolchainService.DetectArch();
         await RunOpAsync("安装专用轮子", () => WheelService.InstallSpecialWheelsAsync(App.Services.Tasks, Settings, arch, Append));
     }
 
     private async void SyncDeps_Click(object sender, RoutedEventArgs e)
     {
-        SyncMirrors();
         await RunOpAsync("同步项目依赖", async () =>
         {
             var changes = await WheelService.SyncRequirementsAsync(App.Services.Tasks, Settings, Append);
@@ -299,7 +310,6 @@ public sealed partial class EnvUpdatePage : Page
     {
         var spec = PackageInputBox.Text.Trim();
         if (spec.Length == 0) return;
-        SyncMirrors();
         await RunOpAsync("安装包", () => WheelService.InstallGenericAsync(App.Services.Tasks, Settings, spec, Append));
     }
 

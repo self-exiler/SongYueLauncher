@@ -58,6 +58,15 @@ public static class LaunchEnvBuilder
             env[kv.Key] = kv.Value;
         }
 
+        // ComfyUI-Manager 靠 GITHUB_ENDPOINT 改写节点仓库地址，跟随启动器的 GitHub 镜像保持一致；
+        // 放在自定义层之后，保证镜像优先（未配镜像时不注入，保留用户自填值）
+        var githubEndpoint = MirrorPolicy.GithubEndpoint(config.EnvUpdate.GithubMirror);
+        if (githubEndpoint.Length > 0)
+        {
+            if (env.ContainsKey("GITHUB_ENDPOINT")) conflictList.Add("GITHUB_ENDPOINT");
+            env["GITHUB_ENDPOINT"] = githubEndpoint;
+        }
+
         conflicts = conflictList;
         return env;
     }

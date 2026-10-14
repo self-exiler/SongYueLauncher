@@ -56,6 +56,42 @@ public class EnvAndConfigTests : IDisposable
     }
 
     [Fact]
+    public void Build_InjectsGithubEndpointWhenMirrorSet()
+    {
+        var config = new AppConfig { PythonExe = @"D:\venv\Scripts\python.exe" };
+        config.EnvUpdate.GithubMirror = "https://ghproxy.net/";
+
+        var env = LaunchEnvBuilder.Build(config, null, out _);
+
+        Assert.Equal("https://ghproxy.net/https://github.com", env["GITHUB_ENDPOINT"]);
+    }
+
+    [Fact]
+    public void Build_NoMirrorKeepsUserGithubEndpointUntouched()
+    {
+        var config = new AppConfig { PythonExe = @"D:\venv\Scripts\python.exe" };
+        config.CustomEnvVars["GITHUB_ENDPOINT"] = "https://self-hosted.example/https://github.com";
+
+        var env = LaunchEnvBuilder.Build(config, null, out var conflicts);
+
+        Assert.Equal("https://self-hosted.example/https://github.com", env["GITHUB_ENDPOINT"]);
+        Assert.Empty(conflicts);
+    }
+
+    [Fact]
+    public void Build_MirrorOverridesUserGithubEndpointAndReportsConflict()
+    {
+        var config = new AppConfig { PythonExe = @"D:\venv\Scripts\python.exe" };
+        config.CustomEnvVars["GITHUB_ENDPOINT"] = "https://stale.example/https://github.com";
+        config.EnvUpdate.GithubMirror = "https://gh-proxy.com/";
+
+        var env = LaunchEnvBuilder.Build(config, null, out var conflicts);
+
+        Assert.Equal("https://gh-proxy.com/https://github.com", env["GITHUB_ENDPOINT"]);
+        Assert.Contains("GITHUB_ENDPOINT", conflicts);
+    }
+
+    [Fact]
     public void EnsureCacheDirs_CreatesDefaults()
     {
         var dir = Path.Combine(_tempRoot, "comfy");

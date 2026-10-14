@@ -39,19 +39,11 @@
                     <StackPanel Padding="16,12" Spacing="10">
                         <TextBlock Text="镜像（三分法）" Style="{StaticResource CardTitleStyle}" />
                         <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
-                                   Text="GitHub 镜像仅作用于 git clone 与 GitHub release 轮子；PyPI 镜像仅作用于通用包与项目依赖；AMD 官方源永远直连。留空 = 直连/官方。" />
-                        <ComboBox x:Name="GithubMirrorBox" Header="GitHub 加速镜像（前缀，留空直连）" IsEditable="True" Width="520"
-                                  HorizontalAlignment="Left" LosingFocus="GithubMirrorBox_LosingFocus">
-                            <ComboBoxItem Content="" />
-                            <ComboBoxItem Content="https://ghproxy.net/" />
-                            <ComboBoxItem Content="https://gh-proxy.com/" />
-                        </ComboBox>
-                        <ComboBox x:Name="PypiMirrorBox" Header="PyPI 镜像（留空用官方源）" IsEditable="True" Width="520"
-                                  HorizontalAlignment="Left" LosingFocus="PypiMirrorBox_LosingFocus">
-                            <ComboBoxItem Content="" />
-                            <ComboBoxItem Content="https://mirrors.aliyun.com/pypi/simple/" />
-                            <ComboBoxItem Content="https://pypi.tuna.tsinghua.edu.cn/simple/" />
-                        </ComboBox>
+                                   Text="GitHub 镜像仅作用于 git clone 与 GitHub release 轮子，并同步注入 ComfyUI 的 GITHUB_ENDPOINT；PyPI 镜像仅作用于通用包与项目依赖；AMD 官方源永远直连。镜像清单为固定候选，公共镜像可用性会随时间变化，失效时切换另一项或选「直连」。" />
+                        <ComboBox x:Name="GithubMirrorBox" Header="GitHub 加速镜像" Width="520" HorizontalAlignment="Left"
+                                  DisplayMemberPath="Display" SelectionChanged="GithubMirrorBox_SelectionChanged" />
+                        <ComboBox x:Name="PypiMirrorBox" Header="PyPI 镜像" Width="520" HorizontalAlignment="Left"
+                                  DisplayMemberPath="Display" SelectionChanged="PypiMirrorBox_SelectionChanged" />
                     </StackPanel>
                 </Border>
 

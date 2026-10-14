@@ -17,6 +17,13 @@ public static class MirrorPolicy
     public static string PypiIndexArg(string mirror) =>
         string.IsNullOrWhiteSpace(mirror) ? string.Empty : $"--index-url {mirror.Trim()} ";
 
+    /// <summary>
+    /// ComfyUI / ComfyUI-Manager 的 GITHUB_ENDPOINT 取值：镜像前缀拼上 github.com 基址
+    /// （Manager 按 url.replace("https://github.com", GITHUB_ENDPOINT) 生效）。mirror 为空返回空串。
+    /// </summary>
+    public static string GithubEndpoint(string mirror) =>
+        string.IsNullOrWhiteSpace(mirror) ? string.Empty : Github("https://github.com", mirror);
+
     /// <summary>AMD nightly / legacy 源永远直连，恒返回原 URL。</summary>
     public static string AmdDirect(string url) => url;
 }

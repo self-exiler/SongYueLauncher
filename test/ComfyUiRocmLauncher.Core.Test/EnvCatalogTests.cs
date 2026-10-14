@@ -22,6 +22,37 @@ public class EnvCatalogTests
     }
 
     [Fact]
+    public void MirrorPolicy_GithubEndpointUsesManagerReplaceForm()
+    {
+        // ComfyUI-Manager 按 url.replace("https://github.com", GITHUB_ENDPOINT) 生效
+        Assert.Equal("https://ghproxy.net/https://github.com", MirrorPolicy.GithubEndpoint("https://ghproxy.net/"));
+        Assert.Equal("", MirrorPolicy.GithubEndpoint(""));
+    }
+
+    [Fact]
+    public void MirrorCatalog_IndexOfMatchesSavedUrlIgnoringTrailingSpace()
+    {
+        Assert.Equal(0, MirrorCatalog.IndexOf(MirrorCatalog.GithubMirrors, ""));
+        Assert.Equal(1, MirrorCatalog.IndexOf(MirrorCatalog.GithubMirrors, "https://ghproxy.net/"));
+        Assert.Equal(1, MirrorCatalog.IndexOf(MirrorCatalog.PypiMirrors, "https://mirrors.aliyun.com/pypi/simple/"));
+        Assert.Equal(3, MirrorCatalog.IndexOf(MirrorCatalog.PypiMirrors, "https://mirrors.huaweicloud.com/repository/pypi/simple/"));
+    }
+
+    [Fact]
+    public void MirrorCatalog_UnknownLegacyValueFallsBackToFirstOption()
+    {
+        Assert.Equal(0, MirrorCatalog.IndexOf(MirrorCatalog.GithubMirrors, "https://my-old-custom-proxy.example/"));
+        Assert.Equal(0, MirrorCatalog.IndexOf(MirrorCatalog.PypiMirrors, "garbage"));
+    }
+
+    [Fact]
+    public void MirrorCatalog_FirstOptionIsAlwaysDirect()
+    {
+        Assert.Equal("", MirrorCatalog.GithubMirrors[0].Url);
+        Assert.Equal("", MirrorCatalog.PypiMirrors[0].Url);
+    }
+
+    [Fact]
     public void MirrorPolicy_AmdAlwaysDirect()
     {
         var amd = "https://nightly.repo.amd.com/rocm/whl-next/";
