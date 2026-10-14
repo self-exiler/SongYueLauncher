@@ -123,8 +123,9 @@ ComfyUiRocmLauncher.sln（根目录，经典 sln 格式）
 
 **开发期启动方式（v1.1 补充）**
 
-- GUI 项目默认按**免打包（unpackaged）**方式启动：`UseUnpackaged=true` 时自动设置 `WindowsPackageType=None`、`EnableMsixTooling=false`、`EnableWinAppRunSupport=false`、`WindowsAppSDKSelfContained=true`，运行时随程序输出，**无需开启系统"开发人员模式"**。开发命令：`dotnet run --project src/ComfyUiRocmLauncher.GUI/ComfyUiRocmLauncher.GUI.csproj -p:Platform=x64`。
-- 发布 MSIX 时切回打包模式：`dotnet publish -p:UseUnpackaged=false`（此模式下的调试部署仍要求系统开启开发人员模式）。
+- GUI 项目默认按**免打包（unpackaged）**方式启动：`UseUnpackaged=true` 时自动设置 `WindowsPackageType=None`、`EnableMsixTooling=false`、`EnableWinAppRunSupport=false`、`WindowsAppSDKSelfContained=true`，运行时随程序输出，**无需开启系统"开发人员模式"**。开发命令：`dotnet run --project src/ComfyUiRocmLauncher.GUI/ComfyUiRocmLauncher.GUI.csproj`（工程只保留 x64 平台）。
+- **发行形态为 MSI**（WiX v4，`installer/build.ps1` + `installer/Product.wxs`）：免打包自包含发布产物整目录收割，产出 `SongYueLauncher-windows-x64-<版本>.msi`。不采用 MSIX —— 未签名 MSIX 需要目标机开启开发人员模式或预装证书，MSI 双击即可装。打包模式（`-p:UseUnpackaged=false`）仍可用，仅作本地调试部署之用。
+- 免打包发布需显式把 XAML 资源索引 `$(AssemblyName).pri` 补进 publish 清单（工程内 `IncludeUnpackagedPriInPublish` 目标），缺它应用启动即静默退出。
 - 两条路径共用同一份 `Package.appxmanifest`、`app.manifest` 与代码，切换只影响启动/部署方式。
 
 ---

@@ -53,11 +53,11 @@
 
 ## 构建与运行
 
-开发期（免打包，无需系统开发人员模式）：
+开发期（免打包，无需系统开发人员模式；工程只保留 x64 平台）：
 
 ```bash
 dotnet build ComfyUiRocmLauncher.sln -c Debug
-dotnet run --project src/ComfyUiRocmLauncher.GUI/ComfyUiRocmLauncher.GUI.csproj -p:Platform=x64
+dotnet run --project src/ComfyUiRocmLauncher.GUI/ComfyUiRocmLauncher.GUI.csproj
 ```
 
 单元测试：
@@ -66,11 +66,28 @@ dotnet run --project src/ComfyUiRocmLauncher.GUI/ComfyUiRocmLauncher.GUI.csproj 
 dotnet test test/ComfyUiRocmLauncher.Core.Test/ComfyUiRocmLauncher.Core.Test.csproj -c Debug
 ```
 
-发布 MSIX：
+打安装包（MSI，唯一构建入口，本地与云端共用）：
+
+```powershell
+.\installer\build.ps1 -Version 0.1.0beta
+# → installer\output\SongYueLauncher-windows-x64-0.1.0beta.msi
+```
+
+依赖 [WiX Toolset v4](https://wixtoolset.org/) 命令行：`dotnet tool install --global wix --version 4.0.5`。
+文件名版本可带非数字后缀，MSI 的 ProductVersion 只取数字段（Windows Installer 限制）。
+
+## 发布流程
+
+推送 `v*` 标签即触发 GitHub Actions 云端编译并自动创建 Release 附上 MSI；
+手动运行 `Release` 工作流（填版本号）只出包、不建 Release，用于验证管线。
 
 ```bash
-dotnet publish -p:UseUnpackaged=false
+git push origin main
+git tag v0.1.0beta
+git push origin v0.1.0beta
 ```
+
+MSI 未做代码签名，安装前需自行信任（或右键「以管理员身份运行」）；如需企业分发应替换为签名环节。
 
 ## 配置文件与日志
 
