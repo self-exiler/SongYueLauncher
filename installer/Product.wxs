@@ -1,0 +1,61 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!--
+    松月启动器 MSI 打包源（WiX v4）。
+    应用文件清单不在这里手写：WiX v4 无内置目录收割（Files 元素是 v5 才有的），
+    由 installer/build.ps1 扫描发布目录生成 harvest.wxs 一起编译。
+
+    变量由 build.ps1 通过 wix build -d 注入：
+      PublishDir      发布产物目录（自包含，含 Windows App SDK 运行时）
+      ProductVersion  Windows Installer 版本号，只允许数字段（0.1.0）
+      Manufacturer    发布者
+      UpgradeCode     固定 GUID，升级识别用，切勿改动
+      IconPath        应用图标 .ico
+  -->
+  <Package Name="松月启动器 (A ComfyUI Launcher for ROCm)"
+           Manufacturer="$(var.Manufacturer)"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="$(var.UpgradeCode)"
+           InstallerVersion="500"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="已安装更新版本的松月启动器，本次安装中止。" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="AppIcon.ico" SourceFile="$(var.IconPath)" />
+    <WixVariable Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="SongYueLauncher" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppMenuFolder" Name="SongYueLauncher" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <ComponentGroup Id="ApplicationShortcuts" Directory="AppMenuFolder">
+      <Component Guid="*">
+        <!-- 卸载时清掉开始菜单目录，否则 ICE64 报「用户配置目录未登记 RemoveFile」 -->
+        <RemoveFolder Id="RemoveAppMenuFolder" Directory="AppMenuFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\$(var.Manufacturer)\SongYueLauncher"
+                       Name="Shortcut" Type="integer" Value="1" KeyPath="yes" />
+        <Shortcut Id="StartMenuShortcut" Name="松月启动器"
+                  Target="[INSTALLFOLDER]ComfyUiRocmLauncher.GUI.exe"
+                  WorkingDirectory="INSTALLFOLDER" Icon="AppIcon.ico" />
+      </Component>
+      <Component Directory="DesktopFolder" Guid="*">
+        <RegistryValue Root="HKCU" Key="Software\$(var.Manufacturer)\SongYueLauncher"
+                       Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+        <Shortcut Id="DesktopShortcut" Name="松月启动器"
+                  Target="[INSTALLFOLDER]ComfyUiRocmLauncher.GUI.exe"
+                  WorkingDirectory="INSTALLFOLDER" Icon="AppIcon.ico" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="SongYueLauncherFeature" Title="松月启动器" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentGroupRef Id="ApplicationShortcuts" />
+    </Feature>
+  </Package>
+</Wix>

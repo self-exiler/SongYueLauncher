@@ -1,0 +1,63 @@
+# 松月启动器发布管线：推 v* 标签 → 云端编译 MSI → 自动建 Release 附产物
+# 手动 workflow_dispatch → 仅编译 + 上传 Actions 产物，不建 Release（用于验证管线/临时出包）
+# 构建唯一入口是 installer/build.ps1，本地与云端同源，不在工作流里复述构建步骤。
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '产物版本号（如 0.1.0beta，不带 v 前缀）'
+        required: true
+        default: '0.1.0beta'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 编译松月启动器 MSI
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 安装 WiX v4 命令行
+        shell: pwsh
+        run: dotnet tool install --global wix --version 4.0.5
+
+      - name: 确定版本号（tag 优先去 v 前缀，手动触发用输入值）
+        id: ver
+        shell: pwsh
+        run: |
+          $v = '${{ inputs.version }}'
+          if (-not $v) { $v = ($env:GITHUB_REF_NAME -replace '^v', '') }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Output "版本号：$v"
+
+      - name: 构建 MSI
+        shell: pwsh
+        run: ./installer/build.ps1 -Version '${{ steps.ver.outputs.version }}'
+
+      - name: 上传构建产物（Actions 页面可下载）
+        uses: actions/upload-artifact@v4
+        with:
+          name: SongYueLauncher-windows-x64-${{ steps.ver.outputs.version }}
+          path: installer/output/*.msi
+          if-no-files-found: error
+
+      - name: 创建 GitHub Release 并附安装包
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer/output/*.msi
+          generate_release_notes: true
+          fail_on_unmatched_files: true

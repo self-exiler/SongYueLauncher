@@ -7,8 +7,9 @@
     <AssemblyName>ComfyUiRocmLauncher.GUI</AssemblyName>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Platforms>x86;x64;ARM64</Platforms>
-    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
+    <Platforms>x64</Platforms>
+    <Platform>x64</Platform>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <!-- 固定输出目录：默认行为会把 Platform 塞进路径（bin\x64\…），与不带 Platform 的构建分叉成两份输出；
          TFM 与 RID 子目录仍由 SDK 追加 -->
     <OutputPath>bin\$(Configuration)\</OutputPath>
@@ -90,4 +91,15 @@
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
   </PropertyGroup>
+
+  <!-- 免打包模式下 XAML 资源索引 .pri 不会进 publish 清单（打包模式由 MSIX 工具链带上），
+       缺它应用启动即静默退出，故显式补入 -->
+  <Target Name="IncludeUnpackagedPriInPublish" AfterTargets="ComputeFilesToPublish"
+          Condition="'$(UseUnpackaged)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(OutDir)$(AssemblyName).pri"
+                             RelativePath="$(AssemblyName).pri"
+                             Condition="Exists('$(OutDir)$(AssemblyName).pri')" />
+    </ItemGroup>
+  </Target>
 </Project>

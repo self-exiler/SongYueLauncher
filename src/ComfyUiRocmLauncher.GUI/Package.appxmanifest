@@ -16,7 +16,7 @@
   <mp:PhoneIdentity PhoneProductId="FA3D92BE-B4C4-48AE-99C4-4C60E8C39560" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>ComfyUiRocmLauncher.GUI</DisplayName>
+    <DisplayName>松月启动器</DisplayName>
     <PublisherDisplayName>AppPublisher</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -35,8 +35,8 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="ComfyUiRocmLauncher.GUI"
-        Description="ComfyUiRocmLauncher.GUI"
+        DisplayName="松月启动器"
+        Description="松月启动器 —— A ComfyUI Launcher for ROCm"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

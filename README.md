@@ -1,6 +1,6 @@
-# ComfyUI ROCm Launcher
+# 松月启动器 · SongYue Launcher
 
-为 **AMD ROCm** 平台用户打造的 ComfyUI 图形化启动器（Windows / WinUI 3）。把原本散落在批处理脚本里的启动、调参、环境变量、日志查看，以及环境安装与组件更新，集中成一个可视化桌面应用。
+*A ComfyUI Launcher for ROCm* —— 为 **AMD ROCm** 平台用户打造的 ComfyUI 图形化启动器（Windows / WinUI 3）。把原本散落在批处理脚本里的启动、调参、环境变量、日志查看，以及环境安装与组件更新，集中成一个可视化桌面应用。
 
 ## 背景
 
