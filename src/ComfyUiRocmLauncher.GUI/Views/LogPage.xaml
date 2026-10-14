@@ -27,6 +27,7 @@
                 <ToggleSwitch x:Name="AutoScrollToggle" IsOn="True" OnContent="" OffContent="" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="AiAnalyzeButton" Content="AI智能分析" Click="AiAnalyze_Click" />
                 <Button Content="清空" Click="Clear_Click" />
                 <Button Content="复制全部" Click="CopyAll_Click" />
                 <Button Content="打开日志目录" Click="OpenLogDir_Click" />

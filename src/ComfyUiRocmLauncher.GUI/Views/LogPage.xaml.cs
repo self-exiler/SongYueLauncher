@@ -114,4 +114,81 @@ public sealed partial class LogPage : Page
             }.ShowAsync();
         }
     }
+
+    /// <summary>AI 智能分析（FR-5.6）：未装 opencode 提醒并退出；否则弹出预览 + 模型下拉 + 发送。</summary>
+    private async void AiAnalyze_Click(object sender, RoutedEventArgs e)
+    {
+        var exe = OpenCodeClient.Locate();
+        if (exe is null)
+        {
+            var notInstalled = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "未检测到 opencode",
+                Content = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    Text = "AI 智能分析依赖本机已安装的 opencode CLI，当前未在 PATH 与常见安装位置找到它。\n\n"
+                        + "安装方式（任选其一）：\n"
+                        + "• npm install -g @opencode/cli\n"
+                        + "• curl -fsSL https://opencode.ai/install | bash\n\n"
+                        + "安装完成后重新打开本页面即可使用。",
+                },
+                PrimaryButtonText = "复制安装命令",
+                CloseButtonText = "知道了",
+            };
+            notInstalled.PrimaryButtonClick += (_, args) =>
+            {
+                args.Cancel = true;
+                var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                package.SetText("npm install -g @opencode/cli");
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+                notInstalled.PrimaryButtonText = "已复制";
+            };
+            await notInstalled.ShowAsync();
+            return;
+        }
+
+        var panel = new AiAnalysisDialog();
+        void Seed()
+        {
+            var p = CaptureErrors();
+            panel.SeedErrorPreview(p.Text, p.TotalLines, p.ErrorLineCount, p.Truncated);
+        }
+        panel.RecaptureRequested += (_, _) => Seed();
+        Seed();
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = $"AI 智能分析 · {exe}",
+            Content = panel,
+            PrimaryButtonText = panel.SendLabel,
+            SecondaryButtonText = "复制回答",
+            CloseButtonText = "关闭",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        panel.SendRequested += (_, _) => dialog.PrimaryButtonText = panel.SendLabel;
+
+        // Primary 按钮不自动关闭对话框：分析进行中允许取消，结束后由用户自行关闭
+        dialog.PrimaryButtonClick += (s, args) =>
+        {
+            args.Cancel = true;
+            _ = panel.HandleSendAsync();
+        };
+
+        dialog.SecondaryButtonClick += (s, args) =>
+        {
+            args.Cancel = !panel.TryCopyAnswer();
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private (string Text, int TotalLines, int ErrorLineCount, bool Truncated) CaptureErrors()
+    {
+        var extraction = ErrorLogExtractor.Extract(App.Services.Log.Snapshot());
+        return (extraction.ToPreviewText(), extraction.TotalLines, extraction.ErrorLineCount, extraction.Truncated);
+    }
 }

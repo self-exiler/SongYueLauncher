@@ -224,6 +224,16 @@ spawn: <python.exe> main.py <ArgsBuilder输出>
 **FR-5.4 磁盘保护**：仅保留最近 30 份；且总大小超过 200 MB 时从最旧开始删除直至达标。
 **FR-5.5** 按钮：清空、复制全部、打开日志目录、自动滚动开关。
 
+**FR-5.6 AI 智能分析入口**：工具条新增「AI智能分析」按钮。点击后先定位本机 opencode CLI（PATH + npm 全局 node_modules + 已知安装路径，见 ToolLocator.FindOpenCode）；未找到时弹出提示对话框说明未安装并退出（附安装命令），不进入分析流程。
+
+**FR-5.7 错误日志抓取**：从内存环形缓冲（而非磁盘文件）提取 error 级日志与 Python 解释器自身报错——命中关键字的行（ERROR / Error: / CRITICAL / 常见 Python 异常类名 / Fatal Python error / Segmentation fault 等）与 Traceback 块整体（含缩进栈帧行与异常末行）归并为块；正常心跳输出（如 "To see the GUI go to:"）即便含关键字也排除；ANSI 码剥离；超出字节预算（默认 12 KB）按块截断并标注。结果填入对话框预览框，可编辑、可「重新抓取」。
+
+**FR-5.8 模型下拉**：对话框打开即经 `opencode api model.list` 列举 opencode 当前内嵌模型（过滤 enabled=false），显示「名称 (provider/id)」，值为 `provider/model` 形式供 `--model` 使用；提供「刷新模型」；读取失败或无模型时给出 auth login 引导。
+
+**FR-5.9 发送与回答**：点击「发送给 opencode 分析」→ 组装提问（角色设定 + 整合包/Python 路径上下文 + 错误日志 + 结构化回答要求），经 `opencode run --format json --model <provider/id> --file <临时prompt文件> "<截断正文>"` 执行（argv 长度受限，长正文走附件文件）；解析 NDJSON 事件流拼接 text 回答，error 事件作为失败原因展示；限时 5 分钟，按钮期间变为「取消分析」（杀子进程树）；回答区默认以 CommunityToolkit Labs `MarkdownTextBlock` 在对话框内直接渲染 Markdown（标题/列表/代码块），并提供「原文」切换回等宽纯文本（可选中文本）与「复制回答」；临时文件用后即删。本功能为只读咨询，不授权 opencode 修改任何文件。
+
+> 实现注记：Labs 版 `MarkdownTextBlock` 不暴露 `TextWrapping` 属性；在 XAML 中对其设置该属性会触发 WinUI 1.8 XamlCompiler 静默崩溃（exit 1、无诊断输出），故禁止设置，换行依赖控件内部默认行为。
+
 ### 4.6 配置管理页（ConfigPage）
 
 集中原分散在启动参数页与环境变量页的 GPU 架构模板能力（导航第三项）。
@@ -353,6 +363,7 @@ spawn: <python.exe> main.py <ArgsBuilder输出>
 | GitHub（用户指定仓库 / release 轮子） | clone、ls-remote、专用轮子下载                                  | 适用 GitHub 镜像前缀；失败提示检查镜像或直连                           |
 | PyPI（含镜像）                        | 通用包 / 项目依赖 / 构建工具链                                  | 适用所选 PyPI 镜像                                                     |
 | AMD 官方 index                        | torch 系 nightly / legacy 轮子                                  | **永远直连**（三分法硬规则），无镜像                             |
+| `opencode`（CLI）                   | 日志页 AI 智能分析：模型列举 + 错误日志咨询（FR-5.6~5.9）       | PATH + npm 全局 node_modules + 已知安装路径发现；未装时提示并退出，不影响其它功能 |
 
 ---
 

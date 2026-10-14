@@ -86,6 +86,62 @@ public sealed class ProcessService
         _process = null;
     }
 
+    /// <summary>
+    /// 查找由该 venv 拉起的 Python 进程（含 ComfyUI 派生的子进程）：
+    /// 进程可执行文件位于 venv 根目录内且名为 python/python3/pythonw（.exe 可能带版本号）。
+    /// </summary>
+    public static Process[] FindPythonProcesses(string venvRoot)
+    {
+        var normalized = Path.GetFullPath(venvRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        return Process.GetProcesses().Where(p =>
+        {
+            try
+            {
+                var name = p.ProcessName;
+                if (name.Length is < 6 or > 10) return false; // python ~ python3.13
+                if (!name.StartsWith("python", StringComparison.OrdinalIgnoreCase)) return false;
+                return Path.GetFullPath(p.MainModule!.FileName!)
+                    .StartsWith(normalized, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                // 无权限或已退出：视为无关进程
+                return false;
+            }
+            finally
+            {
+                p.Dispose();
+            }
+        }).ToArray();
+    }
+
+    /// <summary>强杀指定 Python 进程（含进程树），等待最多 3 秒。</summary>
+    public static async Task KillProcessesAsync(IEnumerable<Process> processes)
+    {
+        var exited = new List<Task>();
+        foreach (var p in processes)
+        {
+            try
+            {
+                p.Kill(entireProcessTree: true);
+                exited.Add(p.WaitForExitAsync());
+            }
+            catch (InvalidOperationException) { }
+            catch (NotSupportedException) { }
+            catch (System.ComponentModel.Win32Exception) { }
+            finally
+            {
+                p.Dispose();
+            }
+        }
+
+        if (exited.Count == 0) return;
+        await Task.WhenAny(Task.WhenAll(exited), Task.Delay(3000)).ConfigureAwait(false);
+    }
+
     /// <summary>一次性命令执行（环境管理任务用），取消即终止当前子进程。</summary>
     public static async Task<int> RunCommandAsync(
         string fileName,
