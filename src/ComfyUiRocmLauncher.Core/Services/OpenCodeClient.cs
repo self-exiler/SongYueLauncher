@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
@@ -32,7 +31,7 @@ public sealed class OpenCodeClient
     public async Task<IReadOnlyList<OpenCodeModel>> ListModelsAsync(CancellationToken cancellationToken = default)
     {
         var exe = Locate() ?? throw new InvalidOperationException("未检测到 opencode。");
-        var (code, stdout, stderr) = await RunCapturedAsync(
+        var (code, stdout, stderr) = await ProcessService.RunCapturedAsync(
             exe, "api model.list", Environment.CurrentDirectory, ModelsTimeoutMs, null, cancellationToken)
             .ConfigureAwait(false);
 
@@ -97,7 +96,7 @@ public sealed class OpenCodeClient
                 .Append(" --file ").Append(CommandLine.Quote(tempFile))
                 .Append(' ').Append(CommandLine.Quote(inline));
 
-            var (code, stdout, stderr) = await RunCapturedAsync(
+            var (code, stdout, stderr) = await ProcessService.RunCapturedAsync(
                 exe, args.ToString(), Environment.CurrentDirectory, AskTimeoutMs, onOutputLine, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -161,89 +160,6 @@ public sealed class OpenCodeClient
         if (text.Length > 0) return new OpenCodeAnswer(true, text.ToString());
         if (error is not null) return new OpenCodeAnswer(false, error);
         return new OpenCodeAnswer(false, "opencode 没有返回可解析的回答内容。");
-    }
-
-    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunCapturedAsync(
-        string fileName,
-        string arguments,
-        string workingDirectory,
-        int timeoutMs,
-        Action<string>? onOutputLine = null,
-        CancellationToken cancellationToken = default)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-
-        using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
-        var outDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var errDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        process.OutputDataReceived += (_, e) =>
-        {
-            if (e.Data is null) { outDone.TrySetResult(); return; }
-            stdout.AppendLine(e.Data);
-            onOutputLine?.Invoke(e.Data);
-        };
-        process.ErrorDataReceived += (_, e) =>
-        {
-            if (e.Data is null) { errDone.TrySetResult(); return; }
-            stderr.AppendLine(e.Data);
-            onOutputLine?.Invoke(e.Data);
-        };
-
-        if (!process.Start()) throw new InvalidOperationException($"无法启动进程：{fileName}");
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        using var timeoutCts = new CancellationTokenSource(timeoutMs);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-        var killed = false;
-        using var registration = linked.Token.Register(() =>
-        {
-            killed = true;
-            try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { }
-        });
-
-        try
-        {
-            await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            var why = cancellationToken.IsCancellationRequested ? "已取消" : "超时";
-            return (process.HasExited ? SafeExitCode(process) : -1,
-                stdout.ToString(),
-                $"{stderr}操作{why}（限时 {timeoutMs / 1000}s）。");
-        }
-        finally
-        {
-            // 等待尾部输出冲刷完毕
-            try { process.WaitForExit(); } catch (InvalidOperationException) { }
-        }
-
-        await Task.WhenAll(outDone.Task, errDone.Task).ConfigureAwait(false);
-        if (killed) return (SafeExitCode(process), stdout.ToString(), stderr.ToString());
-        return (process.ExitCode, stdout.ToString(), stderr.ToString());
-    }
-
-    private static int SafeExitCode(Process p)
-    {
-        try { return p.HasExited ? p.ExitCode : -1; }
-        catch { return -1; }
     }
 
     private static string Truncate(string text, int maxChars)

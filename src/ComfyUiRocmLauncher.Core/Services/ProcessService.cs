@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace ComfyUiRocmLauncher.Core.Services;
 
@@ -185,6 +186,85 @@ public sealed class ProcessService
         {
             registration.Dispose();
         }
+    }
+
+    /// <summary>
+    /// 一次性命令执行并捕获完整 stdout / stderr（需要超时与分离输出的场景，如 opencode CLI）。
+    /// 与 <see cref="RunCommandAsync"/> 共用 CreateStartInfo，因此同样重定向 stdin，
+    /// 不会让 Python 子进程在 DuplicateHandle 时抛 WinError 6。
+    /// 返回 <c>ExitCode = -1</c> 表示进程未能正常退出（超时或已取消）。
+    /// </summary>
+    public static async Task<(int ExitCode, string StdOut, string StdErr)> RunCapturedAsync(
+        string fileName,
+        string arguments,
+        string workingDirectory,
+        int timeoutMs,
+        Action<string>? onOutputLine = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var process = new Process
+        {
+            StartInfo = CreateStartInfo(fileName, arguments, workingDirectory),
+            EnableRaisingEvents = true,
+        };
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        var outDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var errDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is null) { outDone.TrySetResult(); return; }
+            stdout.AppendLine(e.Data);
+            onOutputLine?.Invoke(e.Data);
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null) { errDone.TrySetResult(); return; }
+            stderr.AppendLine(e.Data);
+            onOutputLine?.Invoke(e.Data);
+        };
+
+        if (!process.Start()) throw new InvalidOperationException($"无法启动进程：{fileName}");
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        using var timeoutCts = new CancellationTokenSource(timeoutMs);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        var killed = false;
+        using var registration = linked.Token.Register(() =>
+        {
+            killed = true;
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+        });
+
+        try
+        {
+            await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            var why = cancellationToken.IsCancellationRequested ? "已取消" : "超时";
+            return (SafeExitCode(process), stdout.ToString(), $"{stderr}操作{why}（限时 {timeoutMs / 1000}s）。");
+        }
+        finally
+        {
+            // 等待尾部输出冲刷完毕
+            try { process.WaitForExit(); }
+            catch (InvalidOperationException) { }
+        }
+
+        await Task.WhenAll(outDone.Task, errDone.Task).ConfigureAwait(false);
+        if (killed) return (SafeExitCode(process), stdout.ToString(), stderr.ToString());
+        return (process.ExitCode, stdout.ToString(), stderr.ToString());
+    }
+
+    private static int SafeExitCode(Process process)
+    {
+        try { return process.HasExited ? process.ExitCode : -1; }
+        catch { return -1; }
     }
 
     private static ProcessStartInfo CreateStartInfo(string fileName, string arguments, string workingDirectory) =>
