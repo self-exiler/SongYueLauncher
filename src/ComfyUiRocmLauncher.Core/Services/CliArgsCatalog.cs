@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using ComfyUiRocmLauncher.Core.Models;
 
 namespace ComfyUiRocmLauncher.Core.Services;
@@ -11,15 +9,8 @@ public sealed class CliArgsCatalog
 {
     private const string ResourceSuffix = "Resources.cli-args.json";
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-        Converters = { new JsonStringEnumConverter(), new FlexibleStringConverter() },
-    };
-
-    private static CliArgsCatalog? _instance;
+    private static readonly Lazy<CliArgsCatalog> LazyInstance = new(() => new CliArgsCatalog(
+        EmbeddedJson.Load<CliArgsFile>(typeof(CliArgsCatalog).Assembly, ResourceSuffix, "cli-args.json")));
 
     private CliArgsCatalog(CliArgsFile file)
     {
@@ -33,18 +24,8 @@ public sealed class CliArgsCatalog
 
     public int Count => All.Count;
 
-    public static CliArgsCatalog Instance => _instance ??= Load();
-
-    private static CliArgsCatalog Load()
-    {
-        var asm = typeof(CliArgsCatalog).Assembly;
-        var name = asm.GetManifestResourceNames().First(n => n.EndsWith(ResourceSuffix, StringComparison.Ordinal));
-        using var stream = asm.GetManifestResourceStream(name)
-            ?? throw new InvalidOperationException($"未找到内嵌资源 {ResourceSuffix}");
-        var file = JsonSerializer.Deserialize<CliArgsFile>(stream, JsonOptions)
-            ?? throw new InvalidOperationException("cli-args.json 反序列化失败");
-        return new CliArgsCatalog(file);
-    }
+    /// <summary>进程内单例（Lazy 默认线程安全）。</summary>
+    public static CliArgsCatalog Instance => LazyInstance.Value;
 
     /// <summary>同一互斥组内除 name 之外的全部参数。</summary>
     public IEnumerable<CliArgDefinition> MutexPeers(string name)

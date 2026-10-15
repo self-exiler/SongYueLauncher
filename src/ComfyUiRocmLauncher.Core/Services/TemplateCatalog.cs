@@ -1,4 +1,3 @@
-using System.Text.Json;
 using ComfyUiRocmLauncher.Core.Models;
 
 namespace ComfyUiRocmLauncher.Core.Services;
@@ -10,14 +9,8 @@ public sealed class TemplateCatalog
 {
     private const string ResourceSuffix = "Resources.gpu-templates.json";
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-    };
-
-    private static TemplateCatalog? _instance;
+    private static readonly Lazy<TemplateCatalog> LazyInstance = new(() => new TemplateCatalog(
+        EmbeddedJson.Load<GpuTemplateFile>(typeof(TemplateCatalog).Assembly, ResourceSuffix, "gpu-templates.json")));
 
     private TemplateCatalog(GpuTemplateFile file)
     {
@@ -32,18 +25,8 @@ public sealed class TemplateCatalog
 
     private IReadOnlyDictionary<string, string> CommonEnvVars { get; }
 
-    public static TemplateCatalog Instance => _instance ??= Load();
-
-    private static TemplateCatalog Load()
-    {
-        var asm = typeof(TemplateCatalog).Assembly;
-        var name = asm.GetManifestResourceNames().First(n => n.EndsWith(ResourceSuffix, StringComparison.Ordinal));
-        using var stream = asm.GetManifestResourceStream(name)
-            ?? throw new InvalidOperationException($"未找到内嵌资源 {ResourceSuffix}");
-        var file = JsonSerializer.Deserialize<GpuTemplateFile>(stream, JsonOptions)
-            ?? throw new InvalidOperationException("gpu-templates.json 反序列化失败");
-        return new TemplateCatalog(file);
-    }
+    /// <summary>进程内单例（Lazy 默认线程安全）。</summary>
+    public static TemplateCatalog Instance => LazyInstance.Value;
 
     private GpuTemplate? Get(string id) =>
         Templates.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
