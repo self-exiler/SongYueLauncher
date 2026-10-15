@@ -1,3 +1,5 @@
+using ComfyUiRocmLauncher.Core.Models;
+
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
@@ -6,6 +8,19 @@ namespace ComfyUiRocmLauncher.Core.Services;
 /// </summary>
 public static class ToolLocator
 {
+    /// <summary>
+    /// 解析 uv.exe 供命令执行使用：自动发现优先，其次配置里的显式路径，都找不到则抛错。
+    /// 取代各处散落的 `FindUv() ?? config.UvExe ?? "uv"`——裸 "uv" 回退会静默调到 PATH 上任意版本。
+    /// </summary>
+    public static string ResolveUv(AppConfig config) =>
+        FindUv() ?? config.UvExe
+        ?? throw new InvalidOperationException("未找到 uv.exe：请先在「环境与更新 → 工具链」安装 uv，或在配置中指定路径。");
+
+    /// <summary>解析 git.exe 供命令执行使用：自动发现优先，其次配置里的显式路径，都找不到则抛错。</summary>
+    public static string ResolveGit(AppConfig config) =>
+        FindGit() ?? config.GitExe
+        ?? throw new InvalidOperationException("未找到 git.exe：请先在「环境与更新 → 工具链」安装 Git，或在配置中指定路径。");
+
     private static string? FindInPath(string exeName)
     {
         var pathVar = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;

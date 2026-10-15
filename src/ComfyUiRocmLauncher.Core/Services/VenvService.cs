@@ -16,12 +16,7 @@ public static class VenvService
 
     public static async Task<bool> CreateAsync(TaskRunner runner, AppConfig config, Action<string>? onOutput = null)
     {
-        var uv = ToolLocator.FindUv() ?? config.UvExe;
-        if (uv is null)
-        {
-            onOutput?.Invoke("[错误] 未找到 uv.exe，请先在工具链页安装 uv");
-            return false;
-        }
+        var uv = ToolLocator.ResolveUv(config);
         if (string.IsNullOrWhiteSpace(config.ComfyUiDir))
         {
             onOutput?.Invoke("[错误] 未设置 ComfyUI 目录（主页）");

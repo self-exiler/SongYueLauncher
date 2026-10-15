@@ -86,7 +86,7 @@ public sealed class LaunchService
         foreach (var dir in created) Log.Append($"[启动器] 已创建缓存目录：{dir}");
 
         var tokens = ArgsBuilder.Build(config.Args, _catalog, config.ExtraArgs);
-        var arguments = "main.py " + string.Join(' ', tokens.Select(ArgsBuilder.Quote));
+        var arguments = "main.py " + CommandLine.Join(tokens);
         var logFile = Log.StartSession();
         // FR-5.4 磁盘保护：每次开新会话前清理超限的旧日志
         Log.ApplyRetention(config.LogRetainCount, config.LogRetainTotalMB);

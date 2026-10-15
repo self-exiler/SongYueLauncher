@@ -136,6 +136,4 @@ public static class ArgsBuilder
         return $"{scheme}://{host}:{port}";
     }
 
-    /// <summary>含空格的 token 加双引号，供命令行拼接与预览共用。</summary>
-    public static string Quote(string s) => s.Contains(' ') ? $"\"{s}\"" : s;
 }

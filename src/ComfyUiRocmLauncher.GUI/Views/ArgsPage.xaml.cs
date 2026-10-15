@@ -355,20 +355,20 @@ public sealed partial class ArgsPage : Page
         var warn = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCautionBrush"];
 
         PreviewText.Inlines.Clear();
-        PreviewText.Inlines.Add(new Run { Text = ArgsBuilder.Quote(Settings.PythonExe), Foreground = accent });
+        PreviewText.Inlines.Add(new Run { Text = CommandLine.Quote(Settings.PythonExe), Foreground = accent });
         PreviewText.Inlines.Add(new Run { Text = " main.py" });
 
         foreach (var token in ArgsBuilder.Build(Settings.Args, _catalog))
         {
             PreviewText.Inlines.Add(new Run
             {
-                Text = " " + ArgsBuilder.Quote(token),
+                Text = " " + CommandLine.Quote(token),
                 Foreground = token.StartsWith("--", StringComparison.Ordinal) ? accent : null,
             });
         }
         foreach (var token in ArgsBuilder.SplitExtra(Settings.ExtraArgs))
         {
-            PreviewText.Inlines.Add(new Run { Text = " " + ArgsBuilder.Quote(token), Foreground = warn });
+            PreviewText.Inlines.Add(new Run { Text = " " + CommandLine.Quote(token), Foreground = warn });
         }
     }
 

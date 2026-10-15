@@ -29,9 +29,9 @@ public static class RepoService
     /// <summary>git ls-remote 取远端 HEAD hash（走镜像）。</summary>
     public static async Task<string> QueryRemoteHashAsync(TaskRunner runner, AppConfig config, Action<string>? onOutput = null)
     {
-        var git = ToolLocator.FindGit() ?? config.GitExe;
+        var git = ToolLocator.ResolveGit(config);
         var repo = config.EnvUpdate.RepoUrl;
-        if (git is null || string.IsNullOrWhiteSpace(repo)) return string.Empty;
+        if (string.IsNullOrWhiteSpace(repo)) return string.Empty;
 
         var lines = new List<string>();
         await runner.Run(git, $"ls-remote {MirrorPolicy.Github(repo, config.EnvUpdate.GithubMirror)} HEAD",
@@ -44,9 +44,9 @@ public static class RepoService
     /// <summary>未安装：shallow clone 到 ComfyUI 目录。</summary>
     public static async Task<bool> CloneAsync(TaskRunner runner, AppConfig config, Action<string>? onOutput = null)
     {
-        var git = ToolLocator.FindGit() ?? config.GitExe;
+        var git = ToolLocator.ResolveGit(config);
         var repo = config.EnvUpdate.RepoUrl;
-        if (git is null || string.IsNullOrWhiteSpace(repo) || string.IsNullOrWhiteSpace(config.ComfyUiDir))
+        if (string.IsNullOrWhiteSpace(repo) || string.IsNullOrWhiteSpace(config.ComfyUiDir))
         {
             onOutput?.Invoke("[错误] 需先设置仓库地址与安装目录");
             return false;
@@ -69,8 +69,8 @@ public static class RepoService
     /// <summary>已安装：git 检出走 pull，否则 robocopy 覆盖。</summary>
     public static async Task<bool> UpdateAsync(TaskRunner runner, AppConfig config, bool forceOverwrite, Action<string>? onOutput = null)
     {
-        var git = ToolLocator.FindGit() ?? config.GitExe;
-        if (git is null || string.IsNullOrWhiteSpace(config.ComfyUiDir))
+        var git = ToolLocator.ResolveGit(config);
+        if (string.IsNullOrWhiteSpace(config.ComfyUiDir))
         {
             onOutput?.Invoke("[错误] 需先安装 ComfyUI 项目");
             return false;
@@ -94,7 +94,7 @@ public static class RepoService
 
     private static async Task<bool> RobocopyUpdateAsync(TaskRunner runner, AppConfig config, Action<string>? onOutput)
     {
-        var git = ToolLocator.FindGit() ?? config.GitExe!;
+        var git = ToolLocator.ResolveGit(config);
         var repo = config.EnvUpdate.RepoUrl;
         var tempDir = Path.Combine(config.ComfyUiDir, "_update_temp");
         if (Directory.Exists(tempDir))

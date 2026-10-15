@@ -93,9 +93,9 @@ public sealed class OpenCodeClient
 
             // 含空格的路径必须按命令行规则逐段引用（不能整体包一对引号）
             var args = new StringBuilder("run --format json --model ")
-                .Append(Quote(modelQualifiedId))
-                .Append(" --file ").Append(Quote(tempFile))
-                .Append(' ').Append(Quote(inline));
+                .Append(CommandLine.Quote(modelQualifiedId))
+                .Append(" --file ").Append(CommandLine.Quote(tempFile))
+                .Append(' ').Append(CommandLine.Quote(inline));
 
             var (code, stdout, stderr) = await RunCapturedAsync(
                 exe, args.ToString(), Environment.CurrentDirectory, AskTimeoutMs, onOutputLine, cancellationToken)
@@ -251,8 +251,6 @@ public sealed class OpenCodeClient
         if (maxChars <= 0 || text.Length <= maxChars) return text;
         return text[..maxChars] + "\n……（正文过长，完整内容见附加文件）";
     }
-
-    private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"") + "\"";
 
     private static string FirstLine(string text)
     {
