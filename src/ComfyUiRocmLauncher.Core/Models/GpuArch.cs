@@ -18,8 +18,6 @@ public sealed record ArchInfo(string? Arch, bool IsLegacy, bool IsAvailable, str
 /// <summary>gpu-arch-map.json 根结构。</summary>
 public sealed class GpuArchMapFile
 {
-    public int Version { get; set; }
-    public string Updated { get; set; } = string.Empty;
     public List<string> Legacy { get; set; } = new();
     public List<GpuArchRule> Rules { get; set; } = new();
 }

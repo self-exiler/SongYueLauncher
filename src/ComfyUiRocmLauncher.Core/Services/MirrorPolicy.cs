@@ -23,7 +23,4 @@ public static class MirrorPolicy
     /// </summary>
     public static string GithubEndpoint(string mirror) =>
         string.IsNullOrWhiteSpace(mirror) ? string.Empty : Github("https://github.com", mirror);
-
-    /// <summary>AMD nightly / legacy 源永远直连，恒返回原 URL。</summary>
-    public static string AmdDirect(string url) => url;
 }

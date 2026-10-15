@@ -41,7 +41,6 @@ public class OpenCodeClientTests
         var answer = OpenCodeClient.ParseRunOutput(stdout);
 
         Assert.True(answer.Success);
-        Assert.Equal("ses_1", answer.SessionId);
         Assert.Equal("结论：显存不足\n\n步骤：加 --lowvram", answer.Text);
     }
 
@@ -54,7 +53,6 @@ public class OpenCodeClientTests
 
         Assert.False(answer.Success);
         Assert.Equal("Model unavailable: bad/id", answer.Text);
-        Assert.Equal("ses_2", answer.SessionId);
     }
 
     [Fact]

@@ -170,11 +170,6 @@ public sealed partial class ArgsPage : Page
             Text = "--" + arg.Name,
             Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
         });
-        if (arg.Bat)
-        {
-            nameText.Inlines.Add(new Run { Text = "  bat 默认", Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Goldenrod) });
-        }
-
         var descText = new TextBlock
         {
             Text = arg.Description + (arg.Mutex.HasValue ? $" · 互斥组 {arg.Mutex}" : string.Empty),
@@ -410,7 +405,7 @@ public sealed partial class ArgsPage : Page
     }
 
     /// <summary>
-    /// 配置被外部整体变更（bat 默认 / 恢复默认 / 模板应用）后，就地同步控件状态；
+    /// 配置被外部整体变更（恢复默认 / 模板应用）后，就地同步控件状态；
     /// 全程 _syncing 抑制写回，不重建控件树。
     /// </summary>
     private void SyncControlsFromSettings()

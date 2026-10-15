@@ -17,9 +17,7 @@
       "key": "triton-windows",
       "displayName": "Triton Windows (钉死版本)",
       "optional": false,
-      "pinVersion": "3.7.0.post26",
-      "spec": "triton-windows==3.7.0.post26",
-      "useGhMirror": false
+      "spec": "triton-windows==3.7.0.post26"
     },
     {
       "key": "bitsandbytes",

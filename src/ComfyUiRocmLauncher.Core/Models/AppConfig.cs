@@ -46,7 +46,6 @@ public sealed class StructuredArgs
 /// </summary>
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 1;
     public string ComfyUiDir { get; set; } = string.Empty;
     public string PythonExe { get; set; } = string.Empty;
     public string? UvExe { get; set; }
@@ -74,19 +73,4 @@ public sealed class EnvUpdateSettings
 
     /// <summary>PyPI 镜像 URL（仅作用于通用包与项目依赖）；空 = 官方源。</summary>
     public string PypiMirror { get; set; } = string.Empty;
-
-    /// <summary>用户补充的专用轮子（内置清单之外的额外项）。</summary>
-    public List<CustomWheelEntry> CustomWheels { get; set; } = new();
-}
-
-/// <summary>自定义专用轮子项（FR-8.6）。</summary>
-public sealed class CustomWheelEntry
-{
-    public string Name { get; set; } = string.Empty;
-
-    /// <summary>包名规格或 whl URL。</summary>
-    public string Spec { get; set; } = string.Empty;
-
-    /// <summary>URL 是否为 GitHub release（适用 GitHub 镜像）。</summary>
-    public bool UseGhMirror { get; set; }
 }

@@ -234,7 +234,7 @@ public static class WheelService
             onOutput?.Invoke("      [回滚失败] 原版本可能已从 AMD 源下架，建议重新执行以安装最新 nightly 恢复可运行");
     }
 
-    /// <summary>安装专用轮子（内置清单命中 arch + 用户自定义）。</summary>
+    /// <summary>安装专用轮子（内置清单命中 arch）。</summary>
     public static async Task InstallSpecialWheelsAsync(TaskRunner runner, AppConfig config, ArchInfo arch, Action<string>? onOutput = null)
     {
         var uv = ToolLocator.FindUv() ?? config.UvExe ?? "uv";
@@ -245,7 +245,6 @@ public static class WheelService
             var rule = entry.ResolveFor(arch.Arch);
             string target;
             if (entry.Spec is not null && rule is null) target = entry.Spec;
-            else if (rule?.Spec is not null) target = rule.Spec;
             else if (rule?.GhRepo is not null)
             {
                 string? url;
@@ -275,13 +274,6 @@ public static class WheelService
             if (code != 0)
                 onOutput?.Invoke(entry.Optional ? $"      {entry.DisplayName} 跳过（可选组件失败）"
                                                : $"      [警告] {entry.DisplayName} 安装失败（退出码 {code}）");
-        }
-
-        foreach (var w in config.EnvUpdate.CustomWheels)
-        {
-            if (string.IsNullOrWhiteSpace(w.Spec)) continue;
-            var spec = w.UseGhMirror ? MirrorPolicy.Github(w.Spec, config.EnvUpdate.GithubMirror) : w.Spec;
-            await runner.Run(uv, $"pip install {Quote(spec)} {PythonArg(config)}", dir, onOutput).ConfigureAwait(false);
         }
     }
 

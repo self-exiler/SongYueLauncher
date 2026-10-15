@@ -72,7 +72,7 @@ public sealed class CliArgsCatalog
         return closed;
     }
 
-    /// <summary>清空全部启用项（"恢复默认"）。</summary>
+    /// <summary>清空全部启用项（模板应用前的全量替换）。</summary>
     public void ClearAll(StructuredArgs args)
     {
         args.Enabled.Clear();

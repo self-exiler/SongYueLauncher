@@ -57,7 +57,6 @@ public sealed class ConfigService
     public void Save(AppConfig config)
     {
         Directory.CreateDirectory(RootDirectory);
-        config.Version = 1;
         var json = JsonSerializer.Serialize(config, JsonOptions);
         var temp = ConfigPath + ".tmp";
         File.WriteAllText(temp, json);

@@ -1,6 +1,4 @@
 {
-  "version": 1,
-  "source": "SRS 附录 B（comfyui-rocm.bat 复刻）",
   "comment": "占位符 {comfyUiDir} = ComfyUI 目录，{venvDir} = venv 目录，应用模板时替换。args 为结构化参数数组：flag 型只有 name，带值型含 value。",
   "commonEnvVars": {
     "COMFYUI_ENABLE_MIOPEN": "0",

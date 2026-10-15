@@ -34,7 +34,6 @@ public sealed class GpuTemplate
 
 public sealed class GpuTemplateFile
 {
-    public int Version { get; set; }
     public Dictionary<string, string> CommonEnvVars { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public List<GpuTemplate> Templates { get; set; } = new();
 }

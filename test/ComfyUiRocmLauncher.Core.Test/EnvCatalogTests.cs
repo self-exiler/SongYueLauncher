@@ -53,10 +53,12 @@ public class EnvCatalogTests
     }
 
     [Fact]
-    public void MirrorPolicy_AmdAlwaysDirect()
+    public void BuildTorchInstallArgs_AmdSourceIsNeverMirrored()
     {
-        var amd = "https://nightly.repo.amd.com/rocm/whl-next/";
-        Assert.Equal(amd, MirrorPolicy.AmdDirect(amd));
+        var args = WheelService.BuildTorchInstallArgs("gfx1100", "--python \"py\"");
+        Assert.Contains($"--index-url {WheelService.RocmNightlyIndexUrl}", args);
+        Assert.DoesNotContain("ghproxy", args);
+        Assert.DoesNotContain("mirror", args);
     }
 
     [Fact]
@@ -93,7 +95,6 @@ public class EnvCatalogTests
         Assert.True(sage.ForceReinstall);
 
         var triton = WheelCatalog.Instance.Wheels.First(w => w.Key == "triton-windows");
-        Assert.Equal("3.7.0.post26", triton.PinVersion);
         Assert.Equal("triton-windows==3.7.0.post26", triton.Spec);
     }
 

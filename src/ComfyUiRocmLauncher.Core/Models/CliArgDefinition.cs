@@ -29,8 +29,6 @@ public sealed class CliArgDefinition
     public string? Const { get; set; }
     public List<string>? Choices { get; set; }
     public int? Mutex { get; set; }
-    public bool Bat { get; set; }
-    public string? BatValue { get; set; }
 }
 
 public sealed class CliArgGroup
@@ -42,7 +40,5 @@ public sealed class CliArgGroup
 
 public sealed class CliArgsFile
 {
-    public int Version { get; set; }
-    public string? Source { get; set; }
     public List<CliArgGroup> Groups { get; set; } = new();
 }

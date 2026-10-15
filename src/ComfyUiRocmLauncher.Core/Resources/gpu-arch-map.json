@@ -1,6 +1,4 @@
 {
-  "version": 1,
-  "updated": "2026-10-11",
   "comment": "WMI 显卡名称片段 → ROCm arch 映射（SRS FR-8.2）。仅随软件发版更新。archAvailable=false 的架构在轮子页禁用 torch 安装。",
   "legacy": ["gfx942", "gfx950"],
   "rules": [

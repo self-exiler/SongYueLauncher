@@ -97,7 +97,7 @@ public class CatalogAndTemplateTests
         config.CustomEnvVars["OLD_KEY"] = "x";
         config.Args.Enable("use-ck-attention", true);
 
-        var tpl = TemplateCatalog.Instance.Resolve("rdna12", config)!;
+        var tpl = TemplateCatalog.Instance.AllTemplates(config).First(t => t.Id == "rdna12");
         TemplateCatalog.Instance.ApplyTo(tpl, config, Catalog);
 
         Assert.False(config.CustomEnvVars.ContainsKey("OLD_KEY"));
@@ -169,15 +169,15 @@ public class CatalogAndTemplateTests
     }
 
     [Fact]
-    public void Resolve_FindsBuiltinAndCustom()
+    public void AllTemplates_MergesBuiltinAndCustom()
     {
         var config = new AppConfig();
         var custom = new GpuTemplate { Id = "zz", Title = "zz", EnvSnapshot = new() { ["A"] = "1" } };
         config.CustomTemplates.Add(custom);
 
-        Assert.NotNull(TemplateCatalog.Instance.Resolve("rdna3", config));
-        Assert.Same(custom, TemplateCatalog.Instance.Resolve("zz", config));
-        Assert.Null(TemplateCatalog.Instance.Resolve("nope", config));
-        Assert.Equal(4, TemplateCatalog.Instance.AllTemplates(config).Count);
+        var all = TemplateCatalog.Instance.AllTemplates(config);
+        Assert.Contains(all, t => t.Id == "rdna3");
+        Assert.Contains(all, t => ReferenceEquals(t, custom));
+        Assert.Equal(4, all.Count);
     }
 }

@@ -88,15 +88,6 @@ public sealed class TemplateCatalog
     public IReadOnlyList<GpuTemplate> AllTemplates(AppConfig config) =>
         BuiltinTemplates.Concat(config.CustomTemplates).ToList();
 
-    /// <summary>按 id 查找模板，先内置后自定义；未找到返回 null。</summary>
-    public GpuTemplate? Resolve(string id, AppConfig config)
-    {
-        var builtin = Get(id);
-        if (builtin is not null) return builtin;
-        return config.CustomTemplates.FirstOrDefault(
-            t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
-    }
-
     /// <summary>展开模板环境变量：内置走公共层组合，自定义取快照并替换占位符。</summary>
     public Dictionary<string, string> ResolveEnv(GpuTemplate tpl, AppConfig config)
     {

@@ -14,7 +14,7 @@ public sealed record OpenCodeModel(string ProviderId, string ModelId, string Dis
 }
 
 /// <summary>一次 AI 分析的结果。</summary>
-public sealed record OpenCodeAnswer(bool Success, string Text, string? SessionId = null);
+public sealed record OpenCodeAnswer(bool Success, string Text);
 
 /// <summary>
 /// opencode 客户端（SRS FR-5.8/5.9）：列举内嵌模型、把错误日志交给 opencode 分析并取回回答。
@@ -94,7 +94,7 @@ public sealed class OpenCodeClient
             // 含空格的路径必须按命令行规则逐段引用（不能整体包一对引号）
             var args = new StringBuilder("run --format json --model ")
                 .Append(Quote(modelQualifiedId))
-                .Append(" --file ").Append(QuotePath(tempFile))
+                .Append(" --file ").Append(Quote(tempFile))
                 .Append(' ').Append(Quote(inline));
 
             var (code, stdout, stderr) = await RunCapturedAsync(
@@ -119,7 +119,6 @@ public sealed class OpenCodeClient
     internal static OpenCodeAnswer ParseRunOutput(string stdout)
     {
         var text = new StringBuilder();
-        string? sessionId = null;
         string? error = null;
 
         foreach (var raw in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
@@ -141,7 +140,6 @@ public sealed class OpenCodeClient
             {
                 var root = doc.RootElement;
                 var type = ReadString(root, "type");
-                sessionId ??= ReadString(root, "sessionID");
 
                 if (string.Equals(type, "text", StringComparison.Ordinal)
                     && root.TryGetProperty("part", out var part)
@@ -160,9 +158,9 @@ public sealed class OpenCodeClient
             }
         }
 
-        if (text.Length > 0) return new OpenCodeAnswer(true, text.ToString(), sessionId);
-        if (error is not null) return new OpenCodeAnswer(false, error, sessionId);
-        return new OpenCodeAnswer(false, "opencode 没有返回可解析的回答内容。", sessionId);
+        if (text.Length > 0) return new OpenCodeAnswer(true, text.ToString());
+        if (error is not null) return new OpenCodeAnswer(false, error);
+        return new OpenCodeAnswer(false, "opencode 没有返回可解析的回答内容。");
     }
 
     private static async Task<(int ExitCode, string StdOut, string StdErr)> RunCapturedAsync(
@@ -255,9 +253,6 @@ public sealed class OpenCodeClient
     }
 
     private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"") + "\"";
-
-    /// <summary>命令行路径引用：整体加引号即可（临时文件名不含空格时也无副作用）。</summary>
-    private static string QuotePath(string path) => "\"" + path.Replace("\"", "\\\"") + "\"";
 
     private static string FirstLine(string text)
     {

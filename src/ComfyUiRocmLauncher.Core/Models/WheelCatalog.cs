@@ -9,8 +9,6 @@ public sealed class WheelArchRule
     public string? GhRepo { get; set; }
     /// <summary>release 资产名匹配子串。</summary>
     public string? AssetMatch { get; set; }
-    /// <summary>直接给 uv pip 的包规格（PyPI）。</summary>
-    public string? Spec { get; set; }
     public bool UseGhMirror { get; set; }
 }
 
@@ -23,10 +21,8 @@ public sealed class WheelCatalogEntry
     public bool Optional { get; set; }
     /// <summary>版本号不变需强制重装。</summary>
     public bool ForceReinstall { get; set; }
-    public string? PinVersion { get; set; }
     /// <summary>无 archRules 时的固定 PyPI 规格。</summary>
     public string? Spec { get; set; }
-    public bool UseGhMirror { get; set; }
     public List<WheelArchRule> ArchRules { get; set; } = new();
 
     /// <summary>解析指定 arch 命中的规则（先具体后 "*"）。</summary>
