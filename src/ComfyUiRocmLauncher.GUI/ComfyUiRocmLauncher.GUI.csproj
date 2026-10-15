@@ -16,59 +16,25 @@
     <PublishProfile Condition="Exists('Properties\PublishProfiles\win-$(Platform).pubxml')">win-$(Platform).pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
-    <EnableMsixTooling>true</EnableMsixTooling>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- 开发默认走免打包（unpackaged）启动，无需开启系统"开发人员模式"；
-         发布 MSIX 时用 dotnet publish -p:UseUnpackaged=false 切回打包模式。 -->
-    <UseUnpackaged Condition="'$(UseUnpackaged)' == ''">true</UseUnpackaged>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(UseUnpackaged)' == 'true'">
+    <!-- 发行形态只有一种：免打包（unpackaged）自包含 + MSI。
+         不带 MSIX 身份，WindowsAppSDK 运行时随程序输出，因此无需开启系统"开发人员模式"。 -->
     <WindowsPackageType>None</WindowsPackageType>
-    <EnableMsixTooling>false</EnableMsixTooling>
-    <EnableWinAppRunSupport>false</EnableWinAppRunSupport>
-    <!-- 免打包不带 MSIX 身份，需把 WindowsAppSDK 运行时随程序输出 -->
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="Assets\SplashScreen.scale-200.png" />
-    <Content Include="Assets\LockScreenLogo.scale-200.png" />
-    <Content Include="Assets\Square150x150Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
-    <Content Include="Assets\Square44x44Logo.targetsize-48_altform-lightunplated.png" />
-    <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\AppIcon.ico" />
-    <Content Include="Assets\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
 
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
-  <!--
-    Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
-    Tools extension to be activated for this project even if the Windows App SDK Nuget
-    package has not yet been restored.
-  -->
-  <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <ProjectCapability Include="Msix"/>
-  </ItemGroup>
-
-  <!--
-    Microsoft.Windows.SDK.BuildTools.WinApp adds first-class support for
-    `dotnet run` on packaged WinUI apps: it hooks the .NET CLI Run target to
-    register a debug identity via the winapp CLI and launch the app with
-    package identity (AUMID).
-    Set <EnableWinAppRunSupport>false</EnableWinAppRunSupport> in a
-    <PropertyGroup> above to opt out.
-  -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.3.1" />
     <!-- AI 分析对话框：Markdown 渲染回答（SRS FR-5.9） -->
     <PackageReference Include="CommunityToolkit.Labs.WinUI.Controls.MarkdownTextBlock" Version="0.1.251217-build.2433" />
   </ItemGroup>
@@ -77,25 +43,14 @@
     <ProjectReference Include="..\ComfyUiRocmLauncher.Core\ComfyUiRocmLauncher.Core.csproj" />
   </ItemGroup>
 
-  <!--
-    Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
-    Explorer "Package and Publish" context menu entry to be enabled for this project even if
-    the Windows App SDK Nuget package has not yet been restored.
-  -->
-  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
-  </PropertyGroup>
-
   <!-- Publish Properties（WinUI 3 不支持裁剪发布，仅启用 R2R） -->
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
   </PropertyGroup>
 
-  <!-- 免打包模式下 XAML 资源索引 .pri 不会进 publish 清单（打包模式由 MSIX 工具链带上），
-       缺它应用启动即静默退出，故显式补入 -->
-  <Target Name="IncludeUnpackagedPriInPublish" AfterTargets="ComputeFilesToPublish"
-          Condition="'$(UseUnpackaged)' == 'true'">
+  <!-- 免打包形态下 XAML 资源索引 .pri 不会进 publish 清单，缺它应用启动即静默退出，故显式补入 -->
+  <Target Name="IncludeUnpackagedPriInPublish" AfterTargets="ComputeFilesToPublish">
     <ItemGroup>
       <ResolvedFileToPublish Include="$(OutDir)$(AssemblyName).pri"
                              RelativePath="$(AssemblyName).pri"

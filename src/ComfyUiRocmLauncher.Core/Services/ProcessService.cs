@@ -286,7 +286,7 @@ public sealed class ProcessService
 
     private static void SendCtrlBreak(uint processId)
     {
-        // MSIX 下附加控制台受限（SRS 风险表）：失败不影响后续强杀兜底。
+        // 附加控制台可能失败（无权限 / 进程已无控制台）：失败不影响后续强杀兜底。
         if (SetConsoleCtrlHandler(IntPtr.Zero, true) && AttachConsole(processId))
         {
             GenerateConsoleCtrlEvent(CtrlBreakEvent, processId);

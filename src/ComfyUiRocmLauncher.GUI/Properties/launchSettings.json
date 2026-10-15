@@ -1,10 +1,7 @@
 {
   "profiles": {
-    "ComfyUiRocmLauncher.GUI (Unpackaged)": {
+    "ComfyUiRocmLauncher.GUI": {
       "commandName": "Project"
-    },
-    "ComfyUiRocmLauncher.GUI (Package)": {
-      "commandName": "MsixPackage"
     }
   }
 }
