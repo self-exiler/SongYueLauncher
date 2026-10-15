@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
-using Microsoft.UI.Xaml.Media;
 using ComfyUiRocmLauncher.Core.Services;
 using ComfyUiRocmLauncher.GUI.Helpers;
 
@@ -51,7 +50,7 @@ public sealed partial class LogPage : Page
             LogText.Inlines.Add(new Run
             {
                 Text = run.Text,
-                Foreground = BrushFor(run.Color),
+                Foreground = AnsiBrushes.For(run.Color),
             });
         }
         LogText.Inlines.Add(new LineBreak());
@@ -68,20 +67,6 @@ public sealed partial class LogPage : Page
             }
         }
     }
-
-    // 控制台配色（深底 #161616 上的调色板）
-    private static Brush BrushFor(string color) => color switch
-    {
-        "red" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 153, 164)),
-        "green" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 108, 203, 95)),
-        "yellow" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 252, 225, 0)),
-        "blue" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 118, 185, 237)),
-        "magenta" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 209, 109, 158)),
-        "cyan" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 76, 194, 255)),
-        "black" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 154, 154, 154)),
-        "white" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 232, 232, 232)),
-        _ => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 232, 232, 232)),
-    };
 
     private void ScrollToEnd() => LogScroll.ChangeView(null, LogScroll.ExtentHeight, null);
 

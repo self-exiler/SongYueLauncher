@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using ComfyUiRocmLauncher.Core.Models;
 using ComfyUiRocmLauncher.Core.Services;
+using ComfyUiRocmLauncher.GUI.Helpers;
 
 namespace ComfyUiRocmLauncher.GUI.Views;
 
@@ -63,21 +64,12 @@ public sealed partial class EnvUpdatePage : Page
         DispatcherQueue.TryEnqueue(() =>
         {
             foreach (var run in AnsiParser.Parse(line))
-                ConsoleText.Inlines.Add(new Run { Text = run.Text, Foreground = BrushFor(run.Color) });
+                ConsoleText.Inlines.Add(new Run { Text = run.Text, Foreground = AnsiBrushes.For(run.Color) });
             ConsoleText.Inlines.Add(new LineBreak());
             ConsoleScroll.ChangeView(null, ConsoleScroll.ExtentHeight, null);
         });
         App.Services.Log.Append(line);
     }
-
-    private static Microsoft.UI.Xaml.Media.Brush BrushFor(string color) => color switch
-    {
-        "red" => new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 153, 164)),
-        "green" => new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 108, 203, 95)),
-        "yellow" => new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 252, 225, 0)),
-        "cyan" => new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 76, 194, 255)),
-        _ => new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 232, 232, 232)),
-    };
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => App.Services.Tasks.Cancel();
 
