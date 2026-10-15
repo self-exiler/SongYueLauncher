@@ -82,6 +82,12 @@ public class ErrorLogExtractorTests
     [InlineData("Traceback (most recent call last):", true)]
     [InlineData("torch.OutOfMemoryError: CUDA out of memory", true)]
     [InlineData("Fatal Python error: Segmentation fault", true)]
+    // 精简 ErrorMarkers 后仍需命中的项（由 "ERROR" 大小写不敏感匹配覆盖）
+    [InlineData("ModuleNotFoundError: No module named 'torch'", true)]
+    [InlineData("ImportError: cannot import name 'x' from 'y'", true)]
+    [InlineData("[CRITICAL] out of memory", true)]
+    // StopIteration 是唯一不含 error/exception 的保留关键字
+    [InlineData("StopIteration", true)]
     [InlineData("To see the GUI go to: http://127.0.0.1:8188", false)]
     [InlineData("[INFO] Loaded 12 nodes", false)]
     public void LooksLikeError_ClassifiesMarkers(string line, bool expected) =>

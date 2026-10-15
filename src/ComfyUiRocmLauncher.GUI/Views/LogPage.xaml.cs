@@ -169,7 +169,7 @@ public sealed partial class LogPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        panel.SendRequested += (_, _) => dialog.PrimaryButtonText = panel.SendLabel;
+        panel.StateChanged += (_, _) => dialog.PrimaryButtonText = panel.SendLabel;
 
         // Primary 按钮不自动关闭对话框：分析进行中允许取消，结束后由用户自行关闭
         dialog.PrimaryButtonClick += (s, args) =>

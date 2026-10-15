@@ -124,19 +124,13 @@ public sealed partial class AiAnalysisDialog : UserControl
         RenderToggle.Content = markdown ? "原文" : "Markdown";
     }
 
-    public void CopyAnswerToClipboard()
-    {
-        if (string.IsNullOrEmpty(_lastAnswer)) return;
-        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-        package.SetText(_lastAnswer);
-        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-    }
-
     /// <summary>宿主对话框 Secondary「复制回答」按钮回调；无回答时返回 false。</summary>
     public bool TryCopyAnswer()
     {
         if (string.IsNullOrEmpty(_lastAnswer)) return false;
-        CopyAnswerToClipboard();
+        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        package.SetText(_lastAnswer);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
         return true;
     }
 
@@ -161,7 +155,7 @@ public sealed partial class AiAnalysisDialog : UserControl
         RefreshModelsButton.IsEnabled = !answering;
         RecaptureButton.IsEnabled = !answering;
         ErrorPreviewBox.IsReadOnly = answering;
-        SendRequested?.Invoke(this, EventArgs.Empty);
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void RefreshModels_Click(object sender, RoutedEventArgs e) => _ = LoadModelsAsync();
@@ -201,8 +195,8 @@ public sealed partial class AiAnalysisDialog : UserControl
 
     private void Recapture_Click(object sender, RoutedEventArgs e) => RecaptureRequested?.Invoke(this, EventArgs.Empty);
 
-    /// <summary>宿主据此更新 Primary 按钮文本。</summary>
-    public event EventHandler? SendRequested;
+    /// <summary>分析状态变化（开始 / 结束），宿主据此刷新 Primary 按钮文本。</summary>
+    public event EventHandler? StateChanged;
 
     /// <summary>宿主重新从日志缓冲抓取错误。</summary>
     public event EventHandler? RecaptureRequested;

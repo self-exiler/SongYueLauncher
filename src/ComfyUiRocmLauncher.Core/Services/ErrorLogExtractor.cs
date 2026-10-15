@@ -23,15 +23,14 @@ public static class ErrorLogExtractor
 {
     private const string TracebackHeader = "Traceback (most recent call last):";
 
-    /// <summary>error 级判定关键字（大小写不敏感）。</summary>
+    /// <summary>
+    /// error 级判定关键字（大小写不敏感）。只保留不被其它规则覆盖的最小集合：
+    /// 任何含 error 的词（Error: / ModuleNotFoundError / RuntimeError / Fatal Python error …）都由 "ERROR" 命中；
+    /// 形如 XxxError: / XxxException: 的异常末行另有 IsExceptionTail 兜底；Traceback 头由 IsTracebackHeader 处理。
+    /// </summary>
     private static readonly string[] ErrorMarkers =
     [
-        "ERROR", "Error:", "Traceback (most recent call last)",
-        "ModuleNotFoundError", "ImportError", "RuntimeError", "TypeError", "ValueError",
-        "KeyError", "AttributeError", "NameError", "IndexError", "SyntaxError",
-        "IndentationError", "OSError", "FileNotFoundError", "PermissionError",
-        "MemoryError", "RecursionError", "StopIteration", "AssertionError",
-        "Exception", "CRITICAL", "Fatal Python error", "Segmentation fault", "Core dumped",
+        "ERROR", "Exception", "CRITICAL", "StopIteration", "Segmentation fault", "Core dumped",
     ];
 
     /// <summary>ComfyUI / 启动器自身的正常心跳输出，即便含关键字也不作为错误。</summary>
@@ -47,7 +46,7 @@ public static class ErrorLogExtractor
         {
             if (plainLine.Contains(hint, StringComparison.OrdinalIgnoreCase)) return false;
         }
-        return ContainsMarker(plainLine);
+        return IsTracebackHeader(plainLine) || ContainsMarker(plainLine);
     }
 
     /// <summary>Python 异常类名结尾行（如 torch.OutOfMemoryError: CUDA out of memory）。</summary>
