@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Documents;
 using ComfyUiRocmLauncher.Core.Services;
 using ComfyUiRocmLauncher.GUI.Helpers;
 
@@ -10,23 +9,23 @@ namespace ComfyUiRocmLauncher.GUI.Views;
 public sealed partial class LogPage : Page
 {
     private const int MaxRenderedLines = 3000;
-    private int _renderedLines;
+    private readonly BoundedAnsiConsole _console;
 
     public LogPage()
     {
         InitializeComponent();
+        _console = new BoundedAnsiConsole(LogText, MaxRenderedLines);
         Loaded += OnLoaded;
         Unloaded += (_, _) => App.Services.Log.LineAppended -= OnLineAppended;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        LogText.Inlines.Clear();
-        _renderedLines = 0;
+        _console.Clear();
 
         foreach (var line in App.Services.Log.Snapshot())
         {
-            AppendLine(line);
+            _console.AppendLine(line);
         }
 
         App.Services.Log.LineAppended += OnLineAppended;
@@ -38,34 +37,9 @@ public sealed partial class LogPage : Page
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            AppendLine(line);
+            _console.AppendLine(line);
             if (AutoScrollToggle.IsOn) ScrollToEnd();
         });
-    }
-
-    private void AppendLine(string line)
-    {
-        foreach (var run in AnsiParser.Parse(line))
-        {
-            LogText.Inlines.Add(new Run
-            {
-                Text = run.Text,
-                Foreground = AnsiBrushes.For(run.Color),
-            });
-        }
-        LogText.Inlines.Add(new LineBreak());
-        _renderedLines++;
-
-        // 渲染行数上限保护：超出后按内存缓冲尾部重建
-        if (_renderedLines > MaxRenderedLines)
-        {
-            LogText.Inlines.Clear();
-            _renderedLines = 0;
-            foreach (var tail in App.Services.Log.Snapshot().TakeLast(1000))
-            {
-                AppendLine(tail);
-            }
-        }
     }
 
     private void ScrollToEnd() => LogScroll.ChangeView(null, LogScroll.ExtentHeight, null);
@@ -73,8 +47,7 @@ public sealed partial class LogPage : Page
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
         App.Services.Log.Clear();
-        LogText.Inlines.Clear();
-        _renderedLines = 0;
+        _console.Clear();
     }
 
     private void CopyAll_Click(object sender, RoutedEventArgs e)

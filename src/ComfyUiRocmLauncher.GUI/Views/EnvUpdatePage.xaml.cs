@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Documents;
 using ComfyUiRocmLauncher.Core.Models;
 using ComfyUiRocmLauncher.Core.Services;
 using ComfyUiRocmLauncher.GUI.Helpers;
@@ -13,10 +12,12 @@ public sealed partial class EnvUpdatePage : Page
     private bool _toolsDetected;
     private bool _mirrorsReady;
     private IReadOnlyList<ToolStatus> _tools = Array.Empty<ToolStatus>();
+    private readonly BoundedAnsiConsole _console;
 
     public EnvUpdatePage()
     {
         InitializeComponent();
+        _console = new BoundedAnsiConsole(ConsoleText, MaxConsoleLines);
         GithubMirrorBox.ItemsSource = MirrorCatalog.GithubMirrors;
         PypiMirrorBox.ItemsSource = MirrorCatalog.PypiMirrors;
         Loaded += OnLoaded;
@@ -59,13 +60,14 @@ public sealed partial class EnvUpdatePage : Page
         DispatcherQueue.TryEnqueue(ApplyGuards);
 
     // ---------- 输出控制台 ----------
+    /// <summary>控制台渲染行数上限（与日志页一致），避免长任务下 Inlines 无限增长。</summary>
+    private const int MaxConsoleLines = 3000;
+
     private void Append(string line)
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            foreach (var run in AnsiParser.Parse(line))
-                ConsoleText.Inlines.Add(new Run { Text = run.Text, Foreground = AnsiBrushes.For(run.Color) });
-            ConsoleText.Inlines.Add(new LineBreak());
+            _console.AppendLine(line);
             ConsoleScroll.ChangeView(null, ConsoleScroll.ExtentHeight, null);
         });
         App.Services.Log.Append(line);
@@ -73,7 +75,7 @@ public sealed partial class EnvUpdatePage : Page
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => App.Services.Tasks.Cancel();
 
-    private void ClearConsole_Click(object sender, RoutedEventArgs e) => ConsoleText.Inlines.Clear();
+    private void ClearConsole_Click(object sender, RoutedEventArgs e) => _console.Clear();
 
     // ---------- 通用任务执行 ----------
     private async Task RunOpAsync(string label, Func<Task> body)

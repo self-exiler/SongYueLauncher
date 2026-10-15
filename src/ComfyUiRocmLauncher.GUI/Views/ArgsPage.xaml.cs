@@ -27,7 +27,8 @@ public sealed partial class ArgsPage : Page
         public FontIcon Chevron = null!;
         public StackPanel Container = null!;
         public bool Built;
-        public IReadOnlyList<string> ArgNames => Definition.Args.Select(a => a.Name).ToList();
+        /// <summary>构造时缓存参数名列表：计数与搜索会反复按分组取用，避免每次重新 Select().ToList()。</summary>
+        public readonly IReadOnlyList<string> ArgNames = definition.Args.Select(a => a.Name).ToList();
     }
 
     /// <summary>一个参数行的 UI 引用（卡片 / 开关 / 取值控件）。</summary>
