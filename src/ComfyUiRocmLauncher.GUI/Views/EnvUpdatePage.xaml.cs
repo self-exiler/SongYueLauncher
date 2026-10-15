@@ -223,7 +223,7 @@ public sealed partial class EnvUpdatePage : Page
             var remote = await RepoService.QueryRemoteHashAsync(App.Services.Tasks, Settings, Append);
             var local = RepoService.ReadLocalHash(Settings.ComfyUiDir);
             DispatcherQueue.TryEnqueue(() => ProjectStatusText.Text =
-                $"本地 {Short(local)} · 远端 {Short(remote)}" + (remote.Length > 0 && remote == local ? "（已最新）" : "（有更新）"));
+                $"本地 {RepoService.ShortHash(local)} · 远端 {RepoService.ShortHash(remote)}" + (remote.Length > 0 && remote == local ? "（已最新）" : "（有更新）"));
         });
     }
 
@@ -322,7 +322,7 @@ public sealed partial class EnvUpdatePage : Page
         var local = RepoService.ReadLocalHash(dir);
         var venv = VenvService.VenvExists(dir);
         ProjectStatusText.Text = installed
-            ? $"已安装于 {dir}（本地版本 {Short(local)}）"
+            ? $"已安装于 {dir}（本地版本 {RepoService.ShortHash(local)}）"
             : "未检测到 main.py，尚未安装";
         VenvStatusText.Text = venv
             ? $"已就绪：{VenvService.VenvPython(dir)}"
@@ -365,7 +365,4 @@ public sealed partial class EnvUpdatePage : Page
         if (!arch.IsAvailable) tags.Add("暂无可用 PyTorch 构建");
         return $"{arch.Arch}" + (tags.Count > 0 ? $"（{string.Join("，", tags)}）" : string.Empty);
     }
-
-    private static string Short(string hash) =>
-        string.IsNullOrEmpty(hash) ? "unknown" : (hash.Length <= 10 ? hash : hash[..10]);
 }

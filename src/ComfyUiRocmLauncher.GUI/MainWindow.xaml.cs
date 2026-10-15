@@ -49,7 +49,7 @@ public sealed partial class MainWindow : Window
         var pythonExe = App.Services.Settings.PythonExe;
         var venvRoot = string.IsNullOrWhiteSpace(pythonExe)
             ? string.Empty
-            : Path.GetDirectoryName(Path.GetDirectoryName(Path.GetFullPath(pythonExe)));
+            : LaunchEnvBuilder.VenvDirFrom(pythonExe);
         var leftovers = string.IsNullOrEmpty(venvRoot)
             ? []
             : ProcessService.FindPythonProcesses(venvRoot);
@@ -89,7 +89,8 @@ public sealed partial class MainWindow : Window
             await ProcessService.KillProcessesAsync(leftovers);
 
         // StopAsync 依赖状态机，可能因状态与进程实际状态不一致而空转：兜底再扫一次
-        var venvRoot = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetFullPath(App.Services.Settings.PythonExe)));
+        var pythonExe = App.Services.Settings.PythonExe;
+        var venvRoot = string.IsNullOrWhiteSpace(pythonExe) ? string.Empty : LaunchEnvBuilder.VenvDirFrom(pythonExe);
         if (!string.IsNullOrEmpty(venvRoot))
             await ProcessService.KillProcessesAsync(ProcessService.FindPythonProcesses(venvRoot));
 
@@ -130,20 +131,13 @@ public sealed partial class MainWindow : Window
         StateTextBlock.Text = LaunchStates.Text(state);
 
         // 状态徽章配色：运行=成功绿 / 启动=提示黄 / 停止=危险红 / 环境任务=强调蓝（浅色底 + 同色文字）
-        var (key, tinted) = state switch
-        {
-            LaunchState.Running => ("SystemFillColorSuccessBrush", true),
-            LaunchState.Starting => ("SystemFillColorCautionBrush", true),
-            LaunchState.Stopping => ("SystemFillColorCriticalBrush", true),
-            LaunchState.BusyEnv => ("AccentFillColorDefaultBrush", true),
-            _ => (null, false),
-        };
-        StateBadge.Background = tinted
-            ? ThemeHelper.Tint(key!, 0.25)
-            : ThemeHelper.Brush("ControlFillColorSecondaryBrush");
-        StateTextBlock.Foreground = tinted
-            ? ThemeHelper.Brush(key!)
-            : ThemeHelper.Brush("TextFillColorPrimaryBrush");
+        var key = ThemeHelper.StateAccentKey(state);
+        StateBadge.Background = key is null
+            ? ThemeHelper.Brush("ControlFillColorSecondaryBrush")
+            : ThemeHelper.Tint(key, 0.25);
+        StateTextBlock.Foreground = key is null
+            ? ThemeHelper.Brush("TextFillColorPrimaryBrush")
+            : ThemeHelper.Brush(key);
 
         VersionText.Text = "版本 " + App.Services.CurrentVersionHash();
     }

@@ -1,3 +1,4 @@
+using ComfyUiRocmLauncher.Core.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 
@@ -22,4 +23,17 @@ public static class ThemeHelper
     /// <summary>等宽字体（命令 / 路径 / 日志），单点取自应用资源 MonoFontFamily。</summary>
     public static FontFamily Mono =>
         Application.Current.Resources["MonoFontFamily"] as FontFamily ?? new FontFamily("Cascadia Mono, Consolas");
+
+    /// <summary>
+    /// 状态 → 强调色资源 key 的单点映射：运行=成功绿 / 启动=提示黄 / 停止=危险红 / 环境任务=强调蓝；
+    /// 空闲返回 null（无强调色，调用方各自决定中性样式）。
+    /// </summary>
+    public static string? StateAccentKey(LaunchState state) => state switch
+    {
+        LaunchState.Running => "SystemFillColorSuccessBrush",
+        LaunchState.Starting => "SystemFillColorCautionBrush",
+        LaunchState.Stopping => "SystemFillColorCriticalBrush",
+        LaunchState.BusyEnv => "AccentFillColorDefaultBrush",
+        _ => null,
+    };
 }

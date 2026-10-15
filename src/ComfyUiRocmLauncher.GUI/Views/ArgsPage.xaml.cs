@@ -358,17 +358,20 @@ public sealed partial class ArgsPage : Page
         PreviewText.Inlines.Add(new Run { Text = CommandLine.Quote(Settings.PythonExe), Foreground = accent });
         PreviewText.Inlines.Add(new Run { Text = " main.py" });
 
-        foreach (var token in ArgsBuilder.Build(Settings.Args, _catalog))
+        // 与真实启动同源：同一次 Build（含额外参数）产出的 token 列表，预览不会再与 spawn 漂移；
+        // 仅额外参数段用警示色区分
+        var tokens = ArgsBuilder.Build(Settings.Args, _catalog, Settings.ExtraArgs);
+        var extraFrom = tokens.Count - ArgsBuilder.SplitExtra(Settings.ExtraArgs).Count;
+        for (var i = 0; i < tokens.Count; i++)
         {
+            var isExtra = i >= extraFrom;
             PreviewText.Inlines.Add(new Run
             {
-                Text = " " + CommandLine.Quote(token),
-                Foreground = token.StartsWith("--", StringComparison.Ordinal) ? accent : null,
+                Text = " " + CommandLine.Quote(tokens[i]),
+                Foreground = isExtra ? warn
+                    : tokens[i].StartsWith("--", StringComparison.Ordinal) ? accent
+                    : null,
             });
-        }
-        foreach (var token in ArgsBuilder.SplitExtra(Settings.ExtraArgs))
-        {
-            PreviewText.Inlines.Add(new Run { Text = " " + CommandLine.Quote(token), Foreground = warn });
         }
     }
 

@@ -54,15 +54,8 @@ public sealed partial class HomePage : Page
         BrowserButton.IsEnabled = state == LaunchState.Running;
         VersionHashText.Text = App.Services.CurrentVersionHash();
 
-        // 状态点配色：运行=成功绿 / 启动=提示黄 / 停止=危险红 / 空闲=次级灰（皆取主题色）
-        var dotKey = state switch
-        {
-            LaunchState.Running => "SystemFillColorSuccessBrush",
-            LaunchState.Starting => "SystemFillColorCautionBrush",
-            LaunchState.Stopping => "SystemFillColorCriticalBrush",
-            _ => "TextFillColorDisabledBrush",
-        };
-        RunStateDot.Fill = ThemeHelper.Brush(dotKey);
+        // 状态点配色：强调状态取状态色，空闲用次级灰
+        RunStateDot.Fill = ThemeHelper.Brush(ThemeHelper.StateAccentKey(state) ?? "TextFillColorDisabledBrush");
     }
 
     /// <summary>FR-1.4：快捷目录不存在时对应按钮禁用。</summary>
@@ -84,7 +77,7 @@ public sealed partial class HomePage : Page
         // ComfyUI 目录变更时，若用户未手动改过解释器则联动刷新默认值（FR-1.1）
         if (!string.IsNullOrWhiteSpace(Settings.ComfyUiDir) && string.IsNullOrWhiteSpace(PythonBox.Text))
         {
-            PythonBox.Text = Path.Combine(Settings.ComfyUiDir, ".venv", "Scripts", "python.exe");
+            PythonBox.Text = VenvService.VenvPython(Settings.ComfyUiDir);
         }
     }
 
@@ -128,7 +121,7 @@ public sealed partial class HomePage : Page
         {
             var captured = new List<string>();
             // 工作目录无效（如 ComfyUI 目录未填/已删）时退回当前目录，避免 Process.Start 抛异常
-            var workDir = Directory.Exists(Settings.ComfyUiDir) ? Settings.ComfyUiDir : Environment.CurrentDirectory;
+            var workDir = PathHelpers.ExistingDirOrCurrent(Settings.ComfyUiDir);
             var code = await ProcessService.RunCommandAsync(
                 Settings.PythonExe, "--version", workDir,
                 line => captured.Add(line));

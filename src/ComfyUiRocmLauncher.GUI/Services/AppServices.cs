@@ -83,18 +83,6 @@ public sealed class AppServices
     }
 
     /// <summary>读取 .last_update_hash 前 10 位作为当前版本（FR-1.3）。</summary>
-    public string CurrentVersionHash()
-    {
-        try
-        {
-            var file = Path.Combine(Settings.ComfyUiDir, ".last_update_hash");
-            if (!File.Exists(file)) return "unknown";
-            var text = File.ReadAllText(file).Trim();
-            return text.Length <= 10 ? text : text[..10];
-        }
-        catch (IOException)
-        {
-            return "unknown";
-        }
-    }
+    public string CurrentVersionHash() =>
+        RepoService.ShortHash(RepoService.ReadLocalHash(Settings.ComfyUiDir));
 }

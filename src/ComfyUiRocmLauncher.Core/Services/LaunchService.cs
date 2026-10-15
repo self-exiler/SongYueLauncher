@@ -157,7 +157,7 @@ public sealed class LaunchService
 
     private async Task<bool> WaitForReadyAsync(AppConfig config, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var port = config.Args.IsEnabled("port") && int.TryParse(config.Args.Value("port"), out var p) && p > 0 ? p : 8188;
+        var port = ArgsBuilder.ResolvePort(config.Args);
         var deadline = DateTime.UtcNow + timeout;
         var ready = false;
 

@@ -26,6 +26,10 @@ public static class RepoService
         catch (IOException) { return string.Empty; }
     }
 
+    /// <summary>版本号短形态（前 10 位）供界面展示；无版本文件返回 "unknown"（FR-1.3）。</summary>
+    public static string ShortHash(string hash) =>
+        string.IsNullOrEmpty(hash) ? "unknown" : hash.Length <= 10 ? hash : hash[..10];
+
     /// <summary>git ls-remote 取远端 HEAD hash（走镜像）。</summary>
     public static async Task<string> QueryRemoteHashAsync(TaskRunner runner, AppConfig config, Action<string>? onOutput = null)
     {
@@ -35,7 +39,7 @@ public static class RepoService
 
         var lines = new List<string>();
         await runner.Run(git, $"ls-remote {MirrorPolicy.Github(repo, config.EnvUpdate.GithubMirror)} HEAD",
-            SafeWorkDir(config), line => lines.Add(line)).ConfigureAwait(false);
+            PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), line => lines.Add(line)).ConfigureAwait(false);
 
         onOutput?.Invoke($"      远端 {repo}");
         return lines.FirstOrDefault()?.Split(['\t', ' '], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
@@ -97,8 +101,7 @@ public static class RepoService
         var git = ToolLocator.ResolveGit(config);
         var repo = config.EnvUpdate.RepoUrl;
         var tempDir = Path.Combine(config.ComfyUiDir, "_update_temp");
-        if (Directory.Exists(tempDir))
-            try { Directory.Delete(tempDir, recursive: true); } catch (IOException) { }
+        PathHelpers.TryDeleteDirectory(tempDir);
 
         onOutput?.Invoke("[1/3] shallow clone 到临时目录 …");
         var url = MirrorPolicy.Github(repo, config.EnvUpdate.GithubMirror);
@@ -107,7 +110,7 @@ public static class RepoService
         if (cloneCode != 0)
         {
             onOutput?.Invoke($"[错误] clone 失败（退出码 {cloneCode}），中止覆盖");
-            TryCleanup(tempDir);
+            PathHelpers.TryDeleteDirectory(tempDir);
             return false;
         }
 
@@ -115,7 +118,7 @@ public static class RepoService
         var code = await runner.Run("robocopy", RobocopyArgs(tempDir, config.ComfyUiDir), config.ComfyUiDir, onOutput)
             .ConfigureAwait(false);
 
-        TryCleanup(tempDir);
+        PathHelpers.TryDeleteDirectory(tempDir);
         if (!IsRobocopySuccess(code))
         {
             onOutput?.Invoke($"      robocopy 失败（退出码 {code}），未写入版本号");
@@ -152,12 +155,4 @@ public static class RepoService
         return Directory.Exists(parent) ? parent! : Environment.CurrentDirectory;
     }
 
-    private static string SafeWorkDir(AppConfig config) =>
-        Directory.Exists(config.ComfyUiDir) ? config.ComfyUiDir : Environment.CurrentDirectory;
-
-    private static void TryCleanup(string dir)
-    {
-        try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
-        catch (IOException) { }
-    }
 }

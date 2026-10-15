@@ -130,7 +130,7 @@ public static class WheelService
     {
         var lines = new List<string>();
         var uv = ToolLocator.ResolveUv(config);
-        await runner.Run(uv, $"pip freeze {PythonArg(config)}", SafeDir(config), lines.Add).ConfigureAwait(false);
+        await runner.Run(uv, $"pip freeze {PythonArg(config)}", PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), lines.Add).ConfigureAwait(false);
         return ParseFreeze(lines);
     }
 
@@ -153,7 +153,7 @@ public static class WheelService
         catch (NotSupportedException ex) { onOutput?.Invoke($"[错误] {ex.Message}"); return false; }
 
         var uv = ToolLocator.ResolveUv(config);
-        var dir = SafeDir(config);
+        var dir = PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir);
 
         // ① 快照
         onOutput?.Invoke("[1/6] 生成版本快照 …");
@@ -173,7 +173,7 @@ public static class WheelService
         if (dlCode != 0)
         {
             onOutput?.Invoke("[错误] 下载失败——旧环境未改动，可稍后重试或检查网络/架构");
-            TryCleanup(cacheDir);
+            PathHelpers.TryDeleteDirectory(cacheDir);
             return false;
         }
 
@@ -186,7 +186,7 @@ public static class WheelService
         // ④ 重装（利用缓存）
         onOutput?.Invoke("[4/6] 安装新 torch[device-arch]（AMD 源直连）…");
         var installCode = await runner.Run(uv, args, dir, onOutput).ConfigureAwait(false);
-        TryCleanup(cacheDir);
+        PathHelpers.TryDeleteDirectory(cacheDir);
         if (installCode != 0)
         {
             onOutput?.Invoke($"[错误] 安装失败（退出码 {installCode}），尝试尽力回滚 …");
@@ -196,7 +196,7 @@ public static class WheelService
 
         // ⑤ rocm-sdk init
         onOutput?.Invoke("[5/6] rocm-sdk init …");
-        var sdk = Path.Combine(Path.GetDirectoryName(config.PythonExe) ?? "", "rocm-sdk.exe");
+        var sdk = LaunchEnvBuilder.RocmSdkExeFrom(config.PythonExe);
         if (File.Exists(sdk))
             await runner.Run(sdk, "init", dir, onOutput).ConfigureAwait(false);
         else
@@ -228,7 +228,7 @@ public static class WheelService
 
         onOutput?.Invoke("      尝试按快照装回（原版本可能已下架）…");
         var arg = $"pip install {CommandLine.Join(specs)} {PythonArg(config)} --index-url {RocmNightlyIndexUrl}";
-        var code = await runner.Run(uv, arg, SafeDir(config), onOutput).ConfigureAwait(false);
+        var code = await runner.Run(uv, arg, PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), onOutput).ConfigureAwait(false);
         if (code != 0)
             onOutput?.Invoke("      [回滚失败] 原版本可能已从 AMD 源下架，建议重新执行以安装最新 nightly 恢复可运行");
     }
@@ -237,7 +237,7 @@ public static class WheelService
     public static async Task InstallSpecialWheelsAsync(TaskRunner runner, AppConfig config, ArchInfo arch, Action<string>? onOutput = null)
     {
         var uv = ToolLocator.ResolveUv(config);
-        var dir = SafeDir(config);
+        var dir = PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir);
 
         foreach (var entry in WheelCatalog.Instance.Wheels)
         {
@@ -287,7 +287,7 @@ public static class WheelService
         var filtered = RequirementsFilter.WriteFilteredFile(req, config.ComfyUiDir);
         onOutput?.Invoke("同步项目依赖（已过滤 torch 系）…");
         var code = await runner.Run(uv, $"pip install -r \"{filtered}\" {PypiIndex(config)}{PythonArg(config)}",
-            SafeDir(config), onOutput).ConfigureAwait(false);
+            PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), onOutput).ConfigureAwait(false);
         if (code != 0) { onOutput?.Invoke($"[错误] 依赖安装失败（退出码 {code}）"); return Array.Empty<string>(); }
 
         var after = await FreezeAsync(runner, config).ConfigureAwait(false);
@@ -298,14 +298,14 @@ public static class WheelService
     public static async Task<int> InstallGenericAsync(TaskRunner runner, AppConfig config, string spec, Action<string>? onOutput = null)
     {
         var uv = ToolLocator.ResolveUv(config);
-        return await runner.Run(uv, $"pip install {CommandLine.Quote(spec)} {PypiIndex(config)}{PythonArg(config)}", SafeDir(config), onOutput)
+        return await runner.Run(uv, $"pip install {CommandLine.Quote(spec)} {PypiIndex(config)}{PythonArg(config)}", PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), onOutput)
             .ConfigureAwait(false);
     }
 
     public static async Task<int> UninstallAsync(TaskRunner runner, AppConfig config, string package, Action<string>? onOutput = null)
     {
         var uv = ToolLocator.ResolveUv(config);
-        return await runner.Run(uv, $"pip uninstall {CommandLine.Quote(package)} {PythonArg(config)}", SafeDir(config), onOutput)
+        return await runner.Run(uv, $"pip uninstall {CommandLine.Quote(package)} {PythonArg(config)}", PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), onOutput)
             .ConfigureAwait(false);
     }
 
@@ -313,16 +313,8 @@ public static class WheelService
     {
         var uv = ToolLocator.ResolveUv(config);
         var lines = new List<string>();
-        await runner.Run(uv, $"pip list {PythonArg(config)}", SafeDir(config), lines.Add).ConfigureAwait(false);
+        await runner.Run(uv, $"pip list {PythonArg(config)}", PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), lines.Add).ConfigureAwait(false);
         return lines;
     }
 
-    private static string SafeDir(AppConfig config) =>
-        Directory.Exists(config.ComfyUiDir) ? config.ComfyUiDir : Environment.CurrentDirectory;
-
-    private static void TryCleanup(string dir)
-    {
-        try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
-        catch (IOException) { }
-    }
 }

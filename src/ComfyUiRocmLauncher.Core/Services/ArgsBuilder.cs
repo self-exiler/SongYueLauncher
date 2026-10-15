@@ -111,13 +111,16 @@ public static class ArgsBuilder
         return result;
     }
 
+    /// <summary>解析生效端口：启用 --port 且为正整数时取其值，否则回落默认 8188（预览 / 就绪检测共用）。</summary>
+    public static int ResolvePort(StructuredArgs args) =>
+        args.IsEnabled("port") && int.TryParse(args.Value("port"), out var port) && port > 0 ? port : 8188;
+
     /// <summary>
     /// 浏览器地址推导（FR-4.3）：解析 --port / --listen / --tls-* ，--listen 为通配地址时用 127.0.0.1。
     /// </summary>
     public static string DeriveBrowserUrl(StructuredArgs args)
     {
-        var port = 8188;
-        if (args.IsEnabled("port") && int.TryParse(args.Value("port"), out var p) && p > 0) port = p;
+        var port = ResolvePort(args);
 
         var host = "127.0.0.1";
         if (args.IsEnabled("listen"))
