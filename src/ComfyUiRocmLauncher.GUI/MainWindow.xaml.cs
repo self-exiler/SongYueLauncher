@@ -20,14 +20,18 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
-        // 免打包运行时显式设置窗口/任务栏图标（打包模式由 exe 的 ApplicationIcon 覆盖）
+        // 免打包运行时需显式设置窗口图标（标题栏 + 任务栏 + Alt-Tab；exe 内嵌的 ApplicationIcon 只覆盖
+        // 资源管理器里的文件图标）。图标随程序发布（csproj 的 CopyToPublishDirectory），缺失时记日志而非静默。
+        var appIcon = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
         try
         {
-            AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
+            if (File.Exists(appIcon)) AppWindow.SetIcon(appIcon);
+            else App.Services.Log.Append($"[启动器] 警告：未找到窗口图标 {appIcon}，将回退为 exe 内嵌图标");
         }
-        catch
+        catch (Exception ex)
         {
-            // 图标文件缺失或平台不支持时静默忽略，不影响启动
+            // 平台不支持或图标损坏时不阻断启动
+            App.Services.Log.Append($"[启动器] 警告：设置窗口图标失败：{ex.Message}");
         }
 
         NavView.SelectedItem = NavView.MenuItems[0];

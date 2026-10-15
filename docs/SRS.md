@@ -126,6 +126,8 @@ ComfyUiRocmLauncher.sln（根目录，经典 sln 格式）
 - GUI 项目固定按**免打包（unpackaged）**方式构建与启动：工程内直接设置 `WindowsPackageType=None`、`WindowsAppSDKSelfContained=true`，运行时随程序输出，**无需开启系统"开发人员模式"**。开发命令：`dotnet run --project src/ComfyUiRocmLauncher.GUI/ComfyUiRocmLauncher.GUI.csproj`（工程只保留 x64 平台）。
 - **发行形态为 MSI**（WiX v4，`installer/build.ps1` + `installer/Product.wxs`）：免打包自包含发布产物整目录收割，产出 `SongYueLauncher-windows-x64-<版本>.msi`。
 - 免打包发布需显式把 XAML 资源索引 `$(AssemblyName).pri` 补进 publish 清单（工程内 `IncludeUnpackagedPriInPublish` 目标），缺它应用启动即静默退出。
+- 应用图标 `Assets/AppIcon.ico` 必须随程序发布（csproj 的 `Content` 设 `CopyToOutputDirectory` + `CopyToPublishDirectory`）：MSI 收割后与 exe 同级，供 `AppWindow.SetIcon`（标题栏 / 任务栏 / Alt-Tab）与 `TitleBar.IconSource`（相对 URI）取用；`build.ps1` 已把该文件与 `coreclr.dll`、`.pri` 并列为发布产物必需项，缺失即构建失败。exe 内嵌图标由 `<ApplicationIcon>` 承担（资源管理器里的文件图标）。
+- MSI 的安装包图标（资源管理器与「应用和功能」）由 `installer/Product.wxs` 的 `Property Id="ARPPRODUCTICON"` 声明，且 `Icon/@Id` 以 `.exe` 结尾——只有 `.exe`/`.dll` 结尾的 Id 才会按 32×32 渲染（`.ico` 结尾系统只取 16×16）。注意 WiX v4 下 `WixVariable Id="ARPPRODUCTICON"` 是空操作，写它不会产生该属性。
 - **MSIX 路径已移除（v1.8）**：未签名 MSIX 需要目标机开启开发人员模式或预装证书，实际从未维护（manifest 仍是 `CN=AppPublisher` 占位），故连同 `Package.appxmanifest`、8 张 MSIX 磁贴/商店图与 `Microsoft.Windows.SDK.BuildTools.WinApp` 包一并删除，只保留免打包 + MSI 一条链路。
 
 ---

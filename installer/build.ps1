@@ -61,8 +61,8 @@ else {
     if (-not (Test-Path (Join-Path $publishDir 'ComfyUiRocmLauncher.GUI.exe'))) {
         throw "发布产物缺少 ComfyUiRocmLauncher.GUI.exe"
     }
-    # 自包含与 XAML 资源索引是两类静默坏包：缺了本机能跑、别人机器打不开
-    foreach ($required in @('coreclr.dll', 'ComfyUiRocmLauncher.GUI.pri')) {
+    # 自包含、XAML 资源索引与应用图标是三类静默坏包：缺了本机能跑，但会出现打不开 / 没图标
+    foreach ($required in @('coreclr.dll', 'ComfyUiRocmLauncher.GUI.pri', 'Assets\AppIcon.ico')) {
         if (-not (Test-Path (Join-Path $publishDir $required))) {
             throw "发布产物缺少 $required，产物不是可用的自包含包"
         }
@@ -82,6 +82,8 @@ if (-not $wix) {
     throw "未找到 WiX v4 命令行工具，请先执行：dotnet tool install --global wix --version 4.0.5"
 }
 Write-Output "== 使用 WiX：$wix =="
+
+if (-not (Test-Path $icon)) { throw "应用图标不存在：$icon（MSI 图标 / 快捷方式图标都依赖它）" }
 
 # ---------- 3. 收割发布目录 → harvest.wxs ----------
 $md5 = [System.Security.Cryptography.MD5]::Create()

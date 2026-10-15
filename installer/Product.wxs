@@ -21,8 +21,13 @@
     <MajorUpgrade DowngradeErrorMessage="已安装更新版本的松月启动器，本次安装中止。" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
-    <Icon Id="AppIcon.ico" SourceFile="$(var.IconPath)" />
-    <WixVariable Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+    <!-- 图标：
+         Icon/@Id 以 .exe 结尾 —— ARP（“应用和功能”/资源管理器显示的 msi 图标）才会按 32x32 渲染，
+         以 .ico 结尾时系统只取 16x16。
+         ARP 图标必须用 Property 显式声明：WiX v4 里 WixVariable Id="ARPPRODUCTICON" 是空操作，
+         实测产出的 MSI 里没有该属性，资源管理器里就是一个空白图标。 -->
+    <Icon Id="AppIcon.exe" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.exe" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="SongYueLauncher" />
@@ -42,14 +47,14 @@
                        Name="Shortcut" Type="integer" Value="1" KeyPath="yes" />
         <Shortcut Id="StartMenuShortcut" Name="松月启动器"
                   Target="[INSTALLFOLDER]ComfyUiRocmLauncher.GUI.exe"
-                  WorkingDirectory="INSTALLFOLDER" Icon="AppIcon.ico" />
+                  WorkingDirectory="INSTALLFOLDER" Icon="AppIcon.exe" />
       </Component>
       <Component Directory="DesktopFolder" Guid="*">
         <RegistryValue Root="HKCU" Key="Software\$(var.Manufacturer)\SongYueLauncher"
                        Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
         <Shortcut Id="DesktopShortcut" Name="松月启动器"
                   Target="[INSTALLFOLDER]ComfyUiRocmLauncher.GUI.exe"
-                  WorkingDirectory="INSTALLFOLDER" Icon="AppIcon.ico" />
+                  WorkingDirectory="INSTALLFOLDER" Icon="AppIcon.exe" />
       </Component>
     </ComponentGroup>
 

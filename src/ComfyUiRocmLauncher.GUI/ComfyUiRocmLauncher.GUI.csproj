@@ -25,7 +25,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="Assets\AppIcon.ico" />
+    <!-- 应用图标必须同时进输出目录与发布目录：
+         输出目录供 `dotnet run` 与调试期使用；
+         发布目录供 MSI 收割（安装后 Assets\AppIcon.ico 与 exe 同级），
+         否则 MainWindow 的 AppWindow.SetIcon 会静默失败、TitleBar.IconSource 的相对 URI 也取不到图。 -->
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
