@@ -85,7 +85,7 @@ public sealed partial class EnvUpdatePage : Page
             Append("[提示] 当前状态不可发起环境任务（ComfyUI 运行中或已有任务）");
             return;
         }
-        if (!await App.Services.Tasks.StartAsync())
+        if (!App.Services.Tasks.TryStart())
         {
             Append("[提示] 已有任务在运行");
             return;

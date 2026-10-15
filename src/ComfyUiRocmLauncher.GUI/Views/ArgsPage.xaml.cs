@@ -301,11 +301,10 @@ public sealed partial class ArgsPage : Page
                 box.TextChanged += (_, _) =>
                 {
                     if (_syncing) return;
-                    Settings.Args.Lines[arg.Name] = box.Text
+                    Settings.Args.SetLines(arg.Name, box.Text
                         .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                         .Select(l => l.Trim())
-                        .Where(l => l.Length > 0)
-                        .ToList();
+                        .Where(l => l.Length > 0));
                     App.Services.Save();
                     UpdatePreview();
                 };
@@ -337,11 +336,10 @@ public sealed partial class ArgsPage : Page
     private void UpdateMulti(CliArgDefinition arg, StackPanel panel)
     {
         if (_syncing) return;
-        Settings.Args.Multi[arg.Name] = panel.Children
+        Settings.Args.SetMulti(arg.Name, panel.Children
             .OfType<CheckBox>()
             .Where(c => c.IsChecked == true)
-            .Select(c => (string)c.Content)
-            .ToList();
+            .Select(c => (string)c.Content));
         App.Services.Save();
         UpdatePreview();
     }

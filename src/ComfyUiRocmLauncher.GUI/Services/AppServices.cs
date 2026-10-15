@@ -18,16 +18,15 @@ public sealed class AppServices
         ConfigService = new ConfigService();
         Settings = ConfigService.Load();
         Log = new LogService(ConfigService.EnsureLogDirectory());
-        Launch = new LaunchService(Log);
-        Launch.StateChanged += s => SetState(s);
+
+        // 单一状态机：启动流程与环境任务都汇报到这里，界面只订阅它（SRS 2.4）
+        Machine = new AppStateMachine();
+        Machine.StateChanged += state => StateChanged?.Invoke(state);
+
+        Launch = new LaunchService(Log, Machine);
 
         Tasks = new TaskRunner();
-        Tasks.BusyChanged += busy =>
-        {
-            // 环境任务仅在 Idle 下发起（FR-8.1 互斥）：置 BusyEnv / 完成后回 Idle
-            if (busy) SetState(LaunchState.BusyEnv);
-            else if (State == LaunchState.BusyEnv) SetState(LaunchState.Idle);
-        };
+        Tasks.BusyChanged += Machine.ReportEnvBusy;
 
         _saveTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _saveTimer.Interval = TimeSpan.FromMilliseconds(400);
@@ -46,9 +45,13 @@ public sealed class AppServices
 
     public AppConfig Settings { get; }
 
-    /// <summary>展示状态：启动流程以 LaunchService 为权威经事件同步，环境任务经 TaskRunner.BusyChanged 置位。</summary>
-    public LaunchState State { get; private set; } = LaunchState.Idle;
+    /// <summary>应用状态机（启动流程 + 环境任务忙碌位的唯一真相）。</summary>
+    public AppStateMachine Machine { get; }
 
+    /// <summary>对外展示状态：直接取状态机，不再由两处状态互相同步。</summary>
+    public LaunchState State => Machine.State;
+
+    /// <summary>转发状态机的状态变化（界面只订阅这一处）。</summary>
     public event Action<LaunchState>? StateChanged;
 
     /// <summary>防抖保存：连续编辑（如文本框逐字符）合并为一次落盘。</summary>
@@ -73,13 +76,6 @@ public sealed class AppServices
         {
             Log.Append($"[启动器] 警告：配置写入失败：{ex.Message}");
         }
-    }
-
-    public void SetState(LaunchState state)
-    {
-        if (State == state) return;
-        State = state;
-        StateChanged?.Invoke(state);
     }
 
     /// <summary>读取 .last_update_hash 前 10 位作为当前版本（FR-1.3）。</summary>

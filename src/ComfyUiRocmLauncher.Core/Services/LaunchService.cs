@@ -9,10 +9,12 @@ public sealed class LaunchService
 {
     private readonly ProcessService _process = new();
     private readonly CliArgsCatalog _catalog = CliArgsCatalog.Instance;
+    private readonly AppStateMachine _stateMachine;
 
-    public LaunchService(LogService log)
+    public LaunchService(LogService log, AppStateMachine stateMachine)
     {
         Log = log;
+        _stateMachine = stateMachine;
         _process.OutputReceived += line =>
         {
             Log.Append(line);
@@ -32,9 +34,8 @@ public sealed class LaunchService
 
     public LogService Log { get; }
 
+    /// <summary>启动流程自身的状态（供查询与前置校验）；对外展示状态由 AppStateMachine 统一发布。</summary>
     public LaunchState State { get; private set; } = LaunchState.Idle;
-
-    public event Action<LaunchState>? StateChanged;
 
     public event Action<string>? OutputReceived;
 
@@ -42,7 +43,7 @@ public sealed class LaunchService
     {
         if (State == state) return;
         State = state;
-        StateChanged?.Invoke(state);
+        _stateMachine.ReportLaunch(state);
     }
 
     /// <summary>启动 ComfyUI；返回是否检测到就绪。失败时状态复位为 Idle 并重抛。</summary>
