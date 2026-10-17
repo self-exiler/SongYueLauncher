@@ -34,19 +34,78 @@ public sealed partial class MainWindow : Window
             App.Services.Log.Append($"[启动器] 警告：设置窗口图标失败：{ex.Message}");
         }
 
-        NavView.SelectedItem = NavView.MenuItems[0];
+        RestoreWindowState();
+        NavView.SelectedItem = FindNavItem(App.Services.Settings.LastPage) ?? NavView.MenuItems[0];
         RefreshHeader();
 
         AppWindow.Closing += OnAppWindowClosing;
         App.Services.StateChanged += _ => DispatcherQueue.TryEnqueue(RefreshHeader);
     }
 
+    // ---------- 窗口尺寸 / 位置记忆（FR-9） ----------
+
+    /// <summary>恢复上次的窗口位置、大小与最大化状态；随后监听变化以便随时记住。</summary>
+    private void RestoreWindowState()
+    {
+        var cfg = App.Services.Settings;
+        try
+        {
+            if (cfg.WindowWidth >= 640 && cfg.WindowHeight >= 480)
+                AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(
+                    cfg.WindowX, cfg.WindowY, cfg.WindowWidth, cfg.WindowHeight));
+
+            if (cfg.WindowMaximized && AppWindow.Presenter is OverlappedPresenter presenter)
+                presenter.Maximize();
+        }
+        catch (Exception ex)
+        {
+            // 显示器改分辨率/拔掉外接屏时旧坐标可能非法：保持系统默认，不阻断启动
+            App.Services.Log.Append($"[启动器] 警告：恢复窗口位置失败：{ex.Message}");
+        }
+
+        AppWindow.Changed += OnAppWindowChanged;
+    }
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (!args.DidPositionChange && !args.DidSizeChange) return;
+        CaptureWindowState();
+        App.Services.Save();
+    }
+
+    /// <summary>
+    /// 记录窗口状态。最大化时不覆盖还原尺寸——否则取消最大化会回到全屏大小。
+    /// </summary>
+    private void CaptureWindowState()
+    {
+        var cfg = App.Services.Settings;
+        var maximized = AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Maximized };
+        cfg.WindowMaximized = maximized;
+        if (maximized) return;
+
+        var position = AppWindow.Position;
+        var size = AppWindow.Size;
+        if (size.Width < 640 || size.Height < 480) return; // 最小化/异常态不记录
+
+        cfg.WindowX = position.X;
+        cfg.WindowY = position.Y;
+        cfg.WindowWidth = size.Width;
+        cfg.WindowHeight = size.Height;
+    }
+
+    private NavigationViewItem? FindNavItem(string? tag) =>
+        string.IsNullOrEmpty(tag)
+            ? null
+            : NavView.MenuItems.OfType<NavigationViewItem>()
+                .FirstOrDefault(i => string.Equals(i.Tag?.ToString(), tag, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>关闭确认状态机：弹窗期间取消关闭，用户选择“结束 Python 并关闭”后放行。</summary>
     private bool _closeAfterKill;
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        // 无论最终是否关闭，先立即落盘待写配置
+        // 无论最终是否关闭，先立即落盘窗口状态与待写配置
+        CaptureWindowState();
         App.Services.FlushSave();
         if (_closeAfterKill) return;
 
@@ -126,6 +185,15 @@ public sealed partial class MainWindow : Window
             RootFrame.BackStack.Clear();
         }
         PageTitle.Text = item.Content?.ToString() ?? string.Empty;
+
+        // 记住上次停留的页面（FR-9）：存 Tag 而非序号，菜单顺序调整后仍能对上
+        var navTag = item.Tag?.ToString() ?? string.Empty;
+        if (!string.Equals(App.Services.Settings.LastPage, navTag, StringComparison.Ordinal))
+        {
+            App.Services.Settings.LastPage = navTag;
+            App.Services.Save();
+        }
+
         RefreshHeader();
     }
 

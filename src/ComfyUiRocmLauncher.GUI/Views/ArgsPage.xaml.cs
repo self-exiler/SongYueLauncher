@@ -100,18 +100,34 @@ public sealed partial class ArgsPage : Page
         ArgCountText.Text = $"共 {_catalog.Count} 项参数（来源 ComfyUI cli_args.py 快照）";
         UpdateGroupCounts();
 
-        // 含已启用参数的组自动展开（懒建），其余保持折叠
-        foreach (var g in _groups)
-            if (g.ArgNames.Any(Settings.Args.IsEnabled))
-                SetExpanded(g, true);
+        // 含已启用参数的组：只展开第一个（手风琴：任何时刻最多一个分组展开，避免页面过长）
+        var firstEnabled = _groups.FirstOrDefault(g => g.ArgNames.Any(Settings.Args.IsEnabled));
+        if (firstEnabled is not null) SetExpanded(firstEnabled, true);
 
         UpdatePreview();
     }
 
+    /// <summary>展开/收起分组。展开时自动收起其他分组（手风琴语义：任何时刻最多一个展开）。</summary>
     private void SetExpanded(GroupUi group, bool expanded)
     {
-        EnsureBodyBuilt(group);
-        group.Body!.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        if (expanded)
+        {
+            foreach (var other in _groups)
+            {
+                if (ReferenceEquals(other, group)) continue;
+                SetExpandedRaw(other, false);
+            }
+        }
+        SetExpandedRaw(group, expanded);
+    }
+
+    /// <summary>只切显隐与箭头，不参与手风琴——搜索需要同时展开多个命中分组。</summary>
+    private void SetExpandedRaw(GroupUi group, bool expanded)
+    {
+        // 只有展开时才懒建行控件；从未展开过的分组被折叠时直接返回
+        if (expanded) EnsureBodyBuilt(group);
+        if (group.Body is null) return;
+        group.Body.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
         group.Chevron.RenderTransform = new Microsoft.UI.Xaml.Media.RotateTransform { Angle = expanded ? 90 : 0 };
     }
 
@@ -388,7 +404,8 @@ public sealed partial class ArgsPage : Page
             g.Container.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
             if (!anyVisible) continue;
 
-            if (query.Length > 0) SetExpanded(g, true);
+            // 搜索命中要能同时看到多个分组的匹配项，故绕过手风琴
+            if (query.Length > 0) SetExpandedRaw(g, true);
             else
             {
                 // 空查询：恢复各行可见
@@ -397,7 +414,6 @@ public sealed partial class ArgsPage : Page
                 continue;
             }
 
-            EnsureBodyBuilt(g);
             foreach (var name in g.ArgNames)
                 if (_rows.TryGetValue(name, out var row))
                     row.Card.Visibility = matches.Contains(name) ? Visibility.Visible : Visibility.Collapsed;

@@ -17,6 +17,26 @@ public sealed class AppConfig
     public EnvUpdateSettings EnvUpdate { get; set; } = new();
     public int LogRetainCount { get; set; } = 30;
     public int LogRetainTotalMB { get; set; } = 200;
+
+    // ---------- 界面状态（下次启动恢复，FR-9） ----------
+
+    /// <summary>窗口左上角 X（AppWindow 像素坐标）。</summary>
+    public int WindowX { get; set; }
+
+    /// <summary>窗口左上角 Y。</summary>
+    public int WindowY { get; set; }
+
+    /// <summary>还原态窗口宽；为 0 表示尚未记录（首次运行用系统默认尺寸）。</summary>
+    public int WindowWidth { get; set; }
+
+    /// <summary>还原态窗口高；为 0 表示尚未记录。</summary>
+    public int WindowHeight { get; set; }
+
+    /// <summary>上次退出时是否最大化。</summary>
+    public bool WindowMaximized { get; set; }
+
+    /// <summary>上次停留的页面 Tag（MainWindow 导航恢复用）；空 = 主页。</summary>
+    public string LastPage { get; set; } = string.Empty;
 }
 
 /// <summary>

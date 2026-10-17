@@ -139,4 +139,39 @@ public sealed partial class ConfigPage : Page
         RefreshTemplates();
         ActionStatusText.Text = "已删除自定义模板";
     }
+
+    private async void ExportPs1_Click(object sender, RoutedEventArgs e)
+    {
+        var script = Ps1ScriptBuilder.Build(Settings, DateTime.Now);
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker
+        {
+            SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
+            SuggestedFileName = "comfyui-launch",
+        };
+        picker.FileTypeChoices.Add("PowerShell 脚本", new List<string> { ".ps1" });
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, App.WindowHandle);
+
+        var file = await picker.PickSaveFileAsync();
+        if (file is null) return;
+
+        try
+        {
+            // 必须带 BOM：Windows PowerShell 5.1 读无 BOM 文件时按 ANSI 解码，中文注释与警告会乱码
+            File.WriteAllText(file.Path, script, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            ExportStatusText.Text = $"已导出：{file.Path}（右键「使用 PowerShell 运行」即可启动）";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ExportStatusText.Text = $"导出失败：{ex.Message}";
+        }
+    }
+
+    private void CopyPs1_Click(object sender, RoutedEventArgs e)
+    {
+        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        package.SetText(Ps1ScriptBuilder.Build(Settings, DateTime.Now));
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+        ExportStatusText.Text = "脚本内容已复制到剪贴板";
+    }
 }

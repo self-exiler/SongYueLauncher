@@ -14,9 +14,9 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 工具条（设置应用风格：无卡片背景） -->
-        <Grid Grid.Row="0" MaxWidth="{StaticResource SettingsPageMaxWidth}"
-              HorizontalAlignment="Stretch" ColumnSpacing="12">
+        <!-- 工具条（设置应用风格：无卡片背景）。不加 MaxWidth：下面的控制台是整宽的，两者应同宽，
+             且「Stretch + MaxWidth」会被 WinUI 居中，与页头左对齐不一致 -->
+        <Grid Grid.Row="0" HorizontalAlignment="Stretch" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
