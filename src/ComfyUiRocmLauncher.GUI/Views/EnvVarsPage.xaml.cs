@@ -53,7 +53,7 @@ public sealed partial class EnvVarsPage : Page
             // FR-3.3：key 与固定注入层冲突时禁止保存并提示
             if (LaunchEnvBuilder.FixedKeys.Contains(newKey, StringComparer.OrdinalIgnoreCase))
             {
-                ConflictText.Text = $"已阻止保存：{newKey} 属于固定注入层，由启动器统一管理";
+                ShowConflict($"已阻止保存：{newKey} 属于固定注入层，由启动器统一管理");
                 return;
             }
 
@@ -86,9 +86,16 @@ public sealed partial class EnvVarsPage : Page
             .Where(k => LaunchEnvBuilder.FixedKeys.Contains(k, StringComparer.OrdinalIgnoreCase))
             .ToList();
 
-        ConflictText.Text = conflicts.Count == 0
-            ? string.Empty
-            : "与固定注入层冲突（需删除或改名后才能保存新值）：" + string.Join(", ", conflicts);
+        ShowConflict(conflicts.Count == 0
+            ? null
+            : "与固定注入层冲突（需删除或改名后才能保存新值）：" + string.Join(", ", conflicts));
+    }
+
+    /// <summary>冲突提示：有内容时展开 InfoBar，无内容时收起（取代原先的裸 TextBlock）。</summary>
+    private void ShowConflict(string? message)
+    {
+        ConflictBar.Message = message ?? string.Empty;
+        ConflictBar.IsOpen = !string.IsNullOrEmpty(message);
     }
 
     private void AddRow_Click(object sender, RoutedEventArgs e)

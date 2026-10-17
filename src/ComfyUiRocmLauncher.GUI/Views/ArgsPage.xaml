@@ -7,40 +7,40 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid>
+    <!-- 页面边距统一交给最外层 Grid：上/左/右/底与其余页同一令牌，
+         行间距 8 取代各子元素手写的 36,x,36,y -->
+    <Grid Padding="{StaticResource SettingsPagePadding}" RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}" Padding="16,12"
-                Margin="36,24,36,4">
-            <StackPanel Orientation="Horizontal" Spacing="10">
+        <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}">
+            <StackPanel Style="{StaticResource SettingsCardStackStyle}" Orientation="Horizontal">
                 <TextBox x:Name="SearchBox" Width="240" PlaceholderText="按参数名搜索…" TextChanged="SearchBox_TextChanged" />
                 <TextBlock x:Name="ArgCountText" VerticalAlignment="Center" Style="{StaticResource SecondaryTextStyle}" />
             </StackPanel>
         </Border>
 
-        <ScrollViewer Grid.Row="1" Padding="36,0">
+        <ScrollViewer Grid.Row="1">
             <StackPanel x:Name="GroupsHost" Spacing="8" HorizontalAlignment="Stretch" />
         </ScrollViewer>
 
-        <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Padding="16,12"
-                Margin="36,8,36,24">
-            <StackPanel Spacing="6">
+        <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}">
+            <StackPanel Style="{StaticResource SettingsCardStackStyle}">
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="额外参数" VerticalAlignment="Center" />
+                    <TextBlock Text="额外参数" Style="{StaticResource CardTitleStyle}" VerticalAlignment="Center" />
                     <TextBox x:Name="ExtraArgsBox" Grid.Column="1"
                              PlaceholderText="原样拼接在结构化参数之后（放最后，允许覆盖前者）"
                              TextChanged="ExtraArgsBox_TextChanged" />
                 </Grid>
                 <TextBlock Text="命令预览" Style="{StaticResource CardTitleStyle}" />
-                <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="6" Padding="10">
+                <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="12">
                     <TextBlock x:Name="PreviewText" FontFamily="{StaticResource MonoFontFamily}"
                                Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                 </Border>

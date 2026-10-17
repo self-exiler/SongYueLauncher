@@ -23,6 +23,16 @@
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
+            <!-- 页面首个分组标题：页面上沿已有 Padding，不能再用 24 的上间距（此前靠 4 处复写 Margin 实现） -->
+            <Style x:Key="SettingsSectionHeaderFirstStyle" TargetType="TextBlock"
+                   BasedOn="{StaticResource SettingsSectionHeaderStyle}">
+                <Setter Property="Margin" Value="0,0,0,8" />
+            </Style>
+
+            <!-- 输入类控件的统一宽度（下拉框 / 单行文本框），避免各页 240/260/340/520 混用 -->
+            <x:Double x:Key="SettingsFieldMinWidth">320</x:Double>
+            <x:Double x:Key="SettingsFieldMaxWidth">480</x:Double>
+
             <!-- 卡片容器：无内边距（供分隔线全幅贴边）；行内边距由 SettingsRowStyle 负责 -->
             <Style x:Key="CardBorderStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
@@ -36,6 +46,14 @@
             <Style x:Key="SettingsRowStyle" TargetType="Grid">
                 <Setter Property="Padding" Value="16,12" />
                 <Setter Property="MinHeight" Value="{StaticResource SettingsCardMinHeight}" />
+            </Style>
+
+            <!-- 卡片内容栈：卡片里不是"标题+右侧控件"行、而是一段内容（说明、控件、按钮）时用它，
+                 取代 11 处手写 Padding="16,12"（注意 TargetType 必须是 StackPanel，
+                 不能套上面的 SettingsRowStyle —— 那个只适用于 Grid） -->
+            <Style x:Key="SettingsCardStackStyle" TargetType="StackPanel">
+                <Setter Property="Padding" Value="16,12" />
+                <Setter Property="Spacing" Value="8" />
             </Style>
 
             <!-- 卡片内标题（基于内置 BodyStrong） -->

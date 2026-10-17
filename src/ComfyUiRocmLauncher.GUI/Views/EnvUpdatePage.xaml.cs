@@ -137,7 +137,7 @@ public sealed partial class EnvUpdatePage : Page
             row.Children.Add(new TextBlock
             {
                 Text = tool.Name,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
                 VerticalAlignment = VerticalAlignment.Center,
             });
 

@@ -187,7 +187,12 @@ public sealed partial class ArgsPage : Page
 
         // 设置应用行布局：左侧「参数名 + 说明」，右侧「取值控件 + 启用开关」
         // 列宽随窗体比例伸缩：文本列 2*（有下限），控件列 1*（控件本身设上下限），开关列 Auto
-        var grid = new Grid { ColumnSpacing = 12, Padding = new Thickness(16, 10, 16, 10) };
+        // 行内边距与最小行高交给 SettingsRowStyle（16,12 / 48），不再手写 16,10
+        var grid = new Grid
+        {
+            ColumnSpacing = 12,
+            Style = (Style)Application.Current.Resources["SettingsRowStyle"],
+        };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star), MinWidth = 300 });
         if (control is not null)
         {

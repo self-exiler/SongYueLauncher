@@ -11,14 +11,16 @@
         <StackPanel MaxWidth="{StaticResource SettingsPageMaxWidth}" HorizontalAlignment="Stretch">
 
             <!-- ===== 模板选择 ===== -->
-            <TextBlock Text="GPU 架构模板" Style="{StaticResource SettingsSectionHeaderStyle}" Margin="0,0,0,8" />
+            <TextBlock Text="GPU 架构模板" Style="{StaticResource SettingsSectionHeaderFirstStyle}" />
             <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Padding="16,12" Spacing="12">
+                <StackPanel Style="{StaticResource SettingsCardStackStyle}" Spacing="12">
                     <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
                                Text="集中选择 GPU 代际默认模板。应用为全量替换：当前环境变量与启动参数会被整体改写为模板内容，之后仍可在“启动参数 / 环境变量”页自由编辑。" />
-                    <ComboBox x:Name="TemplateCombo" Header="模板" Width="340" HorizontalAlignment="Left"
+                    <ComboBox x:Name="TemplateCombo" Header="模板"
+                              MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="{StaticResource SettingsFieldMaxWidth}"
+                              HorizontalAlignment="Left"
                               DisplayMemberPath="Title" SelectionChanged="TemplateCombo_SelectionChanged" />
-                    <StackPanel Orientation="Horizontal" Spacing="10">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="ApplyButton" Content="应用模板" Style="{StaticResource AccentButtonStyle}"
                                 Click="Apply_Click" />
                         <Button x:Name="SaveAsButton" Content="当前配置另存为自定义模板" Click="SaveAs_Click" />

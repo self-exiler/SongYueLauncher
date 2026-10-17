@@ -18,7 +18,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TitleBar x:Name="AppTitleBar" Title="松月启动器" Subtitle="A ComfyUI Launcher for ROCm">
+        <TitleBar x:Name="AppTitleBar" Title="松月启动器">
             <TitleBar.IconSource>
                 <ImageIconSource ImageSource="Assets/AppIcon.ico" />
             </TitleBar.IconSource>
@@ -59,14 +59,14 @@
                 </Grid.RowDefinitions>
 
                 <!-- 设置应用风格页头：大标题居左，版本号与运行状态居右，无工具条背景 -->
-                <Border Grid.Row="0" Padding="36,10,36,0">
+                <Border Grid.Row="0" Padding="36,8,36,0">
                     <Grid>
                         <TextBlock x:Name="PageTitle" Text="主页" Style="{StaticResource TitleTextBlockStyle}"
                                    VerticalAlignment="Center" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
                             <TextBlock x:Name="VersionText" Text="版本 unknown" VerticalAlignment="Center"
                                        Style="{StaticResource SecondaryTextStyle}" />
-                            <Border x:Name="StateBadge" Padding="10,3" CornerRadius="10"
+                            <Border x:Name="StateBadge" Padding="12,4" CornerRadius="8"
                                     Background="{ThemeResource ControlFillColorSecondaryBrush}">
                                 <TextBlock x:Name="StateTextBlock" Text="已停止" FontSize="12" />
                             </Border>

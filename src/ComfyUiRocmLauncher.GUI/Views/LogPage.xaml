@@ -7,14 +7,15 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid>
+    <!-- 页面边距统一交给最外层 Grid（与其余页同一令牌），行间距 8 取代两条手写 Margin -->
+    <Grid Padding="{StaticResource SettingsPagePadding}" RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <!-- 工具条（设置应用风格：无卡片背景） -->
-        <Grid Grid.Row="0" Margin="36,4,36,8" MaxWidth="{StaticResource SettingsPageMaxWidth}"
+        <Grid Grid.Row="0" MaxWidth="{StaticResource SettingsPageMaxWidth}"
               HorizontalAlignment="Stretch" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -27,7 +28,7 @@
                 <ToggleSwitch x:Name="AutoScrollToggle" IsOn="True" OnContent="" OffContent="" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                <Button x:Name="AiAnalyzeButton" Content="AI智能分析" Click="AiAnalyze_Click" />
+                <Button x:Name="AiAnalyzeButton" Content="AI 智能分析" Click="AiAnalyze_Click" />
                 <Button Content="清空" Click="Clear_Click" />
                 <Button Content="复制全部" Click="CopyAll_Click" />
                 <Button Content="打开日志目录" Click="OpenLogDir_Click" />
@@ -35,11 +36,11 @@
         </Grid>
 
         <!-- 控制台：保留终端深色底以保证 ANSI 调色板对比度（颜色取自 App.xaml 令牌） -->
-        <Border Grid.Row="1" Margin="36,0,36,24" Style="{StaticResource CardBorderStyle}" Background="{StaticResource ConsoleBackgroundBrush}">
+        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Background="{StaticResource ConsoleBackgroundBrush}">
             <ScrollViewer x:Name="LogScroll" Padding="12">
                 <TextBlock x:Name="LogText"
                            FontFamily="{StaticResource MonoFontFamily}"
-                           FontSize="12.5"
+                           FontSize="12"
                            Foreground="{StaticResource ConsoleForegroundBrush}"
                            TextWrapping="Wrap"
                            IsTextSelectionEnabled="True" />

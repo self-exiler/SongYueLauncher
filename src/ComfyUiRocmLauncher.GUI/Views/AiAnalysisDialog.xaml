@@ -9,7 +9,7 @@
     mc:Ignorable="d"
     d:DesignWidth="760" d:DesignHeight="620">
 
-    <Grid RowSpacing="10">
+    <Grid RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -19,7 +19,7 @@
         </Grid.RowDefinitions>
 
         <!-- 模型选择 -->
-        <Grid Grid.Row="0" ColumnSpacing="10">
+        <Grid Grid.Row="0" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -39,10 +39,10 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="ErrorSummaryText" Style="{StaticResource SecondaryTextStyle}" VerticalAlignment="Center" />
-                <Button x:Name="RecaptureButton" Grid.Column="1" Content="重新抓取" FontSize="12" Padding="8,2" Click="Recapture_Click" />
+                <Button x:Name="RecaptureButton" Grid.Column="1" Content="重新抓取" FontSize="12" Padding="8,4" Click="Recapture_Click" />
             </Grid>
             <TextBox x:Name="ErrorPreviewBox"
-                     Height="150"
+                     MinHeight="120"
                      AcceptsReturn="True"
                      TextWrapping="Wrap"
                      IsSpellCheckEnabled="False"
@@ -67,20 +67,21 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="AI 分析结果" Style="{StaticResource CardTitleStyle}" />
                 <!-- IsChecked 不可在 XAML 中预置：解析期触发 Checked 事件时 AnswerMarkdown 尚未创建，程序崩溃 -->
-                <ToggleButton x:Name="RenderToggle" Grid.Column="1" FontSize="12" Padding="8,2"
+                <ToggleButton x:Name="RenderToggle" Grid.Column="1" FontSize="12" Padding="8,4"
                               Content="原文" Checked="RenderMode_Changed" Unchecked="RenderMode_Changed" />
             </Grid>
-            <Border Grid.Row="1" Background="{StaticResource ConsoleBackgroundBrush}" CornerRadius="6" Padding="10">
+            <Border Grid.Row="1" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8" Padding="12">
                 <ScrollViewer x:Name="AnswerScroll"
                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                     <Grid>
                         <!-- 勿在此控件上设置 TextWrapping：Labs 版 MarkdownTextBlock 无该属性，
                              WinUI 1.8 XamlCompiler 会静默崩溃（exit 1 无诊断）。换行由控件内部默认行为负责。 -->
-                        <ctrl:MarkdownTextBlock x:Name="AnswerMarkdown" Background="Transparent" />
+                        <ctrl:MarkdownTextBlock x:Name="AnswerMarkdown" Background="Transparent"
+                                                Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         <TextBlock x:Name="AnswerText"
                                    FontFamily="{StaticResource MonoFontFamily}"
-                                   FontSize="12.5"
-                                   Foreground="{StaticResource ConsoleForegroundBrush}"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    TextWrapping="Wrap"
                                    IsTextSelectionEnabled="True"
                                    Visibility="Collapsed"

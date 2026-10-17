@@ -11,9 +11,9 @@
         <StackPanel MaxWidth="{StaticResource SettingsPageMaxWidth}" HorizontalAlignment="Stretch">
 
             <!-- ===== 固定注入层（只读） ===== -->
-            <TextBlock Text="固定注入层（只读）" Style="{StaticResource SettingsSectionHeaderStyle}" Margin="0,0,0,8" />
+            <TextBlock Text="固定注入层（只读）" Style="{StaticResource SettingsSectionHeaderFirstStyle}" />
             <Border Style="{StaticResource CardBorderStyle}">
-                <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12" RowSpacing="10">
+                <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12" RowSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="220" />
                         <ColumnDefinition Width="*" />
@@ -37,21 +37,18 @@
             <!-- ===== 自定义层 ===== -->
             <TextBlock Text="自定义层" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Padding="16,12" Spacing="10">
+                <StackPanel Style="{StaticResource SettingsCardStackStyle}">
                     <TextBlock Text="key 与固定注入层冲突时禁止保存并提示。" Style="{StaticResource SecondaryTextStyle}" />
-                    <StackPanel x:Name="CustomRows" Spacing="6" />
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Button Content="添加变量" Click="AddRow_Click" />
-                        <TextBlock x:Name="ConflictText" VerticalAlignment="Center" FontSize="12"
-                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
-                    </StackPanel>
+                    <StackPanel x:Name="CustomRows" Spacing="8" />
+                    <Button Content="添加变量" Click="AddRow_Click" HorizontalAlignment="Left" />
+                    <InfoBar x:Name="ConflictBar" Severity="Error" IsClosable="False" IsOpen="False" />
                 </StackPanel>
             </Border>
 
             <!-- ===== 启动前自动步骤 ===== -->
             <TextBlock Text="启动前自动步骤" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Padding="16,12" Spacing="8">
+                <StackPanel Style="{StaticResource SettingsCardStackStyle}">
                     <TextBlock Text="复刻 comfyui-rocm.bat 的启动前流程" Style="{StaticResource CardTitleStyle}" />
                     <TextBlock Text="1. 执行 rocm-sdk init（失败仅警告，不阻断）" Style="{StaticResource SecondaryTextStyle}" />
                     <TextBlock Text="2. 执行 rocm-sdk path --root 推导 HIP_PATH / ROCM_PATH（失败警告）" Style="{StaticResource SecondaryTextStyle}" />
