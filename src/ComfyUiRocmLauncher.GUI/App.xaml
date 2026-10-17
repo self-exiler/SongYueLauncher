@@ -12,7 +12,9 @@
             </ResourceDictionary.MergedDictionaries>
 
             <!-- ===== Windows 11 设置（Settings）风格统一度量 ===== -->
-            <x:Double x:Key="SettingsPageMaxWidth">1000</x:Double>
+            <!-- 页面内容铺满可用宽度，只留 SettingsPagePadding，不设最大宽度。
+                 若将来要加上限：用「单星号列 + MaxWidth」实现（列封顶后从左侧起排），
+                 切勿把 MaxWidth 直接加在 StackPanel/Grid 上——那会被 WinUI 居中。 -->
             <Thickness x:Key="SettingsPagePadding">36,4,36,36</Thickness>
             <x:Double x:Key="SettingsCardMinHeight">48</x:Double>
 

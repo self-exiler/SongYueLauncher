@@ -7,13 +7,9 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <!-- 内容宽度上限用「单星号列 + MaxWidth」实现，列宽封顶后仍从左侧起排（左对齐）。
-         切勿把 MaxWidth 直接加在 StackPanel 上：WinUI 对「Stretch + MaxWidth」会居中，最大化后看着偏右。 -->
+    <!-- 内容铺满可用宽度（左右只留页面边距）。若将来要加上限，必须用「单星号列 + MaxWidth」实现，
+         切勿把 MaxWidth 直接加在 StackPanel 上：WinUI 对「Stretch + MaxWidth」会居中，会表现为内容偏右。 -->
     <Grid Padding="{StaticResource SettingsPagePadding}">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" MaxWidth="{StaticResource SettingsPageMaxWidth}" />
-        </Grid.ColumnDefinitions>
-
         <ScrollViewer>
             <StackPanel>
 
