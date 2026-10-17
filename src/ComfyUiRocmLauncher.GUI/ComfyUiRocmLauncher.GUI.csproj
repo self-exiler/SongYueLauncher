@@ -30,6 +30,8 @@
          发布目录供 MSI 收割（安装后 Assets\AppIcon.ico 与 exe 同级），
          否则 MainWindow 的 AppWindow.SetIcon 会静默失败、TitleBar.IconSource 的相对 URI 也取不到图。 -->
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- AI 分析自定义 agent：必须随 exe 输出，OpenCodeClient 每次分析复制到临时项目级 .opencode/opencode.json。 -->
+    <Content Include="Assets\Agents\comfyui-error-analyst.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

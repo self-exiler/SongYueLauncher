@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text;
 using ComfyUiRocmLauncher.Core.Services;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -18,6 +19,7 @@ public sealed partial class AiAnalysisDialog : UserControl
     private CancellationTokenSource? _cts;
     private bool _answering;
     private string _lastAnswer = string.Empty;
+    private readonly StringBuilder _answerChunks = new();
 
     public AiAnalysisDialog()
     {
@@ -68,44 +70,77 @@ public sealed partial class AiAnalysisDialog : UserControl
         SetAnswering(true);
         SetAnswerText("正在等待 opencode 回应…");
         _lastAnswer = string.Empty;
+        _answerChunks.Clear();
         StatusText.Text = $"已提交给 {model.QualifiedId}，分析可能需要数十秒。";
 
         _cts = new CancellationTokenSource();
         try
         {
-            var answer = await _client.AskAsync(prompt, model.QualifiedId, OnOutputLine, cancellationToken: _cts.Token);
-            if (_cts.IsCancellationRequested)
-            {
-                SetAnswerText("已取消本次分析。");
-                StatusText.Text = "已取消。";
-            }
-            else if (answer.Success)
-            {
-                SetAnswerText(answer.Text);
-                _lastAnswer = answer.Text;
-                StatusText.Text = "分析完成，可点击「复制回答」保存。";
-            }
-            else
-            {
-                SetAnswerText(answer.Text);
-                StatusText.Text = "opencode 返回失败，请检查登录状态（opencode auth login）或更换模型后重试。";
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            SetAnswerText("已取消本次分析。");
-            StatusText.Text = "已取消。";
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException)
-        {
-            SetAnswerText(ex.Message);
-            StatusText.Text = "调用 opencode 出错。";
+            await RunAnalysisAsync(prompt, model.QualifiedId, _cts.Token).ConfigureAwait(false);
         }
         finally
         {
-            _cts.Dispose();
+            var cts = _cts;
             _cts = null;
-            SetAnswering(false);
+            _queue.TryEnqueue(() =>
+            {
+                SetAnswering(false);
+                cts?.Dispose();
+            });
+        }
+    }
+
+    private async Task RunAnalysisAsync(string prompt, string modelQualifiedId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var answer = await _client.AskAsync(prompt, modelQualifiedId, OnOutputLine, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            var cancelled = cancellationToken.IsCancellationRequested;
+
+            _queue.TryEnqueue(() =>
+            {
+                if (cancelled)
+                {
+                    SetAnswerText("已取消本次分析。");
+                    StatusText.Text = "已取消。";
+                }
+                else if (answer.Success)
+                {
+                    SetAnswerText(answer.Text);
+                    _lastAnswer = answer.Text;
+                    StatusText.Text = "分析完成，可点击「复制回答」保存。";
+                }
+                else
+                {
+                    SetAnswerText(answer.Text);
+                    StatusText.Text = "opencode 返回失败，请检查登录状态（opencode auth login）或更换模型后重试。";
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            _queue.TryEnqueue(() =>
+            {
+                SetAnswerText("已取消本次分析。");
+                StatusText.Text = "已取消。";
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException)
+        {
+            _queue.TryEnqueue(() =>
+            {
+                SetAnswerText(ex.Message);
+                StatusText.Text = "调用 opencode 出错。";
+            });
+        }
+        catch (Exception ex)
+        {
+            _queue.TryEnqueue(() =>
+            {
+                SetAnswerText(ex.Message);
+                StatusText.Text = "调用 opencode 发生未预期错误。";
+            });
         }
     }
 
@@ -136,14 +171,35 @@ public sealed partial class AiAnalysisDialog : UserControl
 
     private void OnOutputLine(string line)
     {
-        var trimmed = line.Trim();
-        if (trimmed.Length == 0) return;
+        var display = OpenCodeClient.TryFormatRunEvent(line);
+        if (string.IsNullOrWhiteSpace(display)) return;
+
+        if (display.StartsWith("opencode ", StringComparison.Ordinal))
+        {
+            _queue.TryEnqueue(() =>
+            {
+                if (!_answering) return;
+                SetAnswerText($"opencode 处理中…\n{Tail(display, 160)}");
+                AnswerScroll.ChangeView(null, double.MaxValue, null);
+            });
+            return;
+        }
+
         _queue.TryEnqueue(() =>
         {
             if (!_answering) return;
-            SetAnswerText("opencode 处理中…\n" + Tail(trimmed, 160));
+            AppendAnswerChunk(display);
             AnswerScroll.ChangeView(null, double.MaxValue, null);
         });
+    }
+
+    private void AppendAnswerChunk(string chunk)
+    {
+        if (_answerChunks.Length > 0) _answerChunks.Append("\n\n");
+        _answerChunks.Append(chunk);
+        var text = _answerChunks.ToString();
+        SetAnswerText(text);
+        _lastAnswer = text;
     }
 
     private static string Tail(string text, int max) => text.Length <= max ? text : text[^max..];

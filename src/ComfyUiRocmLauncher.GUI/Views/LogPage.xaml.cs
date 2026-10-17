@@ -130,10 +130,24 @@ public sealed partial class LogPage : Page
         panel.StateChanged += (_, _) => dialog.PrimaryButtonText = panel.SendLabel;
 
         // Primary 按钮不自动关闭对话框：分析进行中允许取消，结束后由用户自行关闭
-        dialog.PrimaryButtonClick += (s, args) =>
+        dialog.PrimaryButtonClick += async (s, args) =>
         {
             args.Cancel = true;
-            _ = panel.HandleSendAsync();
+            try
+            {
+                await panel.HandleSendAsync();
+            }
+            catch (Exception ex)
+            {
+                var error = new ContentDialog
+                {
+                    XamlRoot = XamlRoot,
+                    Title = "AI 智能分析失败",
+                    Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = ex.Message },
+                    CloseButtonText = "确定",
+                };
+                await error.ShowAsync();
+            }
         };
 
         dialog.SecondaryButtonClick += (s, args) =>

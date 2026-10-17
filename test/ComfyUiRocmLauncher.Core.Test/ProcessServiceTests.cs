@@ -17,6 +17,18 @@ public class ProcessServiceTests
     }
 
     [Fact]
+    public async Task RunCapturedAsync_WritesStandardInputThenCloses()
+    {
+        var (code, stdout, stderr) = await ProcessService.RunCapturedAsync(
+            "cmd.exe", "/c findstr /n \"^\"", Environment.CurrentDirectory, 15_000, standardInput: "alpha\nbeta");
+
+        Assert.Equal(0, code);
+        Assert.Contains("alpha", stdout);
+        Assert.Contains("beta", stdout);
+        Assert.DoesNotContain("超时", stderr);
+    }
+
+    [Fact]
     public async Task RunCapturedAsync_TimesOutAndReportsTimeout()
     {
         var (code, _, stderr) = await ProcessService.RunCapturedAsync(

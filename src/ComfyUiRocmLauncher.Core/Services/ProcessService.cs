@@ -192,6 +192,7 @@ public sealed class ProcessService
     /// 一次性命令执行并捕获完整 stdout / stderr（需要超时与分离输出的场景，如 opencode CLI）。
     /// 与 <see cref="RunCommandAsync"/> 共用 CreateStartInfo，因此同样重定向 stdin，
     /// 不会让 Python 子进程在 DuplicateHandle 时抛 WinError 6。
+    /// 传入 <paramref name="standardInput"/> 时会写入该文本再关闭 stdin；未传则立即关闭 stdin。
     /// 返回 <c>ExitCode = -1</c> 表示进程未能正常退出（超时或已取消）。
     /// </summary>
     public static async Task<(int ExitCode, string StdOut, string StdErr)> RunCapturedAsync(
@@ -200,7 +201,8 @@ public sealed class ProcessService
         string workingDirectory,
         int timeoutMs,
         Action<string>? onOutputLine = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? standardInput = null)
     {
         using var process = new Process
         {
@@ -228,6 +230,13 @@ public sealed class ProcessService
         if (!process.Start()) throw new InvalidOperationException($"无法启动进程：{fileName}");
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
+        // 一次性捕获命令不能把 stdin 留成开放管道：opencode run 在非 TTY 下会读到 EOF 才开工。
+        // 需要输入时先写完再关闭；不需要输入时立即关闭，避免子进程等待 stdin。
+        if (standardInput is not null)
+        {
+            await process.StandardInput.WriteAsync(standardInput).ConfigureAwait(false);
+        }
+        process.StandardInput.Close();
 
         using var timeoutCts = new CancellationTokenSource(timeoutMs);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);

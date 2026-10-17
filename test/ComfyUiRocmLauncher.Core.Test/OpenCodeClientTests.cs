@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ComfyUiRocmLauncher.Core.Services;
 
 namespace ComfyUiRocmLauncher.Core.Test;
@@ -64,6 +65,37 @@ public class OpenCodeClientTests
 
         Assert.False(answer.Success);
         Assert.Contains("没有返回可解析的回答", answer.Text);
+    }
+
+    [Fact]
+    public void TryFormatRunEvent_ConvertsUsefulEvents()
+    {
+        Assert.Equal("结论：显存不足", OpenCodeClient.TryFormatRunEvent(
+            """{"type":"text","part":{"type":"text","text":"结论：显存不足"}}"""));
+        Assert.Equal("opencode 已开始处理请求。", OpenCodeClient.TryFormatRunEvent(
+            """{"type":"step_start","part":{"type":"step-start"}}"""));
+        Assert.Equal("Model unavailable: bad/id", OpenCodeClient.TryFormatRunEvent(
+            """{"type":"error","error":{"type":"provider.no-route","message":"Model unavailable: bad/id"}}"""));
+        Assert.Null(OpenCodeClient.TryFormatRunEvent(
+            """{"type":"unknown","part":{"type":"unknown"}}"""));
+    }
+
+    [Fact]
+    public void AnalystAgentResource_IsAvailableForTemporaryProjectConfig()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Assets", "Agents", "comfyui-error-analyst.json");
+
+        Assert.True(File.Exists(path));
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var agent = doc.RootElement.GetProperty("agent").GetProperty("comfyui-error-analyst");
+        var permission = agent.GetProperty("permission");
+
+        Assert.Equal("primary", agent.GetProperty("mode").GetString());
+        Assert.Equal("deny", permission.GetProperty("*").GetString());
+        Assert.Equal("allow", permission.GetProperty("read").GetString());
+        Assert.Equal("allow", permission.GetProperty("webfetch").GetString());
+        Assert.Equal("allow", permission.GetProperty("websearch").GetString());
+        Assert.DoesNotContain(agent.GetProperty("system").GetString() ?? string.Empty, "不访问网络", StringComparison.Ordinal);
     }
 
     [Fact]

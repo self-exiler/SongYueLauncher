@@ -23,6 +23,10 @@ public sealed class OpenCodeClient
 {
     private const int ModelsTimeoutMs = 60_000;
     private const int AskTimeoutMs = 5 * 60_000;
+    private const string AnalystAgentId = "comfyui-error-analyst";
+    private const string AnalystResourcePath = @"Assets\Agents\comfyui-error-analyst.json";
+    private const string RunStdinInstruction =
+        "完整任务提示词与错误日志已通过 stdin 附加到本次调用。请只依据 stdin 内容分析，不要要求我重新粘贴日志；不要修改文件，不要运行命令。遇到不确定或版本相关问题时，可使用 websearch/webfetch 查证。";
 
     /// <summary>定位本机 opencode 可执行文件；未安装返回 null。</summary>
     public static string? Locate() => ToolLocator.FindOpenCode();
@@ -68,14 +72,12 @@ public sealed class OpenCodeClient
     }
 
     /// <summary>
-    /// 发送提问并取回回答。长文本经临时文件由 --file 附件传入（argv 长度受限），
-    /// 正文同时截断到 <paramref name="maxInlinePromptChars"/> 以兼容不同 opencode 版本。
+    /// 发送提问并取回回答。完整 prompt 经 stdin 传入，argv 只保留短指令，避免超长命令行与默认 agent 干扰。
     /// </summary>
     public async Task<OpenCodeAnswer> AskAsync(
         string prompt,
         string modelQualifiedId,
         Action<string>? onOutputLine = null,
-        int maxInlinePromptChars = 1500,
         CancellationToken cancellationToken = default)
     {
         var exe = Locate() ?? throw new InvalidOperationException("未检测到 opencode。");
@@ -84,35 +86,30 @@ public sealed class OpenCodeClient
             return new OpenCodeAnswer(false, "请先选择一个模型。");
         }
 
-        var inline = Truncate(prompt, maxInlinePromptChars);
-        var tempFile = Path.Combine(Path.GetTempPath(), $"comfyui_ai_prompt_{Guid.NewGuid():N}.txt");
-        try
+        using var workspace = AnalystWorkspace.Create();
+
+        // 含空格的路径必须按命令行规则逐段引用（不能整体包一对引号）
+        var args = new StringBuilder("run --format json --agent ")
+            .Append(CommandLine.Quote(AnalystAgentId))
+            .Append(" --model ")
+            .Append(CommandLine.Quote(modelQualifiedId))
+            .Append(" --title ")
+            .Append(CommandLine.Quote("ComfyUI 错误日志分析"))
+            .Append(' ')
+            .Append(CommandLine.Quote(RunStdinInstruction));
+
+        var (code, stdout, stderr) = await ProcessService.RunCapturedAsync(
+            exe, args.ToString(), workspace.Root, AskTimeoutMs, onOutputLine, cancellationToken, prompt)
+            .ConfigureAwait(false);
+
+        var parsed = ParseRunOutput(stdout);
+        if (parsed.Success) return parsed;
+
+        if (code != 0 && string.IsNullOrWhiteSpace(parsed.Text))
         {
-            File.WriteAllText(tempFile, prompt, Encoding.UTF8);
-
-            // 含空格的路径必须按命令行规则逐段引用（不能整体包一对引号）
-            var args = new StringBuilder("run --format json --model ")
-                .Append(CommandLine.Quote(modelQualifiedId))
-                .Append(" --file ").Append(CommandLine.Quote(tempFile))
-                .Append(' ').Append(CommandLine.Quote(inline));
-
-            var (code, stdout, stderr) = await ProcessService.RunCapturedAsync(
-                exe, args.ToString(), Environment.CurrentDirectory, AskTimeoutMs, onOutputLine, cancellationToken)
-                .ConfigureAwait(false);
-
-            var parsed = ParseRunOutput(stdout);
-            if (parsed.Success) return parsed;
-
-            if (code != 0 && string.IsNullOrWhiteSpace(parsed.Text))
-            {
-                return new OpenCodeAnswer(false, $"opencode 执行失败（退出码 {code}）：{FirstLine(stderr)}");
-            }
-            return parsed;
+            return new OpenCodeAnswer(false, $"opencode 执行失败（退出码 {code}）：{FirstLine(stderr)}");
         }
-        finally
-        {
-            TryDelete(tempFile);
-        }
+        return parsed;
     }
 
     internal static OpenCodeAnswer ParseRunOutput(string stdout)
@@ -162,10 +159,103 @@ public sealed class OpenCodeClient
         return new OpenCodeAnswer(false, "opencode 没有返回可解析的回答内容。");
     }
 
-    private static string Truncate(string text, int maxChars)
+    /// <summary>解析 opencode run --format json 的单行事件；非 JSON 或无展示价值的事件返回 null。</summary>
+    public static string? TryFormatRunEvent(string line)
     {
-        if (maxChars <= 0 || text.Length <= maxChars) return text;
-        return text[..maxChars] + "\n……（正文过长，完整内容见附加文件）";
+        var trimmed = line.Trim();
+        if (!trimmed.StartsWith('{')) return trimmed.Length == 0 ? null : trimmed;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(trimmed);
+            var root = doc.RootElement;
+            var type = ReadString(root, "type");
+
+            if (string.Equals(type, "text", StringComparison.Ordinal)
+                && root.TryGetProperty("part", out var part)
+                && ReadString(part, "text") is { Length: > 0 } chunk)
+            {
+                return chunk;
+            }
+
+            if (string.Equals(type, "error", StringComparison.Ordinal)
+                && root.TryGetProperty("error", out var err))
+            {
+                return ReadString(err, "message") ?? ReadString(err, "type") ?? "未知错误";
+            }
+
+            if (string.Equals(type, "step_start", StringComparison.Ordinal)) return "opencode 已开始处理请求。";
+            if (string.Equals(type, "step_finish", StringComparison.Ordinal)) return "opencode 正在继续生成回答。";
+            if (string.Equals(type, "tool_use", StringComparison.Ordinal)
+                && root.TryGetProperty("part", out var toolPart)
+                && ReadString(toolPart, "tool") is { Length: > 0 } tool)
+            {
+                return $"opencode 正在使用 {tool} 查证资料。";
+            }
+        }
+        catch (JsonException)
+        {
+            return trimmed;
+        }
+
+        return null;
+    }
+
+    private sealed class AnalystWorkspace : IDisposable
+    {
+        private AnalystWorkspace(string root) => Root = root;
+
+        public string Root { get; }
+
+        public static AnalystWorkspace Create()
+        {
+            var source = FindAnalystAgentSource();
+            if (source is null)
+            {
+                throw new InvalidOperationException($"未找到 AI 分析 agent 资源：{AnalystResourcePath}");
+            }
+
+            var root = Path.Combine(Path.GetTempPath(), "comfyui_ai_analysis", Guid.NewGuid().ToString("N"));
+            var opencodeDirectory = Path.Combine(root, ".opencode");
+            Directory.CreateDirectory(opencodeDirectory);
+            File.Copy(source, Path.Combine(opencodeDirectory, "opencode.json"), overwrite: true);
+            return new AnalystWorkspace(root);        }
+
+        private static string? FindAnalystAgentSource()
+        {
+            var candidates = new List<string>
+            {
+                Path.Combine(AppContext.BaseDirectory, AnalystResourcePath),
+                Path.Combine(Environment.CurrentDirectory, AnalystResourcePath),
+            };
+
+            var guiProject = Path.Combine("src", "ComfyUiRocmLauncher.GUI", AnalystResourcePath);
+            AddRepositoryCandidates(candidates, guiProject);
+
+            return candidates.FirstOrDefault(File.Exists);
+        }
+
+        private static void AddRepositoryCandidates(List<string> candidates, string relativePath)
+        {
+            foreach (var start in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
+            {
+                var directory = new DirectoryInfo(start);
+                for (var depth = 0; directory is not null && depth < 6; depth++, directory = directory.Parent)
+                {
+                    candidates.Add(Path.Combine(directory.FullName, relativePath));
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (System.IO.Directory.Exists(Root)) System.IO.Directory.Delete(Root, recursive: true);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
     }
 
     private static string FirstLine(string text)
@@ -176,13 +266,6 @@ public sealed class OpenCodeClient
             if (trimmed.Length > 0) return trimmed.Length > 300 ? trimmed[..300] : trimmed;
         }
         return "(无输出)";
-    }
-
-    private static void TryDelete(string path)
-    {
-        try { File.Delete(path); }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
     }
 
     private static string? ReadString(JsonElement element, string name) =>
