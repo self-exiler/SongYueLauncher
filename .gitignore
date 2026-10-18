@@ -13,6 +13,10 @@ artifacts/
 [Ll]ogs/
 *.log
 *.binlog
+# 例外：源码里按命名空间组织的 Logs 目录（如 src/AiDiagnostics/Logs）是代码，必须入库。
+# 不加这条会被上面的 [Ll]ogs/ 吞掉——本地能编译、云端全新检出直接缺类。
+!src/**/[Ll]ogs/
+!test/**/[Ll]ogs/
 
 # Test results
 [Tt]est[Rr]esult*/
