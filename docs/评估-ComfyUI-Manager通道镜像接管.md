@@ -1,7 +1,7 @@
 # 评估：ComfyUI-Manager 的 raw.githubusercontent.com 通道接入镜像
 
-评估日期：2026-10-18
-证据来源：浅克隆 `Comfy-Org/ComfyUI-Manager@65dafe5`（2026-10-18）实读源码 + 本机 `curl` 实测镜像
+评估日期：2026-10-18  
+证据来源：浅克隆 `Comfy-Org/ComfyUI-Manager@65dafe5`（2026-10-18）实读源码 + 本机 `curl` 实测镜像  
 结论：**可行，成本约 0.5 人日，风险低**。但要接受 3 个硬边界（见 §3 / §6 / §7），并且触发时机必须设计成「每次启动前同步」，不能是「设置页点一次永久生效」。
 
 ---
@@ -21,11 +21,11 @@ def get_url_for_clone(url):
 
 判定条件是 `startswith('https://github.com/')`，**`https://raw.githubusercontent.com` 永远不匹配**。所以现在的实际效果是：
 
-| 链路 | 是否已被镜像 | 依据 |
-| --- | --- | --- |
-| 安装/更新节点时 clone 节点仓库（`https://github.com/…`） | ✅ 已覆盖 | `git_utils.py:83-84` |
-| Manager 拉取节点/模型数据库 JSON（`raw.githubusercontent.com`） | ❌ 未覆盖 | 见下 |
-| Manager 自身更新（git pull） | ✅ 已覆盖 | 同 clone 路径 |
+| 链路                                                   | 是否已被镜像 | 依据                   |
+| ---------------------------------------------------- | ------ | -------------------- |
+| 安装/更新节点时 clone 节点仓库（`https://github.com/…`）          | ✅ 已覆盖  | `git_utils.py:83-84` |
+| Manager 拉取节点/模型数据库 JSON（`raw.githubusercontent.com`） | ❌ 未覆盖  | 见下                   |
+| Manager 自身更新（git pull）                               | ✅ 已覆盖  | 同 clone 路径           |
 
 未覆盖的数据通道有**两个来源**，不是只有一个文件：
 
@@ -43,6 +43,7 @@ uri = channel_url + '/' + filename     # custom-node-list.json / model-list.json
 ```
 
 即：
+
 1. **`channels.list`** 的 6 行通道 URL（下文原文）；
 2. **`config.ini` 的 `[default] channel_url`** —— 所有「调用时没显式指定通道」的请求都走它（`manager_server.py:797 / 1101 / 1173 / 2048` 等多处）。
 
@@ -128,12 +129,12 @@ if os.path.exists(legacy_config) and os.path.exists(new_config):
 
 ## 5. 方案对比
 
-| 方案 | 覆盖面 | 成本 | 可逆 | 结论 |
-| --- | --- | --- | --- | --- |
-| **A. 改写 `channels.list` + `config.ini: channel_url`** | 除 §3 那处硬编码外的全部数据通道 | Core 一个服务 + 启动钩子，~180 行 | 是（mirror 置空即还原） | ✅ **推荐** |
-| B. 只靠环境变量（现有 `GITHUB_ENDPOINT`） | 0（对 raw 无效） | — | — | ❌ 不可行（见 §1） |
-| C. `network_mode = private` + 自建 node DB | 全覆盖 | 要自建并长期维护 node DB，远超收益 | 是 | ❌ 性价比差；且 private 模式仅对 comfyregistry 有额外限制（`manager_server.py:2100`），与 raw 无关 |
-| D. 本地 HTTP 反代（127.0.0.1 起服务，把 raw 请求转给镜像） | 全覆盖（含 §3 硬编码点） | 常驻进程 + 端口占用 + 本地证书/HTTP 通道（`http_channel_enabled` 默认关闭）+ 出错面大 | 难 | ❌ 不建议 |
+| 方案                                                    | 覆盖面                | 成本                                                            | 可逆              | 结论                                                                           |
+| ----------------------------------------------------- | ------------------ | ------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------- |
+| **A. 改写 `channels.list` + `config.ini: channel_url`** | 除 §3 那处硬编码外的全部数据通道 | Core 一个服务 + 启动钩子，~180 行                                       | 是（mirror 置空即还原） | ✅ **推荐**                                                                     |
+| B. 只靠环境变量（现有 `GITHUB_ENDPOINT`）                       | 0（对 raw 无效）        | —                                                             | —               | ❌ 不可行（见 §1）                                                                  |
+| C. `network_mode = private` + 自建 node DB              | 全覆盖                | 要自建并长期维护 node DB，远超收益                                         | 是               | ❌ 性价比差；且 private 模式仅对 comfyregistry 有额外限制（`manager_server.py:2100`），与 raw 无关 |
+| D. 本地 HTTP 反代（127.0.0.1 起服务，把 raw 请求转给镜像）             | 全覆盖（含 §3 硬编码点）     | 常驻进程 + 端口占用 + 本地证书/HTTP 通道（`http_channel_enabled` 默认关闭）+ 出错面大 | 难               | ❌ 不建议                                                                        |
 
 ---
 
@@ -143,12 +144,12 @@ if os.path.exists(legacy_config) and os.path.exists(new_config):
 
 纯函数与 IO 分离，便于在 `Core.Test` 里覆盖（不需要 WinUI）：
 
-| 成员 | 职责 |
-| --- | --- |
-| `ResolveChannelFiles(AppConfig)` | 返回要改的文件列表。user 目录 = `--user-directory`（`Settings.Args`）→ 否则 `<ComfyUiDir>/user`；目录判定：`__manager` 存在 → 收；`default/ComfyUI-Manager` 存在 → 也收（旧版共存时两个都改）；都不存在 → 读 `<ComfyUiDir>/folder_paths.py` 是否含 `def get_system_user_directory`（与 Manager 的 `has_system_user_api` 同判据）决定写哪个 |
-| `RewriteChannelList(string content, string mirror)` | 逐行解析 `name::url`；**仅当 url 命中 `https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager`** 才改；`mirror` 非空 → `mirror.TrimEnd('/') + "/" + url`；`mirror` 为空 → 在 url 中定位 `https://raw.githubusercontent.com` 并截断还原；已带目标前缀则原样返回（幂等）。**其他行（用户自加通道）逐字保留**，注释行保留 |
-| `RewriteConfigIni(string content, string mirror)` | 只在 `[default]` 段内维护 `channel_url`，值规则同上；不动其他键、不重排、保持原换行风格（CRLF/LF） |
-| `Sync(AppConfig)` | 编排：读 → 改写 → 内容不变则跳过写盘 → 首次改写前留 `<file>.launcher.bak` → 返回 `(Changed[] , Message)`；IO/权限异常降级为警告字符串，**绝不抛进启动流程** |
+| 成员                                                  | 职责                                                                                                                                                                                                                                                                           |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ResolveChannelFiles(AppConfig)`                    | 返回要改的文件列表。user 目录 = `--user-directory`（`Settings.Args`）→ 否则 `<ComfyUiDir>/user`；目录判定：`__manager` 存在 → 收；`default/ComfyUI-Manager` 存在 → 也收（旧版共存时两个都改）；都不存在 → 读 `<ComfyUiDir>/folder_paths.py` 是否含 `def get_system_user_directory`（与 Manager 的 `has_system_user_api` 同判据）决定写哪个 |
+| `RewriteChannelList(string content, string mirror)` | 逐行解析 `name::url`；**仅当 url 命中 `https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager`** 才改；`mirror` 非空 → `mirror.TrimEnd('/') + "/" + url`；`mirror` 为空 → 在 url 中定位 `https://raw.githubusercontent.com` 并截断还原；已带目标前缀则原样返回（幂等）。**其他行（用户自加通道）逐字保留**，注释行保留                   |
+| `RewriteConfigIni(string content, string mirror)`   | 只在 `[default]` 段内维护 `channel_url`，值规则同上；不动其他键、不重排、保持原换行风格（CRLF/LF）                                                                                                                                                                                                           |
+| `Sync(AppConfig)`                                   | 编排：读 → 改写 → 内容不变则跳过写盘 → 首次改写前留 `<file>.launcher.bak` → 返回 `(Changed[] , Message)`；IO/权限异常降级为警告字符串，**绝不抛进启动流程**                                                                                                                                                               |
 
 ### 6.2 挂点
 
@@ -189,13 +190,13 @@ if os.path.exists(legacy_config) and os.path.exists(new_config):
 
 ## 8. 工作量
 
-| 项 | 估算 |
-| --- | --- |
-| `ComfyManagerChannelService`（含目录判定、两种改写、幂等/备份/降级） | ~180 行 |
-| `LaunchService` 钩子 + 日志 | ~10 行 |
-| Core.Test 纯函数用例 | ~100 行 / 8 条 |
-| GUI 一行说明文案 | ~5 行 |
-| SRS v1.13（三分法、FR-8.2、新 FR-8.9） | 文档 |
+| 项                                                 | 估算           |
+| ------------------------------------------------- | ------------ |
+| `ComfyManagerChannelService`（含目录判定、两种改写、幂等/备份/降级） | ~180 行       |
+| `LaunchService` 钩子 + 日志                           | ~10 行        |
+| Core.Test 纯函数用例                                   | ~100 行 / 8 条 |
+| GUI 一行说明文案                                        | ~5 行         |
+| SRS v1.13（三分法、FR-8.2、新 FR-8.9）                    | 文档           |
 
 **合计约 0.5 人日**，风险低：不改启动参数、不改环境变量、失败可降级、效果可逆。
 

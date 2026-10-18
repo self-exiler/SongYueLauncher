@@ -222,8 +222,12 @@ public sealed partial class EnvUpdatePage : Page
         {
             var remote = await RepoService.QueryRemoteHashAsync(App.Services.Tasks, Settings, Append);
             var local = RepoService.ReadLocalHash(Settings.ComfyUiDir);
+            // remote 为 null = 查询失败（镜像不通 / 仓库私有 / 网络中断），不能当成「有更新」
             DispatcherQueue.TryEnqueue(() => ProjectStatusText.Text =
-                $"本地 {RepoService.ShortHash(local)} · 远端 {RepoService.ShortHash(remote)}" + (remote.Length > 0 && remote == local ? "（已最新）" : "（有更新）"));
+                remote is null
+                    ? $"本地 {RepoService.ShortHash(local)} · 远端版本未知（检查失败）"
+                    : $"本地 {RepoService.ShortHash(local)} · 远端 {RepoService.ShortHash(remote)}"
+                      + (remote == local ? "（已最新）" : "（有更新）"));
         });
     }
 

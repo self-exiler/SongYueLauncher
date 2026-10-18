@@ -244,4 +244,16 @@ public class EnvCatalogTests
     [InlineData(8, false)][InlineData(16, false)]
     public void RobocopyExitCode(int code, bool expected) =>
         Assert.Equal(expected, RepoService.IsRobocopySuccess(code));
+
+    // F-03：远端查询失败返回 null（而不是空串），界面才不会把「查不到」当成「有更新」。
+    // ShortHash 必须能吃下 null——空串曾被当成合法值一路传到界面比较里。
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void ShortHash_TreatsMissingVersionAsUnknown(string? hash) =>
+        Assert.Equal("unknown", RepoService.ShortHash(hash));
+
+    [Fact]
+    public void ShortHash_TruncatesToTenChars() =>
+        Assert.Equal("0123456789", RepoService.ShortHash("0123456789abcdef"));
 }
