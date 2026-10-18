@@ -73,6 +73,12 @@ public sealed class LaunchService
         SetState(LaunchState.Starting);
         Log.Append("[启动器] 校验 python.exe / main.py … OK");
 
+        // FR-8.9：ComfyUI-Manager 数据通道接管（每次启动重放，幂等；失败只降级为警告）
+        var channelSync = ComfyManagerChannelService.Sync(config);
+        Log.Append($"[启动器] {channelSync.Summary}");
+        foreach (var warning in channelSync.Warnings)
+            Log.Append($"[启动器] 警告：{warning}");
+
         var rocmRoot = await RunRocmSdkStepsAsync(config).ConfigureAwait(false);
 
         var env = LaunchEnvBuilder.Build(config, rocmRoot, out var conflicts);

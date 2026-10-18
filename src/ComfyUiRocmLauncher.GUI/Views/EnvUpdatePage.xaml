@@ -44,7 +44,7 @@
                         <StackPanel Style="{StaticResource SettingsCardStackStyle}">
                             <TextBlock Text="下载镜像源" Style="{StaticResource CardTitleStyle}" />
                             <TextBlock Style="{StaticResource SecondaryTextStyle}"
-                                       Text="GitHub 镜像仅作用于 git clone 与 GitHub release 轮子，并同步注入 ComfyUI 的 GITHUB_ENDPOINT；PyPI 镜像仅作用于通用包与项目依赖；AMD 官方源永远直连。镜像清单为固定候选，公共镜像可用性会随时间变化，失效时切换另一项或选「直连」。" />
+                                       Text="GitHub 镜像作用于 git clone、GitHub release 轮子，注入 ComfyUI 的 GITHUB_ENDPOINT，并从下次启动起接管 ComfyUI-Manager 的数据通道（channels.list / config.ini）；ComfyUI-Manager 装节点前判定风险等级时仍会直连一次 GitHub。PyPI 镜像仅作用于通用包与项目依赖；AMD 官方源永远直连。镜像清单为固定候选，公共镜像可用性会随时间变化，失效时切换另一项或选「直连」。" />
                             <ComboBox x:Name="GithubMirrorBox" Header="GitHub 加速镜像"
                                       MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="{StaticResource SettingsFieldMaxWidth}"
                                       HorizontalAlignment="Left"

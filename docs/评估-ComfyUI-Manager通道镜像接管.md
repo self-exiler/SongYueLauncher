@@ -208,3 +208,29 @@ if os.path.exists(legacy_config) and os.path.exists(new_config):
 2. **直连时是否自动还原** channels.list（推荐还原，符合"镜像空 = 直连"的既有语义）。
 3. **是否顺带开放「自定义镜像前缀」**：SRS FR-8.2 写的是「直连 / 内置候选 / **自定义前缀**」，但 `MirrorCatalog` 目前是不可编辑下拉、只有 4 个固定项——这是既存 SRS 与实现不一致。若要支持自定义前缀，本次接管逻辑顺带就能兼容（`mirror` 是任意字符串）。
 4. **是否接受 §3 那处无法接管**（装节点时仍有一次 raw 请求，只影响风险判定，不影响安装本身）。
+
+---
+
+## 10. 实施记录（2026-10-18）
+
+**已落地**（SRS v1.13 / FR-8.9）：
+
+- `src/ComfyUiRocmLauncher.Core/Services/ComfyManagerChannelService.cs`：目录定位（`--user-directory` → `user`，`__manager` + 旧版目录共存时都改）、`RewriteChannelList` / `RewriteConfigIni` 两个纯函数、`Sync` 编排（幂等、`.launcher.bak`、失败降级）。改写只替换「含 `https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager` 的片段」，不做整行拼接，因此行尾空白、注释、用户自建通道、CRLF/LF 全部逐字保留。
+- `LaunchService.StartCoreAsync`：`SetState(Starting)` 之后一行调用 + 日志（`ComfyUI-Manager 数据通道已指向镜像（2 个文件）` / `尚未初始化，下次启动自动接管` / `警告：改写 channels.list 失败：…`）。
+- `EnvUpdatePage.xaml`：GitHub 镜像说明补充「接管 Manager 数据通道」「风险判定仍有一次直连」。
+- `test/.../ComfyManagerChannelTests.cs`：18 条用例（5 条 `channels.list` 改写、5 条 `config.ini`、6 条 `Sync` 编排含幂等与备份还原、2 条 user 目录解析）。
+
+**审阅修正（提交前，2026-10-18）**：
+
+1. `--user-directory` 只认「已启用」的参数。关开关只是把它移出 `Enabled`，`Values` 里的旧值仍在——只看「有没有值」的话，用户关掉该参数后启动器会去改写一个 ComfyUI 根本不用的目录（已补 2 条测试）。
+2. `Sync` 增加整体兜底 `catch`（与 `SyncFile` 共用 `IsFileSystemFailure` 判定，含 `SecurityException`），并清理失败时残留的 `<文件>.tmp`。原因是调用点 `LaunchService.StartCoreAsync` 没有 try/catch，而类型注释承诺「绝不抛进启动流程」——原来只有 `ResolveManagerDirs` 那处窄过滤，`Path.GetFullPath` 抛 `SecurityException` 时会穿出去打断启动。
+
+**与本文档的两处偏离**（有意）:
+
+1. **§6.1 的 `folder_paths.py` 探测未实现**：它只用于「Manager 目录还不存在时该预创建哪一个」。实际实现改成「只改已存在的目录」，目录不存在就报「尚未初始化」等下次启动——不猜、不造目录，代价是 Manager 首次运行会先用一次 raw（`channels.list` 缺失且镜像非空时仍按上游模板预创建，这一类不触发副作用）。
+2. **`config.ini` 的 `[default]` 段缺失时**：镜像非空才追加整段，镜像为空不写（保持「直连 = 零改动」）。
+
+**未落地**：§5 方案 D（本地反代）；§7-3 的三方代理信任提示仍只在文档层，未进内置镜像条目文案。
+
+**上游联动**：§3 的硬编码点已单独向上游提 PR（把 `get_risky_level` 的 `channel_url` 改为从 `channels.list` 读取），合入后本项目的接管即覆盖全部 raw 通道；未合入前保持「装节点前仍有一次直连」的文案与 SRS 边界描述。
+
