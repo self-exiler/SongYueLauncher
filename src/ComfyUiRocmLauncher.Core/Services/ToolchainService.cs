@@ -2,8 +2,11 @@ using ComfyUiRocmLauncher.Core.Models;
 
 namespace ComfyUiRocmLauncher.Core.Services;
 
-/// <summary>工具链项状态。</summary>
-public sealed record ToolStatus(string Name, string? Path, string? Version, bool Installed);
+/// <summary>工具链项状态。<c>Installed</c> 由 <c>Path</c> 派生，避免构造时传两份互相矛盾的事实。</summary>
+public sealed record ToolStatus(string Name, string? Path, string? Version)
+{
+    public bool Installed => Path is not null;
+}
 
 /// <summary>
 /// 工具链检测与安装（SRS FR-8.2）：git / uv / winget 发现（含已知路径），版本查询，
@@ -19,9 +22,9 @@ public static class ToolchainService
 
         return new List<ToolStatus>
         {
-            new("git", git, await QueryVersionAsync(git, "--version", cancellationToken), git is not null),
-            new("uv", uv, await QueryVersionAsync(uv, "--version", cancellationToken), uv is not null),
-            new("winget", winget, await QueryVersionAsync(winget, "--version", cancellationToken), winget is not null),
+            new("git", git, await QueryVersionAsync(git, "--version", cancellationToken)),
+            new("uv", uv, await QueryVersionAsync(uv, "--version", cancellationToken)),
+            new("winget", winget, await QueryVersionAsync(winget, "--version", cancellationToken)),
         };
     }
 

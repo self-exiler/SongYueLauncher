@@ -7,10 +7,10 @@ namespace ComfyUiRocmLauncher.Core.Services;
 /// </summary>
 public sealed class CliArgsCatalog
 {
-    private const string ResourceSuffix = "Resources.cli-args.json";
-
-    private static readonly Lazy<CliArgsCatalog> LazyInstance = new(() => new CliArgsCatalog(
-        EmbeddedJson.Load<CliArgsFile>(typeof(CliArgsCatalog).Assembly, ResourceSuffix, "cli-args.json")));
+    // 静态字段初始化由运行时保证线程安全（等价于此前的 Lazy，少一层包装）。
+    // 代价：内嵌资源缺失时表现为 TypeInitializationException——内层消息仍是 EmbeddedJson 的原始异常。
+    private static readonly CliArgsCatalog Shared = new(EmbeddedJson.Load<CliArgsFile>(
+        typeof(CliArgsCatalog).Assembly, "Resources.cli-args.json", "cli-args.json"));
 
     private CliArgsCatalog(CliArgsFile file)
     {
@@ -24,8 +24,8 @@ public sealed class CliArgsCatalog
 
     public int Count => All.Count;
 
-    /// <summary>进程内单例（Lazy 默认线程安全）。</summary>
-    public static CliArgsCatalog Instance => LazyInstance.Value;
+    /// <summary>进程内单例。</summary>
+    public static CliArgsCatalog Instance => Shared;
 
     /// <summary>同一互斥组内除 name 之外的全部参数。</summary>
     public IEnumerable<CliArgDefinition> MutexPeers(string name)
@@ -50,14 +50,5 @@ public sealed class CliArgsCatalog
             }
         }
         return closed;
-    }
-
-    /// <summary>清空全部启用项（模板应用前的全量替换）。</summary>
-    public void ClearAll(StructuredArgs args)
-    {
-        args.Enabled.Clear();
-        args.Values.Clear();
-        args.Multi.Clear();
-        args.Lines.Clear();
     }
 }

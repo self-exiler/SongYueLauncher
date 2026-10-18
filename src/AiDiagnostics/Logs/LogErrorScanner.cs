@@ -9,6 +9,9 @@ namespace AiDiagnostics.Logs;
 /// </summary>
 public static class LogErrorScanner
 {
+    /// <summary>Traceback 头（Python 解释器报错块起点）。不开放配置：所有 Python 版本的输出一致。</summary>
+    private const string TracebackHeader = "Traceback (most recent call last):";
+
     /// <summary>单行是否像错误行（先排除噪声特征，再匹配关键字 / Traceback 头）。</summary>
     public static bool LooksLikeError(string plainLine, LogScanOptions? options = null)
     {
@@ -19,7 +22,7 @@ public static class LogErrorScanner
         {
             if (plainLine.Contains(hint, StringComparison.OrdinalIgnoreCase)) return false;
         }
-        return IsTracebackHeader(plainLine, o) || ContainsMarker(plainLine, o);
+        return IsTracebackHeader(plainLine) || ContainsMarker(plainLine, o);
     }
 
     /// <summary>
@@ -28,14 +31,15 @@ public static class LogErrorScanner
     public static LogScanResult Scan(IEnumerable<string> rawLines, LogScanOptions? options = null)
     {
         var o = options ?? new LogScanOptions();
-        var lines = (o.StripAnsi ? rawLines.Select(AnsiStripper.Strip) : rawLines).ToList();
+        // 日志源一律可能带 ANSI 转义序列，统一先剥色再匹配（不开放关掉：关掉只会让关键字漏匹配）
+        var lines = rawLines.Select(AnsiStripper.Strip).ToList();
         var included = new bool[lines.Count];
         var errorLineCount = 0;
 
         for (var i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
-            if (IsTracebackHeader(line, o))
+            if (IsTracebackHeader(line))
             {
                 var end = FindTracebackEnd(lines, i, o);
                 for (var k = i; k <= end; k++)
@@ -106,9 +110,9 @@ public static class LogErrorScanner
         return false;
     }
 
-    private static bool IsTracebackHeader(string line, LogScanOptions options) =>
-        line.StartsWith(options.TracebackHeader, StringComparison.Ordinal)
-        || line.EndsWith(options.TracebackHeader, StringComparison.Ordinal);
+    private static bool IsTracebackHeader(string line) =>
+        line.StartsWith(TracebackHeader, StringComparison.Ordinal)
+        || line.EndsWith(TracebackHeader, StringComparison.Ordinal);
 
     /// <summary>从 Traceback 头向后延伸，直到遇到下一条非堆栈普通输出为止。</summary>
     private static int FindTracebackEnd(List<string> lines, int headerIndex, LogScanOptions options)

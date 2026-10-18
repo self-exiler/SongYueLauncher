@@ -22,7 +22,8 @@ public sealed class TaskRunner
     /// <summary>尝试占用全局任务槽；已被占用返回 false（调用方应放弃本次操作）。</summary>
     public bool TryStart()
     {
-        if (IsBusy || !_gate.Wait(0)) return false;
+        // _gate.Wait(0) 本身就是原子的互斥判定，无需再看 IsBusy
+        if (!_gate.Wait(0)) return false;
         _cts = new CancellationTokenSource();
         BusyChanged?.Invoke(true);
         return true;

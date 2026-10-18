@@ -7,10 +7,9 @@ namespace ComfyUiRocmLauncher.Core.Services;
 /// </summary>
 public sealed class GpuArchService
 {
-    private const string ResourceSuffix = "Resources.gpu-arch-map.json";
-
-    private static readonly Lazy<GpuArchService> LazyInstance = new(() => new GpuArchService(
-        EmbeddedJson.Load<GpuArchMapFile>(typeof(GpuArchService).Assembly, ResourceSuffix, "gpu-arch-map.json")));
+    // 静态字段初始化由运行时保证线程安全（等价于此前的 Lazy，少一层包装）。
+    private static readonly GpuArchService Shared = new(EmbeddedJson.Load<GpuArchMapFile>(
+        typeof(GpuArchService).Assembly, "Resources.gpu-arch-map.json", "gpu-arch-map.json"));
 
     private GpuArchService(GpuArchMapFile file)
     {
@@ -22,8 +21,8 @@ public sealed class GpuArchService
 
     private HashSet<string> Legacy { get; }
 
-    /// <summary>进程内单例（Lazy 默认线程安全）。</summary>
-    public static GpuArchService Instance => LazyInstance.Value;
+    /// <summary>进程内单例。</summary>
+    public static GpuArchService Instance => Shared;
 
     /// <summary>按显卡名称匹配 arch；无匹配返回 Known=false。</summary>
     public ArchInfo Map(string? gpuName)

@@ -66,7 +66,7 @@ public sealed partial class ConfigPage : Page
     {
         if (App.Services.State != LaunchState.Idle) return;
 
-        Catalog.ApplyTo(tpl, Settings, CliArgsCatalog.Instance);
+        Catalog.ApplyTo(tpl, Settings);
         App.Services.Save();
         RefreshTemplates(tpl.Id);
         ActionStatusText.Text = $"已应用「{tpl.Title}」：环境变量与启动参数已整体替换";

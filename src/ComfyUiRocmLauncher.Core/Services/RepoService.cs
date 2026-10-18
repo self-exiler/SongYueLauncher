@@ -1,3 +1,4 @@
+using AiDiagnostics.Runtime;
 using ComfyUiRocmLauncher.Core.Models;
 
 namespace ComfyUiRocmLauncher.Core.Services;
@@ -41,7 +42,7 @@ public static class RepoService
         if (string.IsNullOrWhiteSpace(repo)) return null;
 
         var lines = new List<string>();
-        var code = await runner.Run(git, $"ls-remote {MirrorPolicy.Github(repo, config.EnvUpdate.GithubMirror)} HEAD",
+        var code = await runner.Run(git, $"ls-remote {CommandLine.Quote(MirrorPolicy.Github(repo, config.EnvUpdate.GithubMirror))} HEAD",
             PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), line => lines.Add(line)).ConfigureAwait(false);
         if (code != 0)
         {
@@ -67,7 +68,7 @@ public static class RepoService
 
         var url = MirrorPolicy.Github(repo, config.EnvUpdate.GithubMirror);
         onOutput?.Invoke($"[1/2] git clone --depth 1 …");
-        var code = await runner.Run(git, $"clone --depth 1 \"{url}\" \"{config.ComfyUiDir}\"",
+        var code = await runner.Run(git, $"clone --depth 1 {CommandLine.Quote(url)} {CommandLine.Quote(config.ComfyUiDir)}",
             ParentDir(config.ComfyUiDir), onOutput).ConfigureAwait(false);
         if (code != 0)
         {
@@ -114,7 +115,7 @@ public static class RepoService
 
         onOutput?.Invoke("[1/3] shallow clone 到临时目录 …");
         var url = MirrorPolicy.Github(repo, config.EnvUpdate.GithubMirror);
-        var cloneCode = await runner.Run(git, $"clone --depth 1 \"{url}\" \"{tempDir}\"",
+        var cloneCode = await runner.Run(git, $"clone --depth 1 {CommandLine.Quote(url)} {CommandLine.Quote(tempDir)}",
             config.ComfyUiDir, onOutput).ConfigureAwait(false);
         if (cloneCode != 0)
         {
@@ -148,7 +149,7 @@ public static class RepoService
     {
         var excludeDirs = "/XD .venv models output input user custom_nodes _update_temp .git";
         var excludeFiles = "/XF comfyui-user.bat .last_update_hash";
-        return $"\"{source}\" \"{target}\" /E {excludeDirs} {excludeFiles}";
+        return $"{CommandLine.Quote(source)} {CommandLine.Quote(target)} /E {excludeDirs} {excludeFiles}";
     }
 
     /// <summary>robocopy 退出码 0–7 成功，≥8 失败。</summary>

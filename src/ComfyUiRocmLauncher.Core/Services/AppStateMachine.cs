@@ -8,8 +8,13 @@ namespace ComfyUiRocmLauncher.Core.Services;
 /// </summary>
 public sealed class AppStateMachine
 {
-    private LaunchState _launchState = LaunchState.Idle;
     private bool _envBusy;
+
+    /// <summary>
+    /// 启动流程自身的状态（Idle / Starting / Running / Stopping），不受环境任务忙碌位影响。
+    /// 前置校验（"能不能启动 / 能不能停"）读这里，而不是读会随环境任务变化的 <see cref="State"/>。
+    /// </summary>
+    public LaunchState LaunchState { get; private set; } = LaunchState.Idle;
 
     /// <summary>对外展示的状态：环境任务进行中恒为 BusyEnv，否则取启动流程状态。</summary>
     public LaunchState State { get; private set; } = LaunchState.Idle;
@@ -22,7 +27,7 @@ public sealed class AppStateMachine
     /// </summary>
     public void ReportLaunch(LaunchState state)
     {
-        _launchState = state;
+        LaunchState = state;
         if (!_envBusy) Set(state);
     }
 
@@ -31,7 +36,7 @@ public sealed class AppStateMachine
     {
         if (_envBusy == busy) return;
         _envBusy = busy;
-        Set(busy ? LaunchState.BusyEnv : _launchState);
+        Set(busy ? LaunchState.BusyEnv : LaunchState);
     }
 
     private void Set(LaunchState state)

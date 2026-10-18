@@ -169,16 +169,14 @@ public class AiDiagnosticsClientTests
     }
 
     [Fact]
-    public void AgentConfig_ReflectsCustomPermissions()
+    public void AgentConfig_EncodesFixedModeTemperatureAndPermissions()
     {
-        var profile = Analyst with { Permissions = AiPermissions.ReadOnly };
+        // 运行方式（primary / 0.1 / 只读+联网）是库内常量，不随画像变化——这里钉住契约。
+        using var doc = JsonDocument.Parse(AgentWorkspace.BuildConfigJson(Analyst));
+        var agent = doc.RootElement.GetProperty("agent").GetProperty("test-analyst");
 
-        using var doc = JsonDocument.Parse(AgentWorkspace.BuildConfigJson(profile));
-        var permission = doc.RootElement.GetProperty("agent").GetProperty("test-analyst").GetProperty("permission");
-
-        Assert.Equal("deny", permission.GetProperty("*").GetString());
-        Assert.Equal("allow", permission.GetProperty("read").GetString());
-        Assert.False(permission.TryGetProperty("webfetch", out _));
+        Assert.Equal("primary", agent.GetProperty("mode").GetString());
+        Assert.Equal(0.1, agent.GetProperty("temperature").GetDouble());
     }
 
     [Fact]

@@ -17,9 +17,6 @@ public sealed record AiRequest
     /// <summary>会话标题，仅用于在 opencode 里识别本次调用。</summary>
     public string Title { get; init; } = "AI 分析";
 
-    /// <summary>超时毫秒数；为空时用 <see cref="AiDiagnosticsOptions.AnswerTimeoutMs"/>。</summary>
-    public int? TimeoutMs { get; init; }
-
     /// <summary>写在 argv 末尾的短指令，长 prompt 走 stdin。</summary>
     public string Instruction { get; init; } = DefaultInstruction;
 

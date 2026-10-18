@@ -7,10 +7,9 @@ namespace ComfyUiRocmLauncher.Core.Services;
 /// </summary>
 public sealed class WheelCatalog
 {
-    private const string ResourceSuffix = "Resources.wheel-catalog.json";
-
-    private static readonly Lazy<WheelCatalog> LazyInstance = new(() => new WheelCatalog(
-        EmbeddedJson.Load<WheelCatalogFile>(typeof(WheelCatalog).Assembly, ResourceSuffix, "wheel-catalog.json")));
+    // 静态字段初始化由运行时保证线程安全（等价于此前的 Lazy，少一层包装）。
+    private static readonly WheelCatalog Shared = new(EmbeddedJson.Load<WheelCatalogFile>(
+        typeof(WheelCatalog).Assembly, "Resources.wheel-catalog.json", "wheel-catalog.json"));
 
     private WheelCatalog(WheelCatalogFile file)
     {
@@ -26,6 +25,6 @@ public sealed class WheelCatalog
 
     public int Version { get; }
 
-    /// <summary>进程内单例（Lazy 默认线程安全）。</summary>
-    public static WheelCatalog Instance => LazyInstance.Value;
+    /// <summary>进程内单例。</summary>
+    public static WheelCatalog Instance => Shared;
 }

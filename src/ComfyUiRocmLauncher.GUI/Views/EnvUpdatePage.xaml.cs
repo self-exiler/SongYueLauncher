@@ -268,13 +268,13 @@ public sealed partial class EnvUpdatePage : Page
         {
             RollbackButton.IsEnabled = false;
             var ok = await WheelService.TorchUpdateAsync(App.Services.Tasks, Settings, arch, Append);
-            if (!ok) RollbackButton.IsEnabled = File.Exists(Path.Combine(Settings.ComfyUiDir, "_pre_update_freeze.txt"));
+            if (!ok) RollbackButton.IsEnabled = File.Exists(WheelService.SnapshotPath(Settings));
         });
     }
 
     private async void Rollback_Click(object sender, RoutedEventArgs e)
     {
-        var snapshot = Path.Combine(Settings.ComfyUiDir, "_pre_update_freeze.txt");
+        var snapshot = WheelService.SnapshotPath(Settings);
         var arch = ToolchainService.DetectArch();
         await RunOpAsync("回滚", async () =>
             await WheelService.RollbackAsync(App.Services.Tasks, Settings, snapshot, arch, Append));

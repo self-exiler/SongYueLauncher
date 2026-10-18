@@ -12,7 +12,7 @@
 
 - 定位本机 opencode CLI（npm 全局 / 用户目录 / PATH，自动绕过 npm 的 shim 脚本）
 - 列举当前可用的模型（`provider/model` 形式，可直接喂给 `--model`）
-- 按 **agent 画像** 在运行时生成临时 `opencode.json`（人设、权限、温度），分析结束自动清理
+- 按 **agent 画像** 在运行时生成临时 `opencode.json`（人设来自宿主；模式/温度/权限由库固定为「只读 + 联网查证」），分析结束自动清理
 - 调 `opencode run --format json`，解析 NDJSON 事件流，逐行回调进度与正文
 - 日志错误扫描（关键字 / Traceback 归并 / 字节预算截断，关键词可配置）
 - 提示词模板占位符渲染
@@ -134,7 +134,7 @@ var prompt = PromptComposer.Render(
     new Dictionary<string, string>
     {
         ["context"] = $"版本 1.2.3，路径 {appDir}",
-        ["log"] = scan.ToText(),
+        ["log"] = string.Join("\n\n", scan.Blocks),
     });
 
 var answer = await client.AskAsync(new AiRequest
@@ -153,22 +153,14 @@ var answer = await client.AskAsync(new AiRequest
 
 | 成员 | 说明 |
 | --- | --- |
-| `AiDiagnosticsClient(AiDiagnosticsOptions? options = null)` | 构造；选项见下表 |
+| `AiDiagnosticsClient()` | 无参构造；超时与重试次数为库内常量，见下方说明 |
 | `static string? Locate()` | 返回 opencode 可执行文件路径，未安装为 `null`（不抛异常） |
-| `Task<IReadOnlyList<AiModel>> ListModelsAsync(CancellationToken)` | 列举已启用模型；列表为空时按 `ModelListAttempts` / `ModelListRetryDelayMs` 重试 |
+| `Task<IReadOnlyList<AiModel>> ListModelsAsync(CancellationToken)` | 列举已启用模型；列表为空时重试一次（间隔 2s，容忍后台服务冷启动） |
 | `Task<AiAnswer> AskAsync(AiRequest, Action<string>? onOutputLine, CancellationToken)` | 执行分析；`onOutputLine` 收到的是**原始行**（NDJSON 或普通输出） |
 
 抛错约定：未安装 opencode / 模型列表命令非零退出 → `InvalidOperationException`；`model.list` 返回体不是合法 JSON → `JsonException`。
 
-### `AiDiagnosticsOptions`
-
-| 属性 | 默认 | 说明 |
-| --- | --- | --- |
-| `ExecutablePath` | `null` | 显式指定 opencode 路径，跳过自动定位 |
-| `ModelsTimeoutMs` | `60_000` | 列模型超时 |
-| `AnswerTimeoutMs` | `300_000` | 单次分析默认超时（可被 `AiRequest.TimeoutMs` 覆盖） |
-| `ModelListAttempts` | `2` | 模型列表为空时的尝试次数（含首次） |
-| `ModelListRetryDelayMs` | `2_000` | 重试间隔 |
+内置超时常量：列模型 60s、单次分析 300s。它们曾经是可注入的 `AiDiagnosticsOptions`，但全仓库只有"用默认值"一个构造点，故收成常量；若将来真需要按宿主调参，再加回构造参数。
 
 ### `AiRequest`
 
@@ -178,10 +170,9 @@ var answer = await client.AskAsync(new AiRequest
 | `ModelId` | ✅ | — | `provider/model` |
 | `Agent` | ✅ | — | agent 画像 |
 | `Title` | | `"AI 分析"` | 会话标题 |
-| `TimeoutMs` | | `null`（用选项默认值） | 本次超时 |
 | `Instruction` | | `AiRequest.DefaultInstruction` | argv 末尾的短指令，说明内容已从 stdin 传入 |
 
-### `AiAgentProfile` / `AiPermissions`
+### `AiAgentProfile`
 
 ```csharp
 new AiAgentProfile
@@ -189,13 +180,10 @@ new AiAgentProfile
     Id = "readonly-analyst",          // 即 opencode run --agent 的取值
     SystemPrompt = "...",             // 人设 + 回答结构
     Description = "只读日志分析",      // 列表里显示的说明
-    Mode = "primary",                 // 默认 primary
-    Temperature = 0.1,
-    Permissions = AiPermissions.ReadOnlyWeb,  // { "*": "deny", read/webfetch/websearch: "allow" }
 }
 ```
 
-预设：`AiPermissions.ReadOnlyWeb`（只读 + 联网查证）、`AiPermissions.ReadOnly`（完全离线）。
+画像只有这三个字段。`opencode.json` 里其余三项由库固定，不开放覆写：`mode = "primary"`、`temperature = 0.1`、`permission = { "*": "deny", read/webfetch/websearch: "allow" }`——分析任务只出结论与步骤，不改文件、不跑命令，只允许读文件与联网查证。
 
 ### 日志与提示词
 
@@ -203,7 +191,8 @@ new AiAgentProfile
 | --- | --- |
 | `LogErrorScanner.Scan(IEnumerable<string> lines, LogScanOptions?)` | 返回 `LogScanResult`（`Blocks` / `TotalLines` / `ErrorLineCount` / `Truncated`） |
 | `LogErrorScanner.LooksLikeError(string line, LogScanOptions?)` | 单行判定，便于自行过滤 |
-| `LogScanOptions` | `ErrorMarkers` / `NoiseHints` / `TracebackHeader` / `MaxBytes` / `StripAnsi`（record，可 `with`） |
+| `LogScanResult` | `Blocks` / `TotalLines` / `ErrorLineCount` / `Truncated`；拼提示词用 `string.Join("\n\n", Blocks)` |
+| `LogScanOptions` | `ErrorMarkers` / `NoiseHints` / `MaxBytes`（record，可 `with`）；Traceback 头与去色是固定行为，不开放配置 |
 | `PromptComposer.Render(template, values)` | `{name}` 占位符替换；未知键保持不变 |
 
 ### 底层设施（一般无需直接用）
@@ -216,27 +205,19 @@ new AiAgentProfile
 
 ### 5.1 类图
 
-图中类型分属五个命名空间：`AiDiagnostics`（根：`AiDiagnosticsClient` / `AiModel` / `AiAnswer` / `AiRequest` / `AiDiagnosticsOptions`）、`AiDiagnostics.Agents`、`AiDiagnostics.Logs`、`AiDiagnostics.Parsing`、`AiDiagnostics.Runtime`。带 `<<internal>>` 的是内部实现，不对外暴露。
+图中类型分属五个命名空间：`AiDiagnostics`（根：`AiDiagnosticsClient` / `AiModel` / `AiAnswer` / `AiRequest`）、`AiDiagnostics.Agents`、`AiDiagnostics.Logs`、`AiDiagnostics.Parsing`、`AiDiagnostics.Runtime`。带 `<<internal>>` 的是内部实现，不对外暴露。
 
-> 图中 `$` 表示静态方法；`AiPermissions`、`PromptComposer`、`RunEventParser`、`ProcessRunner`、`CommandLine`、`AnsiStripper`、`OpenCodeLocator`、`LogErrorScanner` 是纯静态工具类（`ModelListParser`、`AgentWorkspace` 为 internal），其常量与静态属性未逐成员标注。
+> 图中 `$` 表示静态方法；`PromptComposer`、`RunEventParser`、`ProcessRunner`、`CommandLine`、`AnsiStripper`、`OpenCodeLocator`、`LogErrorScanner` 是纯静态工具类（`ModelListParser`、`AgentWorkspace` 为 internal），其常量与静态属性未逐成员标注。
 
 ```mermaid
 classDiagram
     direction LR
 
     class AiDiagnosticsClient {
-        +AiDiagnosticsClient(options)
+        +AiDiagnosticsClient()
         +Locate()$ string?
         +ListModelsAsync(ct) Task~AiModel[]~
         +AskAsync(request, onOutputLine, ct) Task~AiAnswer~
-    }
-
-    class AiDiagnosticsOptions {
-        +ExecutablePath string?
-        +ModelsTimeoutMs int
-        +AnswerTimeoutMs int
-        +ModelListAttempts int
-        +ModelListRetryDelayMs int
     }
 
     class AiRequest {
@@ -244,7 +225,6 @@ classDiagram
         +ModelId string
         +Agent AiAgentProfile
         +Title string
-        +TimeoutMs int?
         +Instruction string
         +DefaultInstruction string
     }
@@ -265,14 +245,6 @@ classDiagram
         +Id string
         +SystemPrompt string
         +Description string
-        +Mode string
-        +Temperature double
-        +Permissions Map
-    }
-
-    class AiPermissions {
-        +ReadOnlyWeb Map
-        +ReadOnly Map
     }
 
     class LogErrorScanner {
@@ -283,9 +255,7 @@ classDiagram
     class LogScanOptions {
         +ErrorMarkers list
         +NoiseHints list
-        +TracebackHeader string
         +MaxBytes int
-        +StripAnsi bool
     }
 
     class LogScanResult {
@@ -293,8 +263,6 @@ classDiagram
         +TotalLines int
         +ErrorLineCount int
         +Truncated bool
-        +Empty LogScanResult
-        +ToText() string
     }
 
     class PromptComposer {
@@ -339,7 +307,6 @@ classDiagram
     }
 
     %% 客户端对外契约
-    AiDiagnosticsClient ..> AiDiagnosticsOptions : 构造注入
     AiDiagnosticsClient ..> AiRequest : 入参
     AiDiagnosticsClient ..> AiAnswer : 返回
     AiDiagnosticsClient ..> AiModel : 返回
@@ -353,8 +320,7 @@ classDiagram
 
     %% 领域模型
     AiRequest --> AiAgentProfile : Agent
-    AiAgentProfile ..> AiPermissions : 预设权限
-    AgentWorkspace ..> AiAgentProfile : 序列化为 opencode.json
+    AgentWorkspace ..> AiAgentProfile : 序列化为 opencode.json（固定 mode/温度/权限）
 
     %% 日志链路
     LogErrorScanner ..> LogScanOptions : 入参
@@ -365,7 +331,7 @@ classDiagram
 读图要点：
 
 - **对外只有一个门面**：`AiDiagnosticsClient`。其余 `public` 类型都是它的输入/输出或可独立使用的纯函数工具。
-- `AiRequest` **聚合** `AiAgentProfile`（`-->`）：没有 agent 画像就无法发起分析，人设与权限跟请求一起传。
+- `AiRequest` **聚合** `AiAgentProfile`（`-->`）：没有 agent 画像就无法发起分析，人设跟请求一起传；权限与温度由库固定。
 - `AgentWorkspace` 是 `internal`：每次 `AskAsync` 建临时目录、写 `opencode.json`、结束后删除，宿主不需要也不应该感知它。
 - `LogErrorScanner` / `PromptComposer` / `RunEventParser` 是**与客户端解耦的纯函数**，可以单独用于「只做日志扫描」或「只解析事件流」的场景。
 
@@ -381,7 +347,7 @@ sequenceDiagram
     participant O as opencode CLI
 
     H->>C: AskAsync(AiRequest, onOutputLine, ct)
-    C->>C: ResolveExecutable()<br/>Options.ExecutablePath ?? Locate()
+    C->>C: ResolveExecutable()<br/>OpenCodeLocator.Find()
     alt 未安装 opencode
         C-->>H: throw InvalidOperationException
     end
@@ -401,7 +367,7 @@ sequenceDiagram
     C->>W: Dispose()（删除临时目录）
 ```
 
-`ListModelsAsync` 的链路短得多：`ResolveExecutable` → `ProcessRunner("api model.list")` → `ModelListParser.Parse` → 空列表则按选项重试。**它不走** `AgentWorkspace`，也不会启动独立服务（见 §6 第 1 条）。
+`ListModelsAsync` 的链路短得多：`ResolveExecutable` → `ProcessRunner("api model.list")` → `ModelListParser.Parse` → 空列表则重试一次。**它不走** `AgentWorkspace`，也不会启动独立服务（见 §6 第 1 条）。
 
 ---
 
@@ -461,7 +427,6 @@ var answer = await client.AskAsync(new AiRequest
     Prompt = "请只回复 OK 两个字母。",
     ModelId = models[0].QualifiedId,
     Agent = agent,
-    TimeoutMs = 120_000,
 });
 ```
 

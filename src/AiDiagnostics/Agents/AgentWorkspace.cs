@@ -15,6 +15,25 @@ internal sealed class AgentWorkspace : IDisposable
 {
     private const string SchemaUrl = "https://opencode.ai/config.json";
 
+    /// <summary>opencode agent 模式：primary 表示可直接被 <c>run --agent</c> 选中。</summary>
+    private const string AgentMode = "primary";
+
+    /// <summary>采样温度：故障排查要稳定复现，取低值。</summary>
+    private const double AgentTemperature = 0.1;
+
+    /// <summary>
+    /// 权限矩阵：默认拒绝一切工具，仅放行读文件、抓网页与搜索。
+    /// 分析任务只给结论与步骤，不改代码、不执行命令——这条边界固定写在库内，不开放覆写。
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> AgentPermissions =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["*"] = "deny",
+            ["read"] = "allow",
+            ["webfetch"] = "allow",
+            ["websearch"] = "allow",
+        };
+
     private AgentWorkspace(string root, string configPath)
     {
         Root = root;
@@ -41,13 +60,13 @@ internal sealed class AgentWorkspace : IDisposable
     internal static string BuildConfigJson(AiAgentProfile profile)
     {
         var permissions = new JsonObject();
-        foreach (var (key, value) in profile.Permissions) permissions[key] = value;
+        foreach (var (key, value) in AgentPermissions) permissions[key] = value;
 
         var agent = new JsonObject
         {
             ["description"] = profile.Description,
-            ["mode"] = profile.Mode,
-            ["temperature"] = profile.Temperature,
+            ["mode"] = AgentMode,
+            ["temperature"] = AgentTemperature,
             ["system"] = profile.SystemPrompt,
             ["permission"] = permissions,
         };

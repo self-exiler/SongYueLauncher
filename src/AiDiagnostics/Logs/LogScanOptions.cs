@@ -12,12 +12,6 @@ public sealed record LogScanOptions
     /// <summary>正常心跳输出特征：即便含关键字也不作为错误（如 "listening at"）。</summary>
     public IReadOnlyList<string> NoiseHints { get; init; } = [];
 
-    /// <summary>Traceback 头（Python 解释器报错块起点）。</summary>
-    public string TracebackHeader { get; init; } = "Traceback (most recent call last):";
-
     /// <summary>输出字节预算，超出后按块截断并标记 Truncated。</summary>
     public int MaxBytes { get; init; } = 12_000;
-
-    /// <summary>是否先剥离 ANSI 转义序列（false 时按原样匹配，适合已去色的日志源）。</summary>
-    public bool StripAnsi { get; init; } = true;
 }

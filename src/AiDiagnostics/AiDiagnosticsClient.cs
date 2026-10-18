@@ -14,9 +14,17 @@ namespace AiDiagnostics;
 /// </remarks>
 public sealed class AiDiagnosticsClient
 {
-    private readonly AiDiagnosticsOptions _options;
+    /// <summary>列举模型的超时。冷启动时 opencode 要拉起后台服务，比单次分析更需要余量。</summary>
+    private const int ModelsTimeoutMs = 60_000;
 
-    public AiDiagnosticsClient(AiDiagnosticsOptions? options = null) => _options = options ?? new AiDiagnosticsOptions();
+    /// <summary>单次分析的超时（推理 + 联网查证可能较长）。</summary>
+    private const int AnswerTimeoutMs = 5 * 60_000;
+
+    /// <summary>模型列表为空时的重试次数（含首次）。</summary>
+    private const int ModelListAttempts = 2;
+
+    /// <summary>模型列表为空时的重试间隔。</summary>
+    private const int ModelListRetryDelayMs = 2_000;
 
     /// <summary>定位本机 opencode 可执行文件；未安装返回 null。</summary>
     public static string? Locate() => OpenCodeLocator.Find();
@@ -32,18 +40,18 @@ public sealed class AiDiagnosticsClient
     public async Task<IReadOnlyList<AiModel>> ListModelsAsync(CancellationToken cancellationToken = default)
     {
         var exe = ResolveExecutable();
-        var attempts = Math.Max(1, _options.ModelListAttempts);
+        var attempts = Math.Max(1, ModelListAttempts);
         IReadOnlyList<AiModel> models = [];
 
         for (var attempt = 0; attempt < attempts; attempt++)
         {
             if (attempt > 0)
             {
-                await Task.Delay(_options.ModelListRetryDelayMs, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(ModelListRetryDelayMs, cancellationToken).ConfigureAwait(false);
             }
 
             var (code, stdout, stderr) = await ProcessRunner.RunCapturedAsync(
-                exe, "api model.list", Environment.CurrentDirectory, _options.ModelsTimeoutMs, null, cancellationToken)
+                exe, "api model.list", Environment.CurrentDirectory, ModelsTimeoutMs, null, cancellationToken)
                 .ConfigureAwait(false);
 
             if (code != 0)
@@ -82,12 +90,11 @@ public sealed class AiDiagnosticsClient
             ["PWD"] = workspace.Root,
         };
 
-        var timeoutMs = request.TimeoutMs ?? _options.AnswerTimeoutMs;
         var (code, stdout, stderr) = await ProcessRunner.RunCapturedAsync(
             exe,
             BuildAskArguments(request),
             workspace.Root,
-            timeoutMs,
+            AnswerTimeoutMs,
             onOutputLine,
             cancellationToken,
             request.Prompt,
@@ -119,10 +126,8 @@ public sealed class AiDiagnosticsClient
             .Append(CommandLine.Quote(request.Instruction))
             .ToString();
 
-    private string ResolveExecutable() =>
-        _options.ExecutablePath
-        ?? OpenCodeLocator.Find()
-        ?? throw new InvalidOperationException("未检测到 opencode。");
+    private static string ResolveExecutable() =>
+        OpenCodeLocator.Find() ?? throw new InvalidOperationException("未检测到 opencode。");
 
     private static string FirstLine(string text)
     {

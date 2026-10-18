@@ -116,12 +116,9 @@ public static class Ps1ScriptBuilder
     }
 
     /// <summary>固定注入层由脚本显式处理（PATH 需前置、HIP/ROCM 需运行时推导），不走字面量赋值。</summary>
+    /// <summary>固定层键（由 <see cref="LaunchEnvBuilder"/> 写入，导出时跳过以免重复）。</summary>
     private static bool IsFixedLayer(string key) =>
-        key.Equals("PATH", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("HIP_PATH", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("ROCM_PATH", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("PYTHONUTF8", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("PYTHONNOUSERSITE", StringComparison.OrdinalIgnoreCase);
+        LaunchEnvBuilder.FixedKeys.Contains(key, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>venv 与 Scripts 前置到现有 PATH。</summary>
     private static string Join(string venvDir, string scriptsDir) =>

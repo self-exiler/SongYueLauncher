@@ -24,7 +24,7 @@ public sealed class LaunchService
         // ComfyUI 崩溃或被外部关闭时复位状态，避免 UI 停留在"运行中"
         _process.Exited += () =>
         {
-            if (State is LaunchState.Starting or LaunchState.Running)
+            if (_stateMachine.LaunchState is LaunchState.Starting or LaunchState.Running)
             {
                 Log.Append("[启动器] 子进程已退出");
                 Log.EndSession();
@@ -35,17 +35,12 @@ public sealed class LaunchService
 
     public LogService Log { get; }
 
-    /// <summary>启动流程自身的状态（供查询与前置校验）；对外展示状态由 AppStateMachine 统一发布。</summary>
-    public LaunchState State { get; private set; } = LaunchState.Idle;
+    /// <summary>启动流程状态只存在状态机里，这里不再存第二份（S-12）。</summary>
+    private LaunchState State => _stateMachine.LaunchState;
 
     public event Action<string>? OutputReceived;
 
-    private void SetState(LaunchState state)
-    {
-        if (State == state) return;
-        State = state;
-        _stateMachine.ReportLaunch(state);
-    }
+    private void SetState(LaunchState state) => _stateMachine.ReportLaunch(state);
 
     /// <summary>启动 ComfyUI；返回是否检测到就绪。失败时状态复位为 Idle 并重抛。</summary>
     public async Task<bool> StartAsync(AppConfig config, TimeSpan readyTimeout, CancellationToken cancellationToken = default)

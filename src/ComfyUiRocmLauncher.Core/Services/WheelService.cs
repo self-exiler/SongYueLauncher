@@ -13,6 +13,17 @@ namespace ComfyUiRocmLauncher.Core.Services;
 public static class WheelService
 {
     public const string RocmNightlyIndexUrl = "https://nightly.repo.amd.com/rocm/whl-next/";
+
+    /// <summary>
+    /// 更新前的版本快照文件名（写在 ComfyUI 目录下）。
+    /// 更新与回滚、以及界面上的「回滚」按钮可用性都读同一个文件，故收成一处常量。
+    /// </summary>
+    public const string SnapshotFileName = "_pre_update_freeze.txt";
+
+    /// <summary>快照文件的完整路径。</summary>
+    public static string SnapshotPath(AppConfig config) =>
+        Path.Combine(config.ComfyUiDir, SnapshotFileName);
+
     public static string LegacyStagingIndexUrl(string arch) =>
         $"https://rocm.nightlies.amd.com/v2-staging/{arch}-dcgpu/";
 
@@ -118,8 +129,27 @@ public static class WheelService
         return SelectReleaseAsset(ParseReleaseAssets(json), assetMatch);
     }
 
-    private static string PythonArg(AppConfig config) => $"--python \"{config.PythonExe}\"";
+    private static string PythonArg(AppConfig config) => $"--python {CommandLine.Quote(config.PythonExe)}";
     private static string PypiIndex(AppConfig config) => MirrorPolicy.PypiIndexArg(config.EnvUpdate.PypiMirror);
+
+    /// <summary>
+    /// 用 uv 跑一条 pip 子命令：统一解析 uv 路径、以 ComfyUI 目录为工作目录、输出转给回调。
+    /// 所有 pip 操作都必须经这里——散着写会让「工作目录该不该存在」「uv 从哪来」各自判断一遍。
+    /// </summary>
+    private static Task<int> RunUvAsync(TaskRunner runner, AppConfig config, string pipArgs, Action<string>? onOutput) =>
+        runner.Run(
+            ToolLocator.ResolveUv(config),
+            pipArgs,
+            PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir),
+            onOutput);
+
+    /// <summary>同上，但收集输出行（freeze / list 这类要解析结果的操作）。</summary>
+    private static async Task<IReadOnlyList<string>> RunUvCaptureAsync(TaskRunner runner, AppConfig config, string pipArgs)
+    {
+        var lines = new List<string>();
+        await RunUvAsync(runner, config, pipArgs, lines.Add).ConfigureAwait(false);
+        return lines;
+    }
 
     /// <summary>pip freeze → name/version 字典（name 规范化小写）。</summary>
     public static Dictionary<string, string> ParseFreeze(IEnumerable<string> lines)
@@ -155,9 +185,7 @@ public static class WheelService
 
     private static async Task<Dictionary<string, string>> FreezeAsync(TaskRunner runner, AppConfig config)
     {
-        var lines = new List<string>();
-        var uv = ToolLocator.ResolveUv(config);
-        await runner.Run(uv, $"pip freeze {PythonArg(config)}", PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), lines.Add).ConfigureAwait(false);
+        var lines = await RunUvCaptureAsync(runner, config, $"pip freeze {PythonArg(config)}").ConfigureAwait(false);
         return ParseFreeze(lines);
     }
 
@@ -179,13 +207,13 @@ public static class WheelService
         try { args = BuildTorchInstallArgs(arch.Arch, PythonArg(config)); }
         catch (NotSupportedException ex) { onOutput?.Invoke($"[错误] {ex.Message}"); return false; }
 
-        var uv = ToolLocator.ResolveUv(config);
+        // 非 pip 的两步（rocm-sdk init、import 验证）直接在本目录执行
         var dir = PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir);
 
         // ① 快照
         onOutput?.Invoke("[1/6] 生成版本快照 …");
         var before = await FreezeAsync(runner, config).ConfigureAwait(false);
-        var snapshot = Path.Combine(config.ComfyUiDir, "_pre_update_freeze.txt");
+        var snapshot = SnapshotPath(config);
         try
         {
             File.WriteAllLines(snapshot, before.Select(kv => $"{kv.Key}=={kv.Value}"));
@@ -194,7 +222,7 @@ public static class WheelService
 
         // ② 解析验证门：索引可达 + 目标 arch 有对应版本才继续（不下载、不落盘）
         onOutput?.Invoke("[2/6] 解析验证门（uv pip install --dry-run）…");
-        var verifyCode = await runner.Run(uv, ToDryRunArgs(args), dir, onOutput).ConfigureAwait(false);
+        var verifyCode = await RunUvAsync(runner, config, ToDryRunArgs(args), onOutput).ConfigureAwait(false);
         if (verifyCode != 0)
         {
             onOutput?.Invoke("[错误] 解析失败——旧环境未改动，可稍后重试或检查网络 / 架构");
@@ -204,12 +232,12 @@ public static class WheelService
         // ③ 卸载旧包
         onOutput?.Invoke("[3/6] 卸载旧 rocm/torch 系 …");
         var uninstall = BuildTorchUninstallList(before.Keys);
-        await runner.Run(uv, $"pip uninstall {CommandLine.Join(uninstall)} {PythonArg(config)}", dir, onOutput)
+        await RunUvAsync(runner, config, $"pip uninstall {CommandLine.Join(uninstall)} {PythonArg(config)}", onOutput)
             .ConfigureAwait(false);
 
         // ④ 重装
         onOutput?.Invoke("[4/6] 安装新 torch[device-arch]（AMD 源直连）…");
-        var installCode = await runner.Run(uv, args, dir, onOutput).ConfigureAwait(false);
+        var installCode = await RunUvAsync(runner, config, args, onOutput).ConfigureAwait(false);
         if (installCode != 0)
         {
             onOutput?.Invoke($"[错误] 安装失败（退出码 {installCode}），尝试尽力回滚 …");
@@ -248,7 +276,6 @@ public static class WheelService
             onOutput?.Invoke("      无快照，无法回滚");
             return;
         }
-        var uv = ToolLocator.ResolveUv(config);
         var specs = File.ReadAllLines(snapshotPath)
             .Where(l => Regex.IsMatch(l, @"^(torch|torchvision|torchaudio|rocm)"))
             .ToArray();
@@ -261,7 +288,7 @@ public static class WheelService
         var arg = BuildRollbackArgs(specs, arch.Arch, PythonArg(config));
         var index = arch.Arch is null ? RocmNightlyIndexUrl : TorchIndexUrl(arch.Arch);
         onOutput?.Invoke($"      尝试按快照装回（索引 {index}）…");
-        var code = await runner.Run(uv, arg, PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), onOutput).ConfigureAwait(false);
+        var code = await RunUvAsync(runner, config, arg, onOutput).ConfigureAwait(false);
         if (code != 0)
         {
             onOutput?.Invoke(arch.Arch is "gfx942" or "gfx950"
@@ -273,9 +300,6 @@ public static class WheelService
     /// <summary>安装专用轮子（内置清单命中 arch）。</summary>
     public static async Task InstallSpecialWheelsAsync(TaskRunner runner, AppConfig config, ArchInfo arch, Action<string>? onOutput = null)
     {
-        var uv = ToolLocator.ResolveUv(config);
-        var dir = PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir);
-
         foreach (var entry in WheelCatalog.Instance.Wheels)
         {
             var rule = entry.ResolveFor(arch.Arch);
@@ -305,7 +329,7 @@ public static class WheelService
 
             var extra = entry.ForceReinstall ? " --force-reinstall --no-deps" : string.Empty;
             var idx = MirrorPolicy.PypiIndexArg(config.EnvUpdate.PypiMirror);
-            var code = await runner.Run(uv, $"pip install {CommandLine.Quote(target)}{extra} {idx}{PythonArg(config)}", dir, onOutput)
+            var code = await RunUvAsync(runner, config, $"pip install {CommandLine.Quote(target)}{extra} {idx}{PythonArg(config)}", onOutput)
                 .ConfigureAwait(false);
             if (code != 0)
                 onOutput?.Invoke(entry.Optional ? $"      {entry.DisplayName} 跳过（可选组件失败）"
@@ -316,15 +340,14 @@ public static class WheelService
     /// <summary>项目依赖同步（FR-8.6）：过滤 torch 系后 uv pip install -r，报告变更。</summary>
     public static async Task<IReadOnlyList<string>> SyncRequirementsAsync(TaskRunner runner, AppConfig config, Action<string>? onOutput = null)
     {
-        var uv = ToolLocator.ResolveUv(config);
         var req = Path.Combine(config.ComfyUiDir, "requirements.txt");
         if (!File.Exists(req)) { onOutput?.Invoke("[错误] 未找到 requirements.txt"); return Array.Empty<string>(); }
 
         var before = await FreezeAsync(runner, config).ConfigureAwait(false);
         var filtered = RequirementsFilter.WriteFilteredFile(req, config.ComfyUiDir);
         onOutput?.Invoke("同步项目依赖（已过滤 torch 系）…");
-        var code = await runner.Run(uv, $"pip install -r \"{filtered}\" {PypiIndex(config)}{PythonArg(config)}",
-            PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), onOutput).ConfigureAwait(false);
+        var code = await RunUvAsync(runner, config, $"pip install -r {CommandLine.Quote(filtered)} {PypiIndex(config)}{PythonArg(config)}", onOutput)
+            .ConfigureAwait(false);
         if (code != 0) { onOutput?.Invoke($"[错误] 依赖安装失败（退出码 {code}）"); return Array.Empty<string>(); }
 
         var after = await FreezeAsync(runner, config).ConfigureAwait(false);
@@ -332,26 +355,15 @@ public static class WheelService
     }
 
     /// <summary>通用 PyPI：安装输入（包名 / ==版本 / whl URL）。</summary>
-    public static async Task<int> InstallGenericAsync(TaskRunner runner, AppConfig config, string spec, Action<string>? onOutput = null)
-    {
-        var uv = ToolLocator.ResolveUv(config);
-        return await runner.Run(uv, $"pip install {CommandLine.Quote(spec)} {PypiIndex(config)}{PythonArg(config)}", PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), onOutput)
+    public static async Task<int> InstallGenericAsync(TaskRunner runner, AppConfig config, string spec, Action<string>? onOutput = null) =>
+        await RunUvAsync(runner, config, $"pip install {CommandLine.Quote(spec)} {PypiIndex(config)}{PythonArg(config)}", onOutput)
             .ConfigureAwait(false);
-    }
 
-    public static async Task<int> UninstallAsync(TaskRunner runner, AppConfig config, string package, Action<string>? onOutput = null)
-    {
-        var uv = ToolLocator.ResolveUv(config);
-        return await runner.Run(uv, $"pip uninstall {CommandLine.Quote(package)} {PythonArg(config)}", PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), onOutput)
+    public static async Task<int> UninstallAsync(TaskRunner runner, AppConfig config, string package, Action<string>? onOutput = null) =>
+        await RunUvAsync(runner, config, $"pip uninstall {CommandLine.Quote(package)} {PythonArg(config)}", onOutput)
             .ConfigureAwait(false);
-    }
 
-    public static async Task<IReadOnlyList<string>> ListInstalledAsync(TaskRunner runner, AppConfig config)
-    {
-        var uv = ToolLocator.ResolveUv(config);
-        var lines = new List<string>();
-        await runner.Run(uv, $"pip list {PythonArg(config)}", PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), lines.Add).ConfigureAwait(false);
-        return lines;
-    }
+    public static async Task<IReadOnlyList<string>> ListInstalledAsync(TaskRunner runner, AppConfig config) =>
+        await RunUvCaptureAsync(runner, config, $"pip list {PythonArg(config)}").ConfigureAwait(false);
 
 }

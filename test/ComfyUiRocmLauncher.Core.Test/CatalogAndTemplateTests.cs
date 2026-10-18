@@ -37,15 +37,40 @@ public class CatalogAndTemplateTests
     }
 
     [Fact]
-    public void ClearAll_RemovesEverything()
+    public void StructuredArgs_Clear_RemovesEverything()
     {
         var args = new StructuredArgs();
         args.Enable("cache-lru", true);
         args.SetValue("cache-lru", "20");
         args.Enable("use-ck-attention", true);
-        Catalog.ClearAll(args);
+        args.SetMulti("reserve-vram", ["0.5"]);
+        args.SetLines("verbose", ["INFO"]);
+
+        args.Clear();
+
         Assert.Empty(args.Enabled);
         Assert.Empty(args.Values);
+        Assert.Empty(args.Multi);
+        Assert.Empty(args.Lines);
+    }
+
+    [Fact]
+    public void StructuredArgs_CopyFrom_KeepsInstanceAndDeepCopies()
+    {
+        var source = new StructuredArgs();
+        source.Enable("reserve-vram", true);
+        source.SetMulti("reserve-vram", ["0.5", "0.9"]);
+
+        var target = new StructuredArgs();
+        target.Enable("port", true);
+        target.CopyFrom(source);
+
+        Assert.False(target.IsEnabled("port"));
+        Assert.Equal(new[] { "0.5", "0.9" }, target.MultiOf("reserve-vram"));
+
+        // 改源不影响目标（列表是逐项复制的，非共享引用）
+        source.MultiOf("reserve-vram").Add("1.0");
+        Assert.Equal(2, target.MultiOf("reserve-vram").Count);
     }
 
     [Fact]
@@ -69,7 +94,7 @@ public class CatalogAndTemplateTests
     public void Template_ApplyArgs_SetsStructured()
     {
         var args = new StructuredArgs();
-        TemplateCatalog.Instance.ApplyArgs("rdna12", args, Catalog);
+        TemplateCatalog.Instance.ApplyArgs("rdna12", args);
         Assert.True(args.IsEnabled("use-quad-cross-attention"));
         Assert.Equal("20", args.Value("cache-lru"));
     }
@@ -79,7 +104,7 @@ public class CatalogAndTemplateTests
     {
         var args = new StructuredArgs();
         args.Enable("use-ck-attention", true);
-        TemplateCatalog.Instance.ApplyArgs("rdna12", args, Catalog);
+        TemplateCatalog.Instance.ApplyArgs("rdna12", args);
         Assert.False(args.IsEnabled("use-ck-attention"));
         Assert.True(args.IsEnabled("use-quad-cross-attention"));
     }
@@ -98,7 +123,7 @@ public class CatalogAndTemplateTests
         config.Args.Enable("use-ck-attention", true);
 
         var tpl = TemplateCatalog.Instance.AllTemplates(config).First(t => t.Id == "rdna12");
-        TemplateCatalog.Instance.ApplyTo(tpl, config, Catalog);
+        TemplateCatalog.Instance.ApplyTo(tpl, config);
 
         Assert.False(config.CustomEnvVars.ContainsKey("OLD_KEY"));
         Assert.True(config.CustomEnvVars.ContainsKey("TRITON_CACHE_DIR"));
@@ -136,7 +161,7 @@ public class CatalogAndTemplateTests
         config.CustomEnvVars.Clear();
         config.CustomEnvVars["JUNK"] = "1";
         config.Args.Enable("preview-method", true);
-        TemplateCatalog.Instance.ApplyTo(tpl, config, Catalog);
+        TemplateCatalog.Instance.ApplyTo(tpl, config);
 
         Assert.False(config.CustomEnvVars.ContainsKey("JUNK"));
         Assert.Equal(@"E:\New\comfyui\some\path", config.CustomEnvVars["MY_VAR"]);
@@ -152,7 +177,8 @@ public class CatalogAndTemplateTests
         config.Args.Enable("port", true);
         config.Args.SetValue("port", "8188");
 
-        var snapshot = TemplateCatalog.Instance.CaptureArgs(config);
+        // CaptureAsTemplate 内部即 config.Args.Clone()
+        var snapshot = TemplateCatalog.Instance.CaptureAsTemplate(config, "t", "t").ArgsSnapshot!;
         config.Args.Enable("port", false);
 
         Assert.True(snapshot.IsEnabled("port"));

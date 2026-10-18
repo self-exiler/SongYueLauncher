@@ -7,10 +7,9 @@ namespace ComfyUiRocmLauncher.Core.Services;
 /// </summary>
 public sealed class TemplateCatalog
 {
-    private const string ResourceSuffix = "Resources.gpu-templates.json";
-
-    private static readonly Lazy<TemplateCatalog> LazyInstance = new(() => new TemplateCatalog(
-        EmbeddedJson.Load<GpuTemplateFile>(typeof(TemplateCatalog).Assembly, ResourceSuffix, "gpu-templates.json")));
+    // 静态字段初始化由运行时保证线程安全（等价于此前的 Lazy，少一层包装）。
+    private static readonly TemplateCatalog Shared = new(EmbeddedJson.Load<GpuTemplateFile>(
+        typeof(TemplateCatalog).Assembly, "Resources.gpu-templates.json", "gpu-templates.json"));
 
     private TemplateCatalog(GpuTemplateFile file)
     {
@@ -25,8 +24,8 @@ public sealed class TemplateCatalog
 
     private IReadOnlyDictionary<string, string> CommonEnvVars { get; }
 
-    /// <summary>进程内单例（Lazy 默认线程安全）。</summary>
-    public static TemplateCatalog Instance => LazyInstance.Value;
+    /// <summary>进程内单例。</summary>
+    public static TemplateCatalog Instance => Shared;
 
     private GpuTemplate? Get(string id) =>
         Templates.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
@@ -55,9 +54,10 @@ public sealed class TemplateCatalog
     /// <summary>
     /// 把模板的启动参数写入结构化参数；会先关闭同互斥组的冲突项。
     /// </summary>
-    public void ApplyArgs(string templateId, StructuredArgs args, CliArgsCatalog catalog)
+    public void ApplyArgs(string templateId, StructuredArgs args)
     {
         var tpl = Get(templateId) ?? throw new ArgumentException($"未知模板 {templateId}", nameof(templateId));
+        var catalog = CliArgsCatalog.Instance;
         foreach (var a in tpl.Args)
         {
             catalog.EnforceMutex(args, a.Name);
@@ -89,7 +89,7 @@ public sealed class TemplateCatalog
     /// 全量替换语义（FR-7.2）：把模板的环境变量与启动参数整体写入 config，
     /// 覆盖并清除既有自定义项（模板应用后仍可在各页自由编辑）。
     /// </summary>
-    public void ApplyTo(GpuTemplate tpl, AppConfig config, CliArgsCatalog catalog)
+    public void ApplyTo(GpuTemplate tpl, AppConfig config)
     {
         var env = ResolveEnv(tpl, config);
         config.CustomEnvVars.Clear();
@@ -97,12 +97,12 @@ public sealed class TemplateCatalog
 
         if (tpl.ArgsSnapshot is { } snapshot)
         {
-            OverwriteArgs(config.Args, snapshot);
+            config.Args.CopyFrom(snapshot);
         }
         else
         {
-            catalog.ClearAll(config.Args);
-            ApplyArgs(tpl.Id, config.Args, catalog);
+            config.Args.Clear();
+            ApplyArgs(tpl.Id, config.Args);
         }
     }
 
@@ -112,16 +112,8 @@ public sealed class TemplateCatalog
         Id = id,
         Title = title,
         EnvSnapshot = CaptureEnvSnapshot(config),
-        ArgsSnapshot = CaptureArgs(config),
+        ArgsSnapshot = config.Args.Clone(),
     };
-
-    /// <summary>深拷贝当前结构化参数。</summary>
-    public StructuredArgs CaptureArgs(AppConfig config)
-    {
-        var snapshot = new StructuredArgs();
-        OverwriteArgs(snapshot, config.Args);
-        return snapshot;
-    }
 
     /// <summary>把 CustomEnvVars 中的 ComfyUI / venv 绝对路径反写为 {comfyUiDir}/{venvDir} 占位符。</summary>
     public Dictionary<string, string> CaptureEnvSnapshot(AppConfig config)
@@ -149,14 +141,6 @@ public sealed class TemplateCatalog
         for (var i = 2; config.CustomTemplates.Any(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase)); i++)
             id = slug + "_" + i;
         return id;
-    }
-
-    private static void OverwriteArgs(StructuredArgs target, StructuredArgs source)
-    {
-        target.Enabled = new HashSet<string>(source.Enabled, StringComparer.Ordinal);
-        target.Values = new Dictionary<string, string>(source.Values, StringComparer.Ordinal);
-        target.Multi = source.Multi.ToDictionary(kv => kv.Key, kv => new List<string>(kv.Value), StringComparer.Ordinal);
-        target.Lines = source.Lines.ToDictionary(kv => kv.Key, kv => new List<string>(kv.Value), StringComparer.Ordinal);
     }
 
     private static string Expand(string value, string comfyUiDir, string venvDir) =>
