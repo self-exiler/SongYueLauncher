@@ -13,6 +13,11 @@
     <PackageReference Include="System.Management" Version="9.0.0" />
   </ItemGroup>
 
+  <!-- AI 诊断通用能力（opencode 调用 / 进程执行 / 日志扫描 / 提示词模板），与域无关。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\AiDiagnostics\AiDiagnostics.csproj" />
+  </ItemGroup>
+
   <!-- 单测访问内部解析辅助方法（opencode 输出契约） -->
   <ItemGroup>
     <InternalsVisibleTo Include="ComfyUiRocmLauncher.Core.Test" />

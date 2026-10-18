@@ -1,0 +1,191 @@
+using System.Text.Json;
+using AiDiagnostics;
+using AiDiagnostics.Agents;
+using AiDiagnostics.Parsing;
+
+namespace AiDiagnostics.Test;
+
+public class AiDiagnosticsClientTests
+{
+    private const string ModelListJson = """
+        {"location":{"directory":"C:\\\\Users\\\\me"},"data":[
+          {"id":"claude-haiku-5-5","modelID":"claude-haiku-5-5","providerID":"opencode","name":"Claude Haiku 5.5","enabled":true,"status":"active"},
+          {"id":"gpt-6-sol","modelID":"gpt-6-sol","providerID":"openai","name":"GPT-6 Sol","enabled":true},
+          {"id":"retired-model","modelID":"retired-model","providerID":"opencode","name":"Retired","enabled":false},
+          {"id":"no-name","modelID":"no-name","providerID":"opencode"}
+        ]}
+        """;
+
+    private static AiAgentProfile Analyst => new()
+    {
+        Id = "test-analyst",
+        SystemPrompt = "只读分析日志。",
+        Description = "Read-only log analyst.",
+    };
+
+    [Fact]
+    public void ParseModels_SkipsDisabledAndKeepsQualifiedId()
+    {
+        var models = ModelListParser.Parse(ModelListJson);
+
+        Assert.Equal(3, models.Count);
+        Assert.Equal("opencode/claude-haiku-5-5", models[0].QualifiedId);
+        Assert.Contains("Claude Haiku 5.5", models[0].DisplayName);
+        Assert.DoesNotContain(models, m => m.ModelId == "retired-model");
+        // 无 name 时回落为 id
+        Assert.Equal("no-name", models[2].DisplayName);
+    }
+
+    [Fact]
+    public void ParseModels_EmptyDataArray_ReturnsEmpty() =>
+        Assert.Empty(ModelListParser.Parse("""{"data":[]}"""));
+
+    [Fact]
+    public void ParseAnswer_TextEvents_AreJoinedInOrder()
+    {
+        var stdout = string.Join('\n',
+            """{"type":"step_start","sessionID":"ses_1","part":{"type":"step-start"}}""",
+            """{"type":"text","sessionID":"ses_1","part":{"type":"text","text":"结论：显存不足"}}""",
+            """{"type":"text","sessionID":"ses_1","part":{"type":"text","text":"步骤：加 --lowvram"}}""");
+
+        var answer = RunEventParser.ParseAnswer(stdout);
+
+        Assert.True(answer.Success);
+        Assert.Equal("结论：显存不足\n\n步骤：加 --lowvram", answer.Text);
+    }
+
+    [Fact]
+    public void ParseAnswer_ErrorEvent_IsReportedAsFailure()
+    {
+        var stdout = """{"type":"error","sessionID":"ses_2","error":{"type":"provider.no-route","message":"Model unavailable: bad/id"}}""";
+
+        var answer = RunEventParser.ParseAnswer(stdout);
+
+        Assert.False(answer.Success);
+        Assert.Equal("Model unavailable: bad/id", answer.Text);
+    }
+
+    [Fact]
+    public void ParseAnswer_NonJsonLines_AreIgnored()
+    {
+        var answer = RunEventParser.ParseAnswer("Loading...\nnot json at all\n\n");
+
+        Assert.False(answer.Success);
+        Assert.Contains("没有返回可解析的回答", answer.Text);
+    }
+
+    [Fact]
+    public void ParseAnswer_ErrorEvent_TakesPrecedenceOverPartialText()
+    {
+        var stdout = string.Join('\n',
+            """{"type":"text","sessionID":"ses_3","part":{"type":"text","text":"部分回答"}}""",
+            """{"type":"error","sessionID":"ses_3","error":{"type":"provider.transport","message":"provider timeout"}}""");
+
+        var answer = RunEventParser.ParseAnswer(stdout);
+
+        Assert.False(answer.Success);
+        Assert.Contains("provider timeout", answer.Text);
+        Assert.Contains("部分回答", answer.Text);
+    }
+
+    [Fact]
+    public void BuildAskArguments_UsesStandaloneAndQuotedCustomAgent()
+    {
+        var args = AiDiagnosticsClient.BuildAskArguments(new AiRequest
+        {
+            Prompt = "ignored",
+            ModelId = "openai/gpt-6-sol",
+            Agent = Analyst,
+            Title = "日志分析",
+        });
+
+        Assert.StartsWith("run --standalone --format json --agent ", args);
+        Assert.Contains("--agent \"test-analyst\"", args);
+        Assert.Contains("--model \"openai/gpt-6-sol\"", args);
+        Assert.Contains("--title \"日志分析\"", args);
+        Assert.Contains("stdin 附加", args);
+    }
+
+    [Fact]
+    public void BuildAskArguments_HonoursCustomInstruction()
+    {
+        var args = AiDiagnosticsClient.BuildAskArguments(new AiRequest
+        {
+            Prompt = "ignored",
+            ModelId = "opencode/x",
+            Agent = Analyst,
+            Instruction = "自定义短指令",
+        });
+
+        Assert.EndsWith("\"自定义短指令\"", args);
+    }
+
+    [Fact]
+    public void TryFormat_ConvertsUsefulEvents()
+    {
+        Assert.Equal("结论：显存不足", RunEventParser.TryFormat(
+            """{"type":"text","part":{"type":"text","text":"结论：显存不足"}}"""));
+        Assert.Equal("opencode 已开始处理请求。", RunEventParser.TryFormat(
+            """{"type":"step_start","part":{"type":"step-start"}}"""));
+        Assert.Equal("Model unavailable: bad/id", RunEventParser.TryFormat(
+            """{"type":"error","error":{"type":"provider.no-route","message":"Model unavailable: bad/id"}}"""));
+        Assert.Null(RunEventParser.TryFormat(
+            """{"type":"unknown","part":{"type":"unknown"}}"""));
+    }
+
+    [Fact]
+    public void TryFormat_ToolUse_ReportsToolName()
+    {
+        var text = RunEventParser.TryFormat(
+            """{"type":"tool_use","part":{"type":"tool","tool":"websearch"}}""");
+
+        Assert.Equal("opencode 正在使用 websearch 查证资料。", text);
+    }
+
+    [Fact]
+    public void AgentConfig_IsGeneratedFromProfile()
+    {
+        var json = AgentWorkspace.BuildConfigJson(Analyst);
+
+        using var doc = JsonDocument.Parse(json);
+        var agent = doc.RootElement.GetProperty("agent").GetProperty("test-analyst");
+        var permission = agent.GetProperty("permission");
+
+        Assert.Equal("https://opencode.ai/config.json", doc.RootElement.GetProperty("$schema").GetString());
+        Assert.Equal("primary", agent.GetProperty("mode").GetString());
+        Assert.Equal("只读分析日志。", agent.GetProperty("system").GetString());
+        Assert.Equal("deny", permission.GetProperty("*").GetString());
+        Assert.Equal("allow", permission.GetProperty("read").GetString());
+        Assert.Equal("allow", permission.GetProperty("webfetch").GetString());
+        Assert.Equal("allow", permission.GetProperty("websearch").GetString());
+    }
+
+    [Fact]
+    public void AgentConfig_ReflectsCustomPermissions()
+    {
+        var profile = Analyst with { Permissions = AiPermissions.ReadOnly };
+
+        using var doc = JsonDocument.Parse(AgentWorkspace.BuildConfigJson(profile));
+        var permission = doc.RootElement.GetProperty("agent").GetProperty("test-analyst").GetProperty("permission");
+
+        Assert.Equal("deny", permission.GetProperty("*").GetString());
+        Assert.Equal("allow", permission.GetProperty("read").GetString());
+        Assert.False(permission.TryGetProperty("webfetch", out _));
+    }
+
+    [Fact]
+    public void Locate_FindsInstalledOpenCodeOrNull()
+    {
+        // 纯本机探测：有则应为已存在的 exe，无则 null（不抛异常即符合契约）
+        var path = AiDiagnosticsClient.Locate();
+        if (path is not null)
+        {
+            Assert.True(File.Exists(path));
+            Assert.Contains("opencode", Path.GetFileName(path), StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            Assert.Null(AiDiagnosticsClient.Locate());
+        }
+    }
+}

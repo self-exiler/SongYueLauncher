@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using ComfyUiRocmLauncher.Core.Ai;
 using ComfyUiRocmLauncher.Core.Services;
 using ComfyUiRocmLauncher.GUI.Helpers;
 
@@ -76,7 +77,7 @@ public sealed partial class LogPage : Page
     /// <summary>AI 智能分析（FR-5.6）：未装 opencode 提醒并退出；否则弹出预览 + 模型下拉 + 发送。</summary>
     private async void AiAnalyze_Click(object sender, RoutedEventArgs e)
     {
-        var exe = OpenCodeClient.Locate();
+        var exe = ComfyUiAiService.LocateOpenCode();
         if (exe is null)
         {
             var notInstalled = new ContentDialog

@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Text;
-using ComfyUiRocmLauncher.Core.Services;
+using AiDiagnostics;
+using AiDiagnostics.Parsing;
+using ComfyUiRocmLauncher.Core.Ai;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -13,8 +15,8 @@ namespace ComfyUiRocmLauncher.GUI.Views;
 /// </summary>
 public sealed partial class AiAnalysisDialog : UserControl
 {
-    private readonly OpenCodeClient _client = new();
-    private readonly ObservableCollection<OpenCodeModel> _models = new();
+    private readonly ComfyUiAiService _client = new();
+    private readonly ObservableCollection<AiModel> _models = new();
     private readonly DispatcherQueue _queue;
     private CancellationTokenSource? _cts;
     private bool _answering;
@@ -50,7 +52,7 @@ public sealed partial class AiAnalysisDialog : UserControl
             return;
         }
 
-        var model = ModelCombo.SelectedItem as OpenCodeModel;
+        var model = ModelCombo.SelectedItem as AiModel;
         if (model is null)
         {
             StatusText.Text = "请先选择一个 opencode 模型。";
@@ -64,9 +66,6 @@ public sealed partial class AiAnalysisDialog : UserControl
             return;
         }
 
-        var prompt = ErrorLogExtractor.BuildPrompt(
-            errorText, App.Services.Settings.ComfyUiDir, App.Services.Settings.PythonExe);
-
         SetAnswering(true);
         SetAnswerText("正在等待 opencode 回应…");
         _lastAnswer = string.Empty;
@@ -76,7 +75,7 @@ public sealed partial class AiAnalysisDialog : UserControl
         _cts = new CancellationTokenSource();
         try
         {
-            await RunAnalysisAsync(prompt, model.QualifiedId, _cts.Token).ConfigureAwait(false);
+            await RunAnalysisAsync(errorText, model.QualifiedId, _cts.Token).ConfigureAwait(false);
         }
         finally
         {
@@ -90,11 +89,17 @@ public sealed partial class AiAnalysisDialog : UserControl
         }
     }
 
-    private async Task RunAnalysisAsync(string prompt, string modelQualifiedId, CancellationToken cancellationToken)
+    private async Task RunAnalysisAsync(string errorText, string modelQualifiedId, CancellationToken cancellationToken)
     {
         try
         {
-            var answer = await _client.AskAsync(prompt, modelQualifiedId, OnOutputLine, cancellationToken: cancellationToken)
+            var answer = await _client.AskAsync(
+                    errorText,
+                    modelQualifiedId,
+                    App.Services.Settings.ComfyUiDir,
+                    App.Services.Settings.PythonExe,
+                    OnOutputLine,
+                    cancellationToken)
                 .ConfigureAwait(false);
             var cancelled = cancellationToken.IsCancellationRequested;
 
@@ -171,7 +176,7 @@ public sealed partial class AiAnalysisDialog : UserControl
 
     private void OnOutputLine(string line)
     {
-        var display = OpenCodeClient.TryFormatRunEvent(line);
+        var display = RunEventParser.TryFormat(line);
         if (string.IsNullOrWhiteSpace(display)) return;
 
         if (IsProgressMessage(display))

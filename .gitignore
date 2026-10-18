@@ -53,6 +53,7 @@ Generated\ Files/
 
 docs/.workbuddy/
 .dumate/
+.qoder/
 # MSI 打包中间产物与输出（installer/build.ps1 生成）
 installer/publish/
 installer/output/

@@ -190,13 +190,10 @@ public sealed class ProcessService
 
     /// <summary>
     /// 一次性命令执行并捕获完整 stdout / stderr（需要超时与分离输出的场景，如 opencode CLI）。
-    /// 与 <see cref="RunCommandAsync"/> 共用 CreateStartInfo，因此同样重定向 stdin，
-    /// 不会让 Python 子进程在 DuplicateHandle 时抛 WinError 6。
-    /// 传入 <paramref name="standardInput"/> 时会写入该文本再关闭 stdin；未传则立即关闭 stdin。
-    /// 传入 <paramref name="environment"/> 时覆盖对应子进程环境变量（opencode 的 OPENCODE_CONFIG/PWD 依赖此项）。
-    /// 返回 <c>ExitCode = -1</c> 表示进程未能正常退出（超时或已取消）。
+    /// 实现已下沉到 <see cref="AiDiagnostics.Runtime.ProcessRunner"/>（stdin 写入、等待、输出冲刷共用
+    /// 同一超时/取消语义），此处保留转发以免改动既有调用点。
     /// </summary>
-    public static async Task<(int ExitCode, string StdOut, string StdErr)> RunCapturedAsync(
+    public static Task<(int ExitCode, string StdOut, string StdErr)> RunCapturedAsync(
         string fileName,
         string arguments,
         string workingDirectory,
@@ -204,107 +201,9 @@ public sealed class ProcessService
         Action<string>? onOutputLine = null,
         CancellationToken cancellationToken = default,
         string? standardInput = null,
-        IDictionary<string, string>? environment = null)
-    {
-        using var process = new Process
-        {
-            StartInfo = CreateStartInfo(fileName, arguments, workingDirectory),
-            EnableRaisingEvents = true,
-        };
-        if (environment is not null)
-        {
-            foreach (var kv in environment) process.StartInfo.Environment[kv.Key] = kv.Value;
-        }
-
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
-        var outDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var errDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        process.OutputDataReceived += (_, e) =>
-        {
-            if (e.Data is null) { outDone.TrySetResult(); return; }
-            stdout.AppendLine(e.Data);
-            onOutputLine?.Invoke(e.Data);
-        };
-        process.ErrorDataReceived += (_, e) =>
-        {
-            if (e.Data is null) { errDone.TrySetResult(); return; }
-            stderr.AppendLine(e.Data);
-            onOutputLine?.Invoke(e.Data);
-        };
-
-        if (!process.Start()) throw new InvalidOperationException($"无法启动进程：{fileName}");
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        using var timeoutCts = new CancellationTokenSource(timeoutMs);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-        var killed = false;
-        using var registration = linked.Token.Register(() =>
-        {
-            killed = true;
-            try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { }
-        });
-
-        try
-        {
-            // 一次性捕获命令不能把 stdin 留成开放管道：opencode run 在非 TTY 下会读到 EOF 才开工。
-            // 写入也必须纳入同一超时/取消窗口：子进程不读 stdin 且输入超过管道缓冲时，未加时限的
-            // WriteAsync 会永久阻塞，导致界面既等不到 5 分钟超时、点「取消分析」也无效。
-            try
-            {
-                if (standardInput is not null)
-                {
-                    await process.StandardInput.WriteAsync(standardInput).WaitAsync(linked.Token).ConfigureAwait(false);
-                }
-                process.StandardInput.Close();
-            }
-            catch (OperationCanceledException)
-            {
-                return InterruptedRunResult(process, stdout, stderr, timeoutMs, cancellationToken.IsCancellationRequested);
-            }
-            catch (IOException)
-            {
-                // 子进程已主动关闭 stdin（或刚退出）：继续等待进程退出并收集其最终输出。
-            }
-
-            await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            return InterruptedRunResult(process, stdout, stderr, timeoutMs, cancellationToken.IsCancellationRequested);
-        }
-        finally
-        {
-            // 不调用无超时的 WaitForExit()：被拉起的孙进程可能继承 stdout/stderr 句柄，
-            // 导致进程结束后管道仍不关闭。输出读取最多再等 3 秒，到点即返回，避免 GUI 假死。
-            try { await Task.WhenAll(outDone.Task, errDone.Task).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false); }
-            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException) { }
-        }
-
-        if (killed) return (SafeExitCode(process), stdout.ToString(), stderr.ToString());
-        return (process.ExitCode, stdout.ToString(), stderr.ToString());
-    }
-
-    private static (int ExitCode, string StdOut, string StdErr) InterruptedRunResult(
-        Process process,
-        StringBuilder stdout,
-        StringBuilder stderr,
-        int timeoutMs,
-        bool cancelled)
-    {
-        var why = cancelled ? "已取消" : "超时";
-        return (SafeExitCode(process), stdout.ToString(), $"{stderr}操作{why}（限时 {timeoutMs / 1000}s）。");
-    }
-
-    private static int SafeExitCode(Process process)
-    {
-        try { return process.HasExited ? process.ExitCode : -1; }
-        catch { return -1; }
-    }
+        IDictionary<string, string>? environment = null) =>
+        AiDiagnostics.Runtime.ProcessRunner.RunCapturedAsync(
+            fileName, arguments, workingDirectory, timeoutMs, onOutputLine, cancellationToken, standardInput, environment);
 
     private static ProcessStartInfo CreateStartInfo(string fileName, string arguments, string workingDirectory) =>
         new()

@@ -22,11 +22,4 @@
     <ProjectReference Include="..\..\src\ComfyUiRocmLauncher.Core\ComfyUiRocmLauncher.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- AI 分析 agent 资源属于 GUI 输出目录；测试直接链接同一文件，确保资源路径约定不漂移。 -->
-    <Content Include="..\..\src\ComfyUiRocmLauncher.GUI\Assets\Agents\comfyui-error-analyst.json"
-             Link="Assets\Agents\comfyui-error-analyst.json"
-             CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AiDiagnostics</RootNamespace>
+    <AssemblyName>AiDiagnostics</AssemblyName>
+    <IsPackable>true</IsPackable>
+    <Description>通过本机 opencode CLI 做日志/文本 AI 诊断的通用库：进程调用、事件解析、错误日志扫描与提示词组装，零 UI 依赖。</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- 单测访问内部解析辅助方法（opencode CLI 输出契约） -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="AiDiagnostics.Test" />
+  </ItemGroup>
+
+</Project>

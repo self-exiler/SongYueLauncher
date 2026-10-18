@@ -40,8 +40,9 @@
 - 解决方案：
   - `src/ComfyUiRocmLauncher.Core` —— 服务层类库（零 UI 依赖，可单测）
   - `src/ComfyUiRocmLauncher.GUI` —— WinUI 3 主程序（页面导航、WinRT 互操作）
-  - `test/ComfyUiRocmLauncher.Core.Test` —— xUnit 测试
-- 依赖方向：`GUI → Core ← Core.Test`
+  - `src/AiDiagnostics` —— AI 诊断通用类库（零 UI 依赖，可独立复用；接口见 [其 README](src/AiDiagnostics/README.md)）
+  - `test/ComfyUiRocmLauncher.Core.Test`、`test/AiDiagnostics.Test` —— xUnit 测试
+- 依赖方向：`GUI → Core → AiDiagnostics`（测试各自只引用被测库）
 - 参数清单、GPU 模板、专用轮子清单、显卡架构映射均以 Core 内嵌 JSON 资源维护，便于随上游变更更新。
 
 ## 运行环境

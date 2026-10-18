@@ -48,22 +48,7 @@ public static class AnsiParser
     }
 
     /// <summary>去掉全部 ANSI 转义序列，用于复制 / 落盘纯文本。</summary>
-    public static string Strip(string line)
-    {
-        var sb = new System.Text.StringBuilder();
-        var i = 0;
-        while (i < line.Length)
-        {
-            if (TryMatchSgr(line, i, out _, out var next))
-            {
-                i = next;
-                continue;
-            }
-            sb.Append(line[i]);
-            i++;
-        }
-        return sb.ToString();
-    }
+    public static string Strip(string line) => AiDiagnostics.Runtime.AnsiStripper.Strip(line);
 
     /// <summary>仅识别 ESC [ 数字/分号 m 的 SGR 序列；其它转义按普通字符保留，防止吞正文。</summary>
     private static bool TryMatchSgr(string line, int start, out string code, out int after)

@@ -18,8 +18,14 @@
            InstallerVersion="500"
            Compressed="yes">
 
-    <MajorUpgrade DowngradeErrorMessage="已安装更新版本的松月启动器，本次安装中止。" />
+    <!-- AllowSameVersionUpgrades：ProductVersion 只有数字段（0.1.0），重打同一版本时
+         ProductCode 会变，默认策略会把它当成「已装别的版本」直接拒装。 -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="已安装更新版本的松月启动器，本次安装中止。" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- ARP 的 InstallLocation 默认不填，卸载与第三方升级工具按它定位安装目录，必须显式给出 -->
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
 
     <!-- 图标：
          Icon/@Id 以 .exe 结尾 —— ARP（“应用和功能”/资源管理器显示的 msi 图标）才会按 32x32 渲染，
