@@ -1,15 +1,18 @@
-using System.Collections.Concurrent;
-
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
 /// 日志服务（SRS FR-5）：内存环形缓冲 5000 行 + 会话落盘 + 磁盘保护（30 份 / 200 MB）。
 /// </summary>
+/// <remarks>
+/// 缓冲用 <see cref="Queue{T}"/> + 单一锁，不用 <c>ConcurrentQueue</c>：ComfyUI 每秒可产出上百行，
+/// 每行读一次 <c>ConcurrentQueue.Count</c>（需遍历并锁住全部段）是纯浪费，而这里本来就有锁可用。
+/// </remarks>
 public sealed class LogService
 {
     public const int DefaultCapacity = 5000;
 
-    private readonly ConcurrentQueue<string> _buffer = new();
+    private readonly Queue<string> _buffer = new();
+    private readonly object _bufferLock = new();
     private readonly object _fileLock = new();
     private StreamWriter? _writer;
 
@@ -26,9 +29,15 @@ public sealed class LogService
     /// <summary>UI 订阅该事件追加渲染（触发线程为输出读取线程，UI 侧需自行切回 UI 线程）。</summary>
     public event Action<string>? LineAppended;
 
-    public IReadOnlyList<string> Snapshot() => _buffer.ToArray();
+    public IReadOnlyList<string> Snapshot()
+    {
+        lock (_bufferLock) { return _buffer.ToArray(); }
+    }
 
-    public int Count => _buffer.Count;
+    public int Count
+    {
+        get { lock (_bufferLock) { return _buffer.Count; } }
+    }
 
     /// <summary>开启一次会话日志：logs\comfyui_yyyy-MM-dd_HH-mm-ss.log。</summary>
     public string StartSession()
@@ -49,13 +58,18 @@ public sealed class LogService
 
     public void Append(string line)
     {
-        _buffer.Enqueue(line);
-        while (_buffer.Count > Capacity && _buffer.TryDequeue(out _)) { }
+        lock (_bufferLock)
+        {
+            _buffer.Enqueue(line);
+            while (_buffer.Count > Capacity) _buffer.Dequeue();
+        }
 
         lock (_fileLock)
         {
             _writer?.WriteLine(line);
         }
+
+        // 事件在锁外触发：订阅方可能回读 Snapshot()，持锁回调会自锁
         LineAppended?.Invoke(line);
     }
 
@@ -71,7 +85,7 @@ public sealed class LogService
 
     public void Clear()
     {
-        while (_buffer.TryDequeue(out _)) { }
+        lock (_bufferLock) { _buffer.Clear(); }
     }
 
     /// <summary>磁盘保护（FR-5.4）：仅保留最近 retainCount 份；总大小超限时从最旧开始删除。</summary>

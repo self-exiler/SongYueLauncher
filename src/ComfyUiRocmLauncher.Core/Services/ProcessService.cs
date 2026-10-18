@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
+using AiDiagnostics.Runtime;
 
 namespace ComfyUiRocmLauncher.Core.Services;
 
@@ -24,7 +24,7 @@ public sealed class ProcessService
 
     public void Start(string fileName, string arguments, string workingDirectory, IDictionary<string, string>? environment)
     {
-        var process = new Process { StartInfo = CreateStartInfo(fileName, arguments, workingDirectory), EnableRaisingEvents = true };
+        var process = new Process { StartInfo = ProcessRunner.CreateStartInfo(fileName, arguments, workingDirectory), EnableRaisingEvents = true };
         if (environment is not null)
         {
             foreach (var kv in environment) process.StartInfo.Environment[kv.Key] = kv.Value;
@@ -143,7 +143,12 @@ public sealed class ProcessService
         await Task.WhenAny(Task.WhenAll(exited), Task.Delay(3000)).ConfigureAwait(false);
     }
 
-    /// <summary>一次性命令执行（环境管理任务用），取消即终止当前子进程。</summary>
+    /// <summary>
+    /// 一次性命令执行（环境管理任务用）：stdout/stderr 合并流式回调，取消即终止整个进程树，返回退出码。
+    /// 进程创建、超时/取消、输出冲刷统一委托给 <see cref="ProcessRunner.RunCapturedAsync"/>，Core 不再自持一份。
+    /// **不设墙钟超时**（torch 安装可能跑十几分钟），只受取消令牌约束——这里也绝不能再出现无超时的
+    /// <c>WaitForExit()</c>：孙进程继承管道时它会永久挂起，任务槽不释放、界面卡在进行中。
+    /// </summary>
     public static async Task<int> RunCommandAsync(
         string fileName,
         string arguments,
@@ -151,86 +156,33 @@ public sealed class ProcessService
         Action<string>? onOutput = null,
         CancellationToken cancellationToken = default)
     {
-        using var process = new Process
-        {
-            StartInfo = CreateStartInfo(fileName, arguments, workingDirectory),
-            EnableRaisingEvents = true,
-        };
-        var tcs = new TaskCompletionSource<int>();
+        var (exitCode, _, _) = await ProcessRunner.RunCapturedAsync(
+            fileName, arguments, workingDirectory, Timeout.Infinite, onOutput, cancellationToken)
+            .ConfigureAwait(false);
 
-        process.OutputDataReceived += (_, e) => { if (e.Data is not null) onOutput?.Invoke(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) onOutput?.Invoke(e.Data); };
-        process.Exited += (_, _) => tcs.TrySetResult(process.ExitCode);
-
-        if (!process.Start()) throw new InvalidOperationException($"无法启动进程：{fileName}");
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        var registration = cancellationToken.Register(() =>
-        {
-            // Kill 可能因进程恰已退出而抛 InvalidOperationException，取消信号必须照常置位
-            try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { }
-            tcs.TrySetCanceled();
-        });
-
-        try
-        {
-            var code = await tcs.Task.ConfigureAwait(false);
-            // 冲刷异步输出读取，确保尾部行不丢
-            try { process.WaitForExit(); }
-            catch (InvalidOperationException) { }
-            return code;
-        }
-        finally
-        {
-            registration.Dispose();
-        }
+        // RunCapturedAsync 用 -1 表达「被打断」，但环境任务的上层靠异常区分「取消」与「失败」
+        cancellationToken.ThrowIfCancellationRequested();
+        return exitCode;
     }
-
-    /// <summary>
-    /// 一次性命令执行并捕获完整 stdout / stderr（需要超时与分离输出的场景，如 opencode CLI）。
-    /// 实现已下沉到 <see cref="AiDiagnostics.Runtime.ProcessRunner"/>（stdin 写入、等待、输出冲刷共用
-    /// 同一超时/取消语义），此处保留转发以免改动既有调用点。
-    /// </summary>
-    public static Task<(int ExitCode, string StdOut, string StdErr)> RunCapturedAsync(
-        string fileName,
-        string arguments,
-        string workingDirectory,
-        int timeoutMs,
-        Action<string>? onOutputLine = null,
-        CancellationToken cancellationToken = default,
-        string? standardInput = null,
-        IDictionary<string, string>? environment = null) =>
-        AiDiagnostics.Runtime.ProcessRunner.RunCapturedAsync(
-            fileName, arguments, workingDirectory, timeoutMs, onOutputLine, cancellationToken, standardInput, environment);
-
-    private static ProcessStartInfo CreateStartInfo(string fileName, string arguments, string workingDirectory) =>
-        new()
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            // GUI 宿主自身无控制台，默认继承的 stdin 是无效句柄；Python 的 subprocess
-            // 在 DuplicateHandle 时会抛 WinError 6。显式重定向以提供有效的匿名管道。
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = System.Text.Encoding.UTF8,
-            StandardErrorEncoding = System.Text.Encoding.UTF8,
-        };
 
     private static void SendCtrlBreak(uint processId)
     {
-        // 附加控制台可能失败（无权限 / 进程已无控制台）：失败不影响后续强杀兜底。
-        if (SetConsoleCtrlHandler(IntPtr.Zero, true) && AttachConsole(processId))
+        // 第二个参数必须是「由 CREATE_NEW_PROCESS_GROUP 创建的进程组 id」。Process.Start 不提供该 flag，
+        // 所以 pid 不是组 id：GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid) 只会返回 FALSE 且不抛异常，
+        // 事件从未送达，每次停止都要等满 5 秒强杀。改为附加到子进程的控制台后发给组 0（该控制台全体），
+        // 自身由前面的 SetConsoleCtrlHandler(NULL, TRUE) 忽略。
+        if (!SetConsoleCtrlHandler(IntPtr.Zero, true)) return;
+        try
         {
-            GenerateConsoleCtrlEvent(CtrlBreakEvent, processId);
+            // 附加控制台可能失败（无权限 / 进程已无控制台）：失败不影响后续强杀兜底。
+            if (!AttachConsole(processId)) return;
+            GenerateConsoleCtrlEvent(CtrlBreakEvent, 0);
             FreeConsole();
         }
-        SetConsoleCtrlHandler(IntPtr.Zero, false);
+        finally
+        {
+            SetConsoleCtrlHandler(IntPtr.Zero, false);
+        }
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]
