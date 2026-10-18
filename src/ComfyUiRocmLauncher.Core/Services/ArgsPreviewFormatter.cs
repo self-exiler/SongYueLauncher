@@ -22,8 +22,13 @@ public static class ArgsPreviewFormatter
     /// </param>
     public readonly record struct PreviewToken(string Text, bool IsExtra, bool IsFlag);
 
-    /// <summary>解释器路径（已加引号），预览首段。</summary>
-    public static string QuoteInterpreter(string pythonExe) => CommandLine.Quote(pythonExe);
+    /// <summary>
+    /// 解释器路径（已加引号），预览首段。
+    /// 未设置时给占位提示而不是 <c>""</c>——空串按 Windows 规则也会被引起来，
+    /// 屏幕上就变成一对莫名其妙的引号（2026-10-18 报障）。
+    /// </summary>
+    public static string QuoteInterpreter(string? pythonExe) =>
+        string.IsNullOrWhiteSpace(pythonExe) ? "<未设置 python.exe>" : CommandLine.Quote(pythonExe);
 
     /// <summary>
     /// 合成整条预览：返回解释器之后的所有 token，末尾若干项标记为「额外参数」。

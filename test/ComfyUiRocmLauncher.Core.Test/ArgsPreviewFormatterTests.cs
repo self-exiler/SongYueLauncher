@@ -16,8 +16,15 @@ public class ArgsPreviewFormatterTests
     {
         Assert.Equal("\"D:\\AI\\comfyui-rocm\\.venv\\Scripts\\python.exe\"",
             ArgsPreviewFormatter.QuoteInterpreter(@"D:\AI\comfyui-rocm\.venv\Scripts\python.exe"));
-        Assert.Equal("\"\"", ArgsPreviewFormatter.QuoteInterpreter(string.Empty));
     }
+
+    /// <summary>空/未设置时不能渲染成一对引号，要给可读占位。</summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void QuoteInterpreter_UnsetShowsPlaceholder(string? pythonExe) =>
+        Assert.Equal("<未设置 python.exe>", ArgsPreviewFormatter.QuoteInterpreter(pythonExe));
 
     [Fact]
     public void Format_EmitsQuotedTokensForEnabledArgs()
