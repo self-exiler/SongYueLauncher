@@ -17,6 +17,10 @@ namespace AiDiagnostics.Runtime;
 /// 仍不关闭。**<c>WaitForExit()</c> 与 <c>WaitForExitAsync()</c> 都会因此卡住**（实测 <c>cmd /c start /b …</c>
 /// 场景两者都等满 15 秒），所以进程退出只认 <see cref="Process.Exited"/> 事件；输出读取最多再等 3 秒即返回。</item>
 /// </list>
+/// <para>
+/// 额外契约：<c>onOutputLine</c> 是**串行**调用的。stdout / stderr 各有一条读取线程，
+/// 若并发进回调，宿主侧 `list.Add` 这类非线程安全容器会静默丢行。
+/// </para>
 /// </remarks>
 public static class ProcessRunner
 {
@@ -51,18 +55,27 @@ public static class ProcessRunner
         var errDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        // stdout / stderr 各由一条读取线程抛出事件，两路会并发进回调。回调体是宿主代码
+        // （最常见的就是 list.Add），必须串行化，否则宿主拿到的是会丢行的并发集合。
+        var emitGate = new object();
+        void Emit(string line)
+        {
+            if (onOutputLine is null) return;
+            lock (emitGate) onOutputLine(line);
+        }
+
         process.Exited += (_, _) => exited.TrySetResult();
         process.OutputDataReceived += (_, e) =>
         {
             if (e.Data is null) { outDone.TrySetResult(); return; }
             stdout.AppendLine(e.Data);
-            onOutputLine?.Invoke(e.Data);
+            Emit(e.Data);
         };
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is null) { errDone.TrySetResult(); return; }
             stderr.AppendLine(e.Data);
-            onOutputLine?.Invoke(e.Data);
+            Emit(e.Data);
         };
 
         if (!process.Start()) throw new InvalidOperationException($"无法启动进程：{fileName}");

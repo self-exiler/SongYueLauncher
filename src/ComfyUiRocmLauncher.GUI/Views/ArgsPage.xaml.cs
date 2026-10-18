@@ -377,24 +377,24 @@ public sealed partial class ArgsPage : Page
     {
         UpdateGroupCounts();
 
-        // python.exe 与 --参数 用强调色，额外参数用警示色
+        // python.exe 与 --参数 用强调色，额外参数用警示色；其余（取值）显式给正文色——
+        // 传 null 让 Run 自己继承在本机实测会渲染成与背景同色（2026-10-18 报障）。
         var accent = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
         var warn = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCautionBrush"];
+        var normal = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
 
         PreviewText.Inlines.Clear();
         PreviewText.Inlines.Add(new Run { Text = ArgsPreviewFormatter.QuoteInterpreter(Settings.PythonExe), Foreground = accent });
-        PreviewText.Inlines.Add(new Run { Text = " main.py" });
+        PreviewText.Inlines.Add(new Run { Text = " main.py", Foreground = normal });
 
         // 与真实启动同源：同一次 Build（含额外参数）产出的 token 列表，预览不会再与 spawn 漂移；
-        // 仅额外参数段用警示色区分
+        // 是否参数名由 Core 在加引号前判定（IsFlag），界面不再对已加引号的文本做前缀匹配
         foreach (var token in ArgsPreviewFormatter.Format(Settings.Args, _catalog, Settings.ExtraArgs))
         {
             PreviewText.Inlines.Add(new Run
             {
                 Text = " " + token.Text,
-                Foreground = token.IsExtra ? warn
-                    : token.Text.StartsWith("--", StringComparison.Ordinal) ? accent
-                    : null,
+                Foreground = token.IsExtra ? warn : token.IsFlag ? accent : normal,
             });
         }
     }

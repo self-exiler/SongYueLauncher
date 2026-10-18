@@ -125,4 +125,26 @@ public class ProcessRunnerTests
         Assert.Equal(System.Text.Encoding.UTF8.WebName, si.StandardOutputEncoding?.WebName);
         Assert.Equal(System.Text.Encoding.UTF8.WebName, si.StandardErrorEncoding?.WebName);
     }
+
+    /// <summary>
+    /// 回归：stdout / stderr 两条读取线程会并发进回调，若不加锁，宿主传进来的普通
+    /// <c>List.Add</c> 会因并发写而丢行（Core 的 ProcessServiceTests 曾因此偶发失败）。
+    /// 两路各打 150 行，断言一行不少。
+    /// </summary>
+    [Fact]
+    public async Task RunCapturedAsync_SerializesCallbackAcrossBothStreams()
+    {
+        var lines = new List<string>(); // 故意用非线程安全容器：契约要求回调串行
+
+        var (code, _, _) = await ProcessRunner.RunCapturedAsync(
+            "cmd.exe",
+            "/c (for /L %i in (1,1,150) do @echo out%i) & (for /L %i in (1,1,150) do @echo err%i 1>&2)",
+            Environment.CurrentDirectory,
+            timeoutMs: 60_000,
+            onOutputLine: lines.Add);
+
+        Assert.Equal(0, code);
+        Assert.Equal(150, lines.Count(l => l.StartsWith("out", StringComparison.Ordinal)));
+        Assert.Equal(150, lines.Count(l => l.StartsWith("err", StringComparison.Ordinal)));
+    }
 }

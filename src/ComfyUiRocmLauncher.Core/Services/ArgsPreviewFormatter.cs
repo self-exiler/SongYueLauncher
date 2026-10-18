@@ -10,8 +10,17 @@ namespace ComfyUiRocmLauncher.Core.Services;
 /// </summary>
 public static class ArgsPreviewFormatter
 {
-    /// <summary>一个可显示的命令行片段（已按 Windows 参数规则加好引号）。</summary>
-    public readonly record struct PreviewToken(string Text, bool IsExtra);
+    /// <summary>
+    /// 一个可显示的命令行片段（已按 Windows 参数规则加好引号）。
+    /// </summary>
+    /// <param name="Text">已加引号的显示文本。</param>
+    /// <param name="IsExtra">是否属于末尾的「额外参数」段。</param>
+    /// <param name="IsFlag">
+    /// 是否是参数名（原始 token 以 <c>--</c> 开头）。
+    /// **必须在这里判定**：<paramref name="Text"/> 已经带引号（<c>"--help"</c>），
+    /// 界面若拿它去 <c>StartsWith("--")</c> 会全部判失败，参数段就丢了强调色。
+    /// </param>
+    public readonly record struct PreviewToken(string Text, bool IsExtra, bool IsFlag);
 
     /// <summary>解释器路径（已加引号），预览首段。</summary>
     public static string QuoteInterpreter(string pythonExe) => CommandLine.Quote(pythonExe);
@@ -28,7 +37,10 @@ public static class ArgsPreviewFormatter
         var result = new List<PreviewToken>(tokens.Count);
         for (var i = 0; i < tokens.Count; i++)
         {
-            result.Add(new PreviewToken(CommandLine.Quote(tokens[i]), i >= extraFrom));
+            result.Add(new PreviewToken(
+                CommandLine.Quote(tokens[i]),
+                i >= extraFrom,
+                tokens[i].StartsWith("--", StringComparison.Ordinal)));
         }
         return result;
     }
