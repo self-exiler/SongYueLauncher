@@ -74,17 +74,16 @@ public sealed partial class AiAnalysisDialog : UserControl
         _cts = new CancellationTokenSource();
         try
         {
-            await RunAnalysisAsync(errorText, model.QualifiedId, _cts.Token).ConfigureAwait(false);
+            // 故意不 ConfigureAwait(false)：WinUI 3 在 UI 线程装了 DispatcherQueueSynchronizationContext，
+            // 恢复点回到 UI 线程，后面就能直接改控件。后台线程的回调（OnOutputLine）仍自己 Enqueue。
+            await RunAnalysisAsync(errorText, model.QualifiedId, _cts.Token);
         }
         finally
         {
             var cts = _cts;
             _cts = null;
-            _queue.TryEnqueue(() =>
-            {
-                SetAnswering(false);
-                cts?.Dispose();
-            });
+            SetAnswering(false);
+            cts?.Dispose();
         }
     }
 
@@ -93,58 +92,44 @@ public sealed partial class AiAnalysisDialog : UserControl
         try
         {
             var answer = await _client.AskAsync(
-                    errorText,
-                    modelQualifiedId,
-                    App.Services.Settings.ComfyUiDir,
-                    App.Services.Settings.PythonExe,
-                    OnOutputLine,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            var cancelled = cancellationToken.IsCancellationRequested;
+                errorText,
+                modelQualifiedId,
+                App.Services.Settings.ComfyUiDir,
+                App.Services.Settings.PythonExe,
+                OnOutputLine,
+                cancellationToken);
 
-            _queue.TryEnqueue(() =>
-            {
-                if (cancelled)
-                {
-                    SetAnswerText("已取消本次分析。");
-                    StatusText.Text = "已取消。";
-                }
-                else if (answer.Success)
-                {
-                    SetAnswerText(answer.Text);
-                    _lastAnswer = answer.Text;
-                    StatusText.Text = "分析完成，可点击「复制回答」保存。";
-                }
-                else
-                {
-                    SetAnswerText(answer.Text);
-                    StatusText.Text = "opencode 返回失败，请检查登录状态（opencode auth login）或更换模型后重试。";
-                }
-            });
-        }
-        catch (OperationCanceledException)
-        {
-            _queue.TryEnqueue(() =>
+            if (cancellationToken.IsCancellationRequested)
             {
                 SetAnswerText("已取消本次分析。");
                 StatusText.Text = "已取消。";
-            });
+            }
+            else if (answer.Success)
+            {
+                SetAnswerText(answer.Text);
+                _lastAnswer = answer.Text;
+                StatusText.Text = "分析完成，可点击「复制回答」保存。";
+            }
+            else
+            {
+                SetAnswerText(answer.Text);
+                StatusText.Text = "opencode 返回失败，请检查登录状态（opencode auth login）或更换模型后重试。";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            SetAnswerText("已取消本次分析。");
+            StatusText.Text = "已取消。";
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException)
         {
-            _queue.TryEnqueue(() =>
-            {
-                SetAnswerText(ex.Message);
-                StatusText.Text = "调用 opencode 出错。";
-            });
+            SetAnswerText(ex.Message);
+            StatusText.Text = "调用 opencode 出错。";
         }
         catch (Exception ex)
         {
-            _queue.TryEnqueue(() =>
-            {
-                SetAnswerText(ex.Message);
-                StatusText.Text = "调用 opencode 发生未预期错误。";
-            });
+            SetAnswerText(ex.Message);
+            StatusText.Text = "调用 opencode 发生未预期错误。";
         }
     }
 

@@ -109,13 +109,7 @@ public sealed partial class MainWindow : Window
         App.Services.FlushSave();
         if (_closeAfterKill) return;
 
-        var pythonExe = App.Services.Settings.PythonExe;
-        var venvRoot = string.IsNullOrWhiteSpace(pythonExe)
-            ? string.Empty
-            : LaunchEnvBuilder.VenvDirFrom(pythonExe);
-        var leftovers = string.IsNullOrEmpty(venvRoot)
-            ? []
-            : ProcessService.FindPythonProcesses(venvRoot);
+        var leftovers = FindLeftoverPython();
 
         if (leftovers.Length == 0 && App.Services.State == LaunchState.Idle) return;
 
@@ -124,6 +118,19 @@ public sealed partial class MainWindow : Window
         if (xamlRoot is null) return;
 
         _ = ShowCloseWarningAsync(xamlRoot, leftovers);
+    }
+
+    /// <summary>
+    /// 扫出由本环境 venv 拉起的残留 Python 进程。
+    /// 关闭流程要在「弹窗之前」和「结束后兜底」各扫一次，因此抽成一处，避免两处各自推导 venv 根目录。
+    /// </summary>
+    private static System.Diagnostics.Process[] FindLeftoverPython()
+    {
+        var pythonExe = App.Services.Settings.PythonExe;
+        if (string.IsNullOrWhiteSpace(pythonExe)) return [];
+
+        var venvRoot = LaunchEnvBuilder.VenvDirFrom(pythonExe);
+        return string.IsNullOrEmpty(venvRoot) ? [] : ProcessService.FindPythonProcesses(venvRoot);
     }
 
     private async Task ShowCloseWarningAsync(Microsoft.UI.Xaml.XamlRoot xamlRoot, System.Diagnostics.Process[] leftovers)
@@ -151,11 +158,8 @@ public sealed partial class MainWindow : Window
         else
             await ProcessService.KillProcessesAsync(leftovers);
 
-        // StopAsync 依赖状态机，可能因状态与进程实际状态不一致而空转：兜底再扫一次
-        var pythonExe = App.Services.Settings.PythonExe;
-        var venvRoot = string.IsNullOrWhiteSpace(pythonExe) ? string.Empty : LaunchEnvBuilder.VenvDirFrom(pythonExe);
-        if (!string.IsNullOrEmpty(venvRoot))
-            await ProcessService.KillProcessesAsync(ProcessService.FindPythonProcesses(venvRoot));
+        // StopAsync 依赖状态机，可能因状态与进程实际状态不一致而空转：兜底再扫一次并强杀
+        await ProcessService.KillProcessesAsync(FindLeftoverPython());
 
         App.Services.Log.Append("[启动器] 关闭前结束残留 Python 进程");
         Close();

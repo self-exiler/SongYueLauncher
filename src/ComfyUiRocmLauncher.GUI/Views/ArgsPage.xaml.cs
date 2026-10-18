@@ -31,8 +31,12 @@ public sealed partial class ArgsPage : Page
         public readonly IReadOnlyList<string> ArgNames = definition.Args.Select(a => a.Name).ToList();
     }
 
-    /// <summary>一个参数行的 UI 引用（卡片 / 开关 / 取值控件）。</summary>
-    private sealed record RowUi(Border Card, ToggleSwitch Toggle, FrameworkElement? Control);
+    /// <summary>
+    /// 一个参数行的 UI 引用（卡片 / 开关 / 取值控件）。
+    /// <c>Refresh</c> 是该行「把 Settings 写回控件」的唯一途径：构建控件时一并生成，
+    /// 因此不必再靠 <c>Children[0] is ComboBox</c> 反推控件类型。
+    /// </summary>
+    private sealed record RowUi(Border Card, ToggleSwitch Toggle, FrameworkElement? Control, Action Refresh);
 
     public ArgsPage()
     {
@@ -52,7 +56,11 @@ public sealed partial class ArgsPage : Page
         GroupsHost.Children.Clear();
         _rows.Clear();
         _groups.Clear();
-        ExtraArgsBox.Text = Settings.ExtraArgs;
+
+        // 初始化控件值不是用户操作：包一层 _syncing，避免 TextChanged 触发一次多余的存盘
+        _syncing = true;
+        try { ExtraArgsBox.Text = Settings.ExtraArgs; }
+        finally { _syncing = false; }
 
         foreach (var group in _catalog.Groups)
         {
@@ -164,9 +172,8 @@ public sealed partial class ArgsPage : Page
             OffContent = string.Empty,
         };
         toggle.IsOn = Settings.Args.IsEnabled(arg.Name);
-        toggle.Toggled += (_, _) =>
+        toggle.Toggled += (_, _) => Commit(() =>
         {
-            if (_syncing) return;
             Settings.Args.Enable(arg.Name, toggle.IsOn);
             if (toggle.IsOn)
             {
@@ -177,9 +184,7 @@ public sealed partial class ArgsPage : Page
                 }
             }
             SyncControlState(arg.Name);
-            App.Services.Save();
-            UpdatePreview();
-        };
+        });
 
         var nameText = new TextBlock { FontFamily = ThemeHelper.Mono };
         nameText.Inlines.Add(new Run
@@ -199,7 +204,7 @@ public sealed partial class ArgsPage : Page
         textColumn.Children.Add(nameText);
         textColumn.Children.Add(descText);
 
-        var control = BuildControl(arg);
+        var (control, refresh) = BuildControl(arg);
 
         // 设置应用行布局：左侧「参数名 + 说明」，右侧「取值控件 + 启用开关」
         // 列宽随窗体比例伸缩：文本列 2*（有下限），控件列 1*（控件本身设上下限），开关列 Auto
@@ -233,9 +238,21 @@ public sealed partial class ArgsPage : Page
             Child = grid,
         };
 
-        _rows[arg.Name] = new RowUi(card, toggle, control);
+        _rows[arg.Name] = new RowUi(card, toggle, control, refresh);
         SyncControlState(arg.Name);
         return card;
+    }
+
+    /// <summary>
+    /// 统一的「用户改动 → 落盘 → 刷新界面」路径：六处事件处理器只写各自的 apply 逻辑，
+    /// 抑制回写 / 存盘 / 预览刷新都在这里做，避免各写一遍时漏掉其中一步。
+    /// </summary>
+    private void Commit(Action apply)
+    {
+        if (_syncing) return;
+        apply();
+        App.Services.Save();
+        UpdatePreview();
     }
 
     /// <summary>未启用行的取值控件灰显并禁止交互。</summary>
@@ -247,12 +264,16 @@ public sealed partial class ArgsPage : Page
         row.Control.IsHitTestVisible = on;
     }
 
-    private FrameworkElement? BuildControl(CliArgDefinition arg)
+    /// <summary>
+    /// 按参数类型构建取值控件，并**一并返回该行的 Refresh 闭包**（把 Settings 写回控件）。
+    /// 两个闭包在构建时就知道自己操作的是哪个控件，外部同步时无需再判断控件类型。
+    /// </summary>
+    private (FrameworkElement? Control, Action Refresh) BuildControl(CliArgDefinition arg)
     {
         switch (arg.Type)
         {
             case ArgType.Flag:
-                return null;
+                return (null, static () => { });
 
             case ArgType.Enum:
             case ArgType.RepeatableVerbose:
@@ -262,36 +283,33 @@ public sealed partial class ArgsPage : Page
                 {
                     combo.Items.Add(new ComboBoxItem { Content = choice });
                 }
-                combo.SelectedItem = combo.Items
+                void RefreshCombo() => combo.SelectedItem = combo.Items
                     .OfType<ComboBoxItem>()
                     .FirstOrDefault(i => (string)i.Content == Settings.Args.Value(arg.Name));
-                combo.SelectionChanged += (_, _) =>
+                RefreshCombo();
+                combo.SelectionChanged += (_, _) => Commit(() =>
                 {
-                    if (_syncing) return;
                     if (combo.SelectedItem is ComboBoxItem item)
-                    {
                         Settings.Args.SetValue(arg.Name, (string)item.Content);
-                        App.Services.Save();
-                        UpdatePreview();
-                    }
-                };
+                });
 
-                if (arg.Type == ArgType.Enum) return combo;
+                if (arg.Type == ArgType.Enum) return (combo, RefreshCombo);
 
                 var fileBox = new TextBox { PlaceholderText = "可选：日志文件路径", Margin = new Thickness(0, 4, 0, 0) };
                 fileBox.Text = Settings.Args.Value(arg.Name + ":file");
                 fileBox.TextChanged += (_, _) =>
-                {
-                    if (_syncing) return;
-                    Settings.Args.SetValue(arg.Name + ":file", fileBox.Text.Trim());
-                    App.Services.Save();
-                    UpdatePreview();
-                };
+                    Commit(() => Settings.Args.SetValue(arg.Name + ":file", fileBox.Text.Trim()));
 
                 var stack = new StackPanel();
                 stack.Children.Add(combo);
                 stack.Children.Add(fileBox);
-                return stack;
+
+                void RefreshVerbose()
+                {
+                    RefreshCombo();
+                    fileBox.Text = Settings.Args.Value(arg.Name + ":file");
+                }
+                return (stack, RefreshVerbose);
             }
 
             case ArgType.MultiEnum:
@@ -305,7 +323,13 @@ public sealed partial class ArgsPage : Page
                     check.Unchecked += (_, _) => UpdateMulti(arg, panel);
                     panel.Children.Add(check);
                 }
-                return panel;
+                void RefreshChecks()
+                {
+                    var now = Settings.Args.MultiOf(arg.Name);
+                    foreach (var child in panel.Children.OfType<CheckBox>())
+                        child.IsChecked = now.Contains((string)child.Content);
+                }
+                return (panel, RefreshChecks);
             }
 
             case ArgType.RepeatableStringList:
@@ -319,17 +343,11 @@ public sealed partial class ArgsPage : Page
                     FontFamily = ThemeHelper.Mono,
                 };
                 box.Text = string.Join(Environment.NewLine, Settings.Args.LinesOf(arg.Name));
-                box.TextChanged += (_, _) =>
-                {
-                    if (_syncing) return;
-                    Settings.Args.SetLines(arg.Name, box.Text
-                        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                        .Select(l => l.Trim())
-                        .Where(l => l.Length > 0));
-                    App.Services.Save();
-                    UpdatePreview();
-                };
-                return box;
+                box.TextChanged += (_, _) => Commit(() => Settings.Args.SetLines(arg.Name, box.Text
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(l => l.Trim())
+                    .Where(l => l.Length > 0)));
+                return (box, () => box.Text = string.Join(Environment.NewLine, Settings.Args.LinesOf(arg.Name)));
             }
 
             default:
@@ -343,27 +361,17 @@ public sealed partial class ArgsPage : Page
                 };
                 box.Text = Settings.Args.Value(arg.Name);
                 box.TextChanged += (_, _) =>
-                {
-                    if (_syncing) return;
-                    Settings.Args.SetValue(arg.Name, box.Text.Trim());
-                    App.Services.Save();
-                    UpdatePreview();
-                };
-                return box;
+                    Commit(() => Settings.Args.SetValue(arg.Name, box.Text.Trim()));
+                return (box, () => box.Text = Settings.Args.Value(arg.Name));
             }
         }
     }
 
-    private void UpdateMulti(CliArgDefinition arg, StackPanel panel)
-    {
-        if (_syncing) return;
-        Settings.Args.SetMulti(arg.Name, panel.Children
+    private void UpdateMulti(CliArgDefinition arg, StackPanel panel) =>
+        Commit(() => Settings.Args.SetMulti(arg.Name, panel.Children
             .OfType<CheckBox>()
             .Where(c => c.IsChecked == true)
-            .Select(c => (string)c.Content));
-        App.Services.Save();
-        UpdatePreview();
-    }
+            .Select(c => (string)c.Content)));
 
     private void UpdatePreview()
     {
@@ -417,17 +425,17 @@ public sealed partial class ArgsPage : Page
         }
     }
 
-    private void ExtraArgsBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        Settings.ExtraArgs = ExtraArgsBox.Text;
-        App.Services.Save();
-        UpdatePreview();
-    }
+    private void ExtraArgsBox_TextChanged(object sender, TextChangedEventArgs e) =>
+        Commit(() => Settings.ExtraArgs = ExtraArgsBox.Text);
 
     /// <summary>
     /// 配置被外部整体变更（恢复默认 / 模板应用）后，就地同步控件状态；
     /// 全程 _syncing 抑制写回，不重建控件树。
     /// </summary>
+    /// <remarks>
+    /// 所有控件的赋值都必须在这层 <c>_syncing</c> 里完成——否则 TextChanged / SelectionChanged
+    /// 会把「读出来的值」当成用户输入再存一次盘，进页面就多写盘。
+    /// </remarks>
     private void SyncControlsFromSettings()
     {
         _syncing = true;
@@ -439,40 +447,13 @@ public sealed partial class ArgsPage : Page
             foreach (var name in Settings.Args.Enabled)
                 if (_rows.TryGetValue(name, out var row) && !row.Toggle.IsOn)
                     row.Toggle.IsOn = true;
+
+            // 未展开的组无需处理：展开时按其时的 Settings 创建
+            foreach (var row in _rows.Values) row.Refresh();
+            ExtraArgsBox.Text = Settings.ExtraArgs;
         }
         finally { _syncing = false; }
 
-        foreach (var (name, row) in _rows)
-            SyncControlValue(name, row.Control);
         UpdatePreview();
-    }
-
-    /// <summary>把 Settings 中的取值写回已展开的控件（未展开组无需处理，展开时会按 Settings 创建）。</summary>
-    private void SyncControlValue(string name, FrameworkElement? control)
-    {
-        switch (control)
-        {
-            case StackPanel { Children.Count: > 0 } stack when stack.Children[0] is ComboBox cf:
-                cf.SelectedItem = cf.Items.OfType<ComboBoxItem>()
-                    .FirstOrDefault(i => (string)i.Content == Settings.Args.Value(name));
-                if (stack.Children.Count > 1 && stack.Children[1] is TextBox ff)
-                    ff.Text = Settings.Args.Value(name + ":file");
-                break;
-            case StackPanel checks when checks.Children.OfType<CheckBox>().Any():
-                var selected = Settings.Args.MultiOf(name);
-                foreach (var child in checks.Children.OfType<CheckBox>())
-                    child.IsChecked = selected.Contains((string)child.Content);
-                break;
-            case ComboBox c:
-                c.SelectedItem = c.Items.OfType<ComboBoxItem>()
-                    .FirstOrDefault(i => (string)i.Content == Settings.Args.Value(name));
-                break;
-            case TextBox t when !t.AcceptsReturn:
-                t.Text = Settings.Args.Value(name);
-                break;
-            case TextBox t:
-                t.Text = string.Join(Environment.NewLine, Settings.Args.LinesOf(name));
-                break;
-        }
     }
 }
