@@ -271,8 +271,9 @@ public sealed partial class EnvUpdatePage : Page
     private async void Rollback_Click(object sender, RoutedEventArgs e)
     {
         var snapshot = Path.Combine(Settings.ComfyUiDir, "_pre_update_freeze.txt");
+        var arch = ToolchainService.DetectArch();
         await RunOpAsync("回滚", async () =>
-            await WheelService.RollbackAsync(App.Services.Tasks, Settings, snapshot, Append));
+            await WheelService.RollbackAsync(App.Services.Tasks, Settings, snapshot, arch, Append));
     }
 
     private async void InstallWheels_Click(object sender, RoutedEventArgs e)

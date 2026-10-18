@@ -15,6 +15,14 @@ public static class WheelService
     public static string LegacyStagingIndexUrl(string arch) =>
         $"https://rocm.nightlies.amd.com/v2-staging/{arch}-dcgpu/";
 
+    /// <summary>
+    /// torch 系索引（FR-8.5）：gfx942 / gfx950 走 v2-staging，其余走 nightly。
+    /// 安装与回滚必须共用这一处判定——回滚若固定用 nightly，gfx942/gfx950 的快照版本
+    /// 根本不在该索引上，必然失败并给出误导性的"已下架"提示。
+    /// </summary>
+    public static string TorchIndexUrl(string arch) =>
+        arch is "gfx942" or "gfx950" ? LegacyStagingIndexUrl(arch) : RocmNightlyIndexUrl;
+
     private static readonly string[] TorchFixed = { "torch", "torchvision", "torchaudio" };
     private static readonly string[] RocmFixed = { "rocm", "rocm-sdk-devel", "rocm-sdk-core", "rocm-sdk-libraries" };
     private static readonly string[] TorchFreezePrefixes = { "rocm", "amd-torch", "amd-torchvision" };
@@ -43,12 +51,30 @@ public static class WheelService
     public static string BuildTorchInstallArgs(string arch, string pythonArg) => arch switch
     {
         "gfx942" or "gfx950" =>
-            $"pip install \"rocm[devel,libraries]\" torch torchvision torchaudio --pre --index-url {LegacyStagingIndexUrl(arch)} {pythonArg}",
+            $"pip install \"rocm[devel,libraries]\" torch torchvision torchaudio --pre --index-url {TorchIndexUrl(arch)} {pythonArg}",
         "gfx1250" or "gfx115x" =>
             throw new NotSupportedException($"arch {arch} 暂无可用 PyTorch 构建"),
         _ =>
-            $"pip install \"torch[device-{arch}]\" \"torchvision[device-{arch}]\" torchaudio rocm-sdk-devel --pre --index-url {RocmNightlyIndexUrl} {pythonArg}",
+            $"pip install \"torch[device-{arch}]\" \"torchvision[device-{arch}]\" torchaudio rocm-sdk-devel --pre --index-url {TorchIndexUrl(arch)} {pythonArg}",
     };
+
+    /// <summary>
+    /// 把安装命令改成解析校验命令（在 <c>pip install</c> 后插入 <c>--dry-run</c>）。
+    /// 这是「下载验证门」的替代：uv 只解析依赖树并校验索引可达 / 目标 arch 存在对应版本，不下载不落盘。
+    /// **不可退回 <c>uv pip download</c>——uv 至今没有该子命令（0.11.19 实测报 unrecognized subcommand、退出码 2），
+    /// 换回去会让每次 torch 更新在 [2/6] 必然失败。**
+    /// </summary>
+    public static string ToDryRunArgs(string installArgs) =>
+        installArgs.StartsWith("pip install ", StringComparison.Ordinal)
+            ? "pip install --dry-run " + installArgs["pip install ".Length..]
+            : installArgs;
+
+    /// <summary>
+    /// 按 arch 对应的索引组装回滚命令。与 <see cref="BuildTorchInstallArgs"/> 共用 <see cref="TorchIndexUrl"/>，
+    /// 保证「装哪个索引、就从哪个索引回滚」。arch 未知时退回 nightly。
+    /// </summary>
+    public static string BuildRollbackArgs(IEnumerable<string> specs, string? arch, string pythonArg) =>
+        $"pip install {CommandLine.Join(specs)} {pythonArg} --index-url {(arch is null ? RocmNightlyIndexUrl : TorchIndexUrl(arch))}";
 
     /// <summary>从 release 资产列表挑选 whl 下载 URL（先匹配 assetMatch，再退回首个 .whl）。</summary>
     public static string? SelectReleaseAsset(IEnumerable<(string Name, string Url)> assets, string? assetMatch)
@@ -165,15 +191,12 @@ public static class WheelService
         }
         catch (IOException ex) { onOutput?.Invoke($"      警告：快照写入失败：{ex.Message}"); }
 
-        // ② 下载验证门：全部下载成功才继续
-        onOutput?.Invoke("[2/6] 下载验证门（uv pip download）…");
-        var cacheDir = Path.Combine(config.ComfyUiDir, "_torch_download");
-        var dlArgs = args.Replace("pip install", "pip download");
-        var dlCode = await runner.Run(uv, $"{dlArgs} -d \"{cacheDir}\"", dir, onOutput).ConfigureAwait(false);
-        if (dlCode != 0)
+        // ② 解析验证门：索引可达 + 目标 arch 有对应版本才继续（不下载、不落盘）
+        onOutput?.Invoke("[2/6] 解析验证门（uv pip install --dry-run）…");
+        var verifyCode = await runner.Run(uv, ToDryRunArgs(args), dir, onOutput).ConfigureAwait(false);
+        if (verifyCode != 0)
         {
-            onOutput?.Invoke("[错误] 下载失败——旧环境未改动，可稍后重试或检查网络/架构");
-            PathHelpers.TryDeleteDirectory(cacheDir);
+            onOutput?.Invoke("[错误] 解析失败——旧环境未改动，可稍后重试或检查网络 / 架构");
             return false;
         }
 
@@ -183,14 +206,13 @@ public static class WheelService
         await runner.Run(uv, $"pip uninstall {CommandLine.Join(uninstall)} {PythonArg(config)}", dir, onOutput)
             .ConfigureAwait(false);
 
-        // ④ 重装（利用缓存）
+        // ④ 重装
         onOutput?.Invoke("[4/6] 安装新 torch[device-arch]（AMD 源直连）…");
         var installCode = await runner.Run(uv, args, dir, onOutput).ConfigureAwait(false);
-        PathHelpers.TryDeleteDirectory(cacheDir);
         if (installCode != 0)
         {
             onOutput?.Invoke($"[错误] 安装失败（退出码 {installCode}），尝试尽力回滚 …");
-            await RollbackAsync(runner, config, snapshot, onOutput).ConfigureAwait(false);
+            await RollbackAsync(runner, config, snapshot, arch, onOutput).ConfigureAwait(false);
             return false;
         }
 
@@ -212,8 +234,13 @@ public static class WheelService
         return true;
     }
 
-    /// <summary>尽力回滚：快照版本可下载则装回，否则提示改装最新 nightly。</summary>
-    public static async Task RollbackAsync(TaskRunner runner, AppConfig config, string snapshotPath, Action<string>? onOutput = null)
+    /// <summary>
+    /// 尽力回滚：快照版本可下载则装回，否则提示重新更新。
+    /// 索引按 arch 选（与 <see cref="BuildTorchInstallArgs"/> 同一判定）——gfx942/gfx950 的快照在 v2-staging 上，
+    /// nightly 索引里没有这些版本。
+    /// </summary>
+    public static async Task RollbackAsync(
+        TaskRunner runner, AppConfig config, string snapshotPath, ArchInfo arch, Action<string>? onOutput = null)
     {
         if (!File.Exists(snapshotPath))
         {
@@ -226,11 +253,20 @@ public static class WheelService
             .ToArray();
         if (specs.Length == 0) { onOutput?.Invoke("      快照中无 torch/rocm 项"); return; }
 
-        onOutput?.Invoke("      尝试按快照装回（原版本可能已下架）…");
-        var arg = $"pip install {CommandLine.Join(specs)} {PythonArg(config)} --index-url {RocmNightlyIndexUrl}";
+        // 架构未知时退回 nightly（旧行为）并明确告知：gfx942/gfx950 的快照可能不在该索引上
+        if (arch.Arch is null)
+            onOutput?.Invoke("      警告：未能确定 GPU 架构，按 nightly 索引回滚（gfx942 / gfx950 可能不适用）");
+
+        var arg = BuildRollbackArgs(specs, arch.Arch, PythonArg(config));
+        var index = arch.Arch is null ? RocmNightlyIndexUrl : TorchIndexUrl(arch.Arch);
+        onOutput?.Invoke($"      尝试按快照装回（索引 {index}）…");
         var code = await runner.Run(uv, arg, PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir), onOutput).ConfigureAwait(false);
         if (code != 0)
-            onOutput?.Invoke("      [回滚失败] 原版本可能已从 AMD 源下架，建议重新执行以安装最新 nightly 恢复可运行");
+        {
+            onOutput?.Invoke(arch.Arch is "gfx942" or "gfx950"
+                ? $"      [回滚失败] 快照版本在 v2-staging 索引中已不可用（退出码 {code}），建议重新执行 torch 更新以安装最新构建"
+                : $"      [回滚失败] 原始 nightly 版本可能已下架（退出码 {code}），建议重新执行 torch 更新以安装最新构建");
+        }
     }
 
     /// <summary>安装专用轮子（内置清单命中 arch）。</summary>

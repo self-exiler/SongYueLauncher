@@ -153,6 +153,44 @@ public class EnvCatalogTests
     public void BuildTorchInstallArgs_NoBuildArchThrows() =>
         Assert.Throws<NotSupportedException>(() => WheelService.BuildTorchInstallArgs("gfx115x", "--python \"py\""));
 
+    // F-01：验证门必须是 --dry-run。uv 没有 pip download 子命令（0.11.19 实测退出码 2），
+    // 退回 download 会让每次 torch 更新在 [2/6] 必然失败。
+    [Theory]
+    [InlineData("gfx1100")]
+    [InlineData("gfx942")]
+    public void ToDryRunArgs_InsertsDryRunInsteadOfDownload(string arch)
+    {
+        var install = WheelService.BuildTorchInstallArgs(arch, "--python \"py\"");
+        var verify = WheelService.ToDryRunArgs(install);
+
+        Assert.StartsWith("pip install --dry-run ", verify);
+        Assert.Contains(WheelService.TorchIndexUrl(arch), verify);
+        Assert.DoesNotContain("pip download", verify);
+    }
+
+    [Fact]
+    public void ToDryRunArgs_LeavesNonInstallCommandUntouched() =>
+        Assert.Equal("pip freeze --python \"py\"", WheelService.ToDryRunArgs("pip freeze --python \"py\""));
+
+    // F-02：回滚索引必须与安装索引同源，否则 gfx942/gfx950 的快照在 nightly 里找不到。
+    [Theory]
+    [InlineData("gfx1100")]
+    [InlineData("gfx942")]
+    [InlineData("gfx950")]
+    public void BuildRollbackArgs_UsesSameIndexAsInstall(string arch)
+    {
+        var install = WheelService.BuildTorchInstallArgs(arch, "--python \"py\"");
+        var rollback = WheelService.BuildRollbackArgs(new[] { "torch==1.2.3" }, arch, "--python \"py\"");
+
+        Assert.Contains($"--index-url {WheelService.TorchIndexUrl(arch)}", install);
+        Assert.Contains($"--index-url {WheelService.TorchIndexUrl(arch)}", rollback);
+    }
+
+    [Fact]
+    public void BuildRollbackArgs_UnknownArchFallsBackToNightly() =>
+        Assert.Contains($"--index-url {WheelService.RocmNightlyIndexUrl}",
+            WheelService.BuildRollbackArgs(new[] { "torch==1.2.3" }, null, "--python \"py\""));
+
     [Fact]
     public void SelectReleaseAsset_PrefersMatchThenWhl()
     {
