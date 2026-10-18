@@ -14,7 +14,7 @@ public static class AnsiStripper
         var i = 0;
         while (i < line.Length)
         {
-            if (TryMatchSgr(line, i, out var next))
+            if (TryMatchSgr(line, i, out _, out var next))
             {
                 i = next;
                 continue;
@@ -25,8 +25,13 @@ public static class AnsiStripper
         return sb.ToString();
     }
 
-    private static bool TryMatchSgr(string line, int start, out int after)
+    /// <summary>
+    /// 仅识别 ESC [ 数字/分号 m 的 SGR 序列；其它转义按普通字符保留，防止吞正文。
+    /// 公开给宿主复用（带颜色渲染需要取出 <paramref name="code"/>），避免同一套扫描逻辑在两个程序集里各写一遍。
+    /// </summary>
+    public static bool TryMatchSgr(string line, int start, out string code, out int after)
     {
+        code = string.Empty;
         after = start + 1;
         if (start + 1 >= line.Length || line[start] != '\u001b' || line[start + 1] != '[') return false;
 
@@ -34,6 +39,7 @@ public static class AnsiStripper
         while (j < line.Length && (line[j] == ';' || char.IsAsciiDigit(line[j]))) j++;
         if (j >= line.Length || line[j] != 'm') return false;
 
+        code = line.Substring(start + 2, j - start - 2);
         after = j + 1;
         return true;
     }

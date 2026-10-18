@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AiDiagnostics.Runtime;
 using ComfyUiRocmLauncher.Core.Models;
 
 namespace ComfyUiRocmLauncher.Core.Services;

@@ -374,21 +374,18 @@ public sealed partial class ArgsPage : Page
         var warn = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCautionBrush"];
 
         PreviewText.Inlines.Clear();
-        PreviewText.Inlines.Add(new Run { Text = CommandLine.Quote(Settings.PythonExe), Foreground = accent });
+        PreviewText.Inlines.Add(new Run { Text = ArgsPreviewFormatter.QuoteInterpreter(Settings.PythonExe), Foreground = accent });
         PreviewText.Inlines.Add(new Run { Text = " main.py" });
 
         // 与真实启动同源：同一次 Build（含额外参数）产出的 token 列表，预览不会再与 spawn 漂移；
         // 仅额外参数段用警示色区分
-        var tokens = ArgsBuilder.Build(Settings.Args, _catalog, Settings.ExtraArgs);
-        var extraFrom = tokens.Count - ArgsBuilder.SplitExtra(Settings.ExtraArgs).Count;
-        for (var i = 0; i < tokens.Count; i++)
+        foreach (var token in ArgsPreviewFormatter.Format(Settings.Args, _catalog, Settings.ExtraArgs))
         {
-            var isExtra = i >= extraFrom;
             PreviewText.Inlines.Add(new Run
             {
-                Text = " " + CommandLine.Quote(tokens[i]),
-                Foreground = isExtra ? warn
-                    : tokens[i].StartsWith("--", StringComparison.Ordinal) ? accent
+                Text = " " + token.Text,
+                Foreground = token.IsExtra ? warn
+                    : token.Text.StartsWith("--", StringComparison.Ordinal) ? accent
                     : null,
             });
         }

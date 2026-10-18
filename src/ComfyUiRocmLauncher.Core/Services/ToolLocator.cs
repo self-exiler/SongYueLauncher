@@ -82,10 +82,4 @@ public static class ToolLocator
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         return FindFirst(Path.Combine(local, "Microsoft", "WindowsApps", "wt.exe"));
     }
-
-    /// <summary>
-    /// opencode CLI 的真实可执行文件。实现已下沉到 <see cref="AiDiagnostics.Runtime.OpenCodeLocator"/>，
-    /// 由 AI 诊断库自行负责定位，宿主仅在提示「未安装」时用到。
-    /// </summary>
-    public static string? FindOpenCode() => AiDiagnostics.Runtime.OpenCodeLocator.Find();
 }

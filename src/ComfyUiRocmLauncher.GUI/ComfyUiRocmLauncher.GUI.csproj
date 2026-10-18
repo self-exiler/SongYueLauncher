@@ -44,9 +44,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 依赖方向固定为 GUI → Core → AiDiagnostics（SRS §3.3）：界面层只认 Core 的类型，
+         AI 能力一律经 Core.Ai.ComfyUiAiService 门面，因此这里不声明对 AiDiagnostics 的引用。 -->
     <ProjectReference Include="..\ComfyUiRocmLauncher.Core\ComfyUiRocmLauncher.Core.csproj" />
-    <!-- AI 诊断通用库（模型列举 / opencode 调用 / 事件解析）：库由 Core 转发，这里显式声明便于直接使用其公开类型。 -->
-    <ProjectReference Include="..\AiDiagnostics\AiDiagnostics.csproj" />
   </ItemGroup>
 
   <!-- Publish Properties（WinUI 3 不支持裁剪发布，仅启用 R2R） -->

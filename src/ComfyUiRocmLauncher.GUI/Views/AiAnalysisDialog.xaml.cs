@@ -1,7 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Text;
-using AiDiagnostics;
-using AiDiagnostics.Parsing;
 using ComfyUiRocmLauncher.Core.Ai;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -16,7 +14,7 @@ namespace ComfyUiRocmLauncher.GUI.Views;
 public sealed partial class AiAnalysisDialog : UserControl
 {
     private readonly ComfyUiAiService _client = new();
-    private readonly ObservableCollection<AiModel> _models = new();
+    private readonly ObservableCollection<AiModelOption> _models = new();
     private readonly DispatcherQueue _queue;
     private CancellationTokenSource? _cts;
     private bool _answering;
@@ -36,11 +34,12 @@ public sealed partial class AiAnalysisDialog : UserControl
     public string SendLabel => _answering ? "取消分析" : "发送给 opencode 分析";
 
     /// <summary>抓取到的错误日志填入预览框（可编辑后再发送）。</summary>
-    public void SeedErrorPreview(string errorText, int totalLines, int errorLineCount, bool truncated)
+    public void SeedErrorPreview(ErrorLogExtraction extraction)
     {
-        ErrorPreviewBox.Text = errorText;
-        var suffix = truncated ? "（已按长度截断）" : string.Empty;
-        ErrorSummaryText.Text = $"从 {totalLines} 行日志缓冲区中识别到 {errorLineCount} 行错误{suffix}，可自行增删后再发送";
+        ErrorPreviewBox.Text = extraction.ToPreviewText();
+        var suffix = extraction.Truncated ? "（已按长度截断）" : string.Empty;
+        ErrorSummaryText.Text =
+            $"从 {extraction.TotalLines} 行日志缓冲区中识别到 {extraction.ErrorLineCount} 行错误{suffix}，可自行增删后再发送";
     }
 
     /// <summary>宿主 Primary 按钮回调：发送或取消。</summary>
@@ -52,7 +51,7 @@ public sealed partial class AiAnalysisDialog : UserControl
             return;
         }
 
-        var model = ModelCombo.SelectedItem as AiModel;
+        var model = ModelCombo.SelectedItem as AiModelOption;
         if (model is null)
         {
             StatusText.Text = "请先选择一个 opencode 模型。";
@@ -176,10 +175,11 @@ public sealed partial class AiAnalysisDialog : UserControl
 
     private void OnOutputLine(string line)
     {
-        var display = RunEventParser.TryFormat(line);
-        if (string.IsNullOrWhiteSpace(display)) return;
+        // 进度提示由 Core 门面标注，界面不再靠「opencode 」字符串前缀猜测
+        if (!ComfyUiAiService.TryFormatEvent(line, out var display, out var isProgress)) return;
+        if (display is null) return;
 
-        if (IsProgressMessage(display))
+        if (isProgress)
         {
             _queue.TryEnqueue(() =>
             {
@@ -197,11 +197,6 @@ public sealed partial class AiAnalysisDialog : UserControl
             AnswerScroll.ChangeView(null, double.MaxValue, null);
         });
     }
-
-    private static bool IsProgressMessage(string display) =>
-        display.StartsWith("opencode 已开始", StringComparison.Ordinal)
-        || display.StartsWith("opencode 正在继续", StringComparison.Ordinal)
-        || display.StartsWith("opencode 正在使用 ", StringComparison.Ordinal);
 
     private void AppendAnswerChunk(string chunk)
     {

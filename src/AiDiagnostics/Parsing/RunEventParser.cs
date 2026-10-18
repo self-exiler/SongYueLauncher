@@ -8,6 +8,9 @@ namespace AiDiagnostics.Parsing;
 /// </summary>
 public static class RunEventParser
 {
+    /// <summary>单行事件的解析结果；<c>Text</c> 与 <c>Error</c> 互斥，都为空表示该事件没有展示价值。</summary>
+    private readonly record struct RunEvent(string? Text, string? Error, bool IsProgress);
+
     /// <summary>
     /// 拼接 <c>text</c> 事件的正文；<c>error</c> 事件优先于半截正文（失败原因比残缺回答更有诊断价值）。
     /// </summary>
@@ -21,35 +24,17 @@ public static class RunEventParser
             var line = raw.Trim();
             if (!line.StartsWith('{')) continue;
 
-            JsonDocument doc;
-            try
+            var evt = ParseEvent(line);
+            if (evt.Error is { Length: > 0 } failure)
             {
-                doc = JsonDocument.Parse(line);
-            }
-            catch (JsonException)
-            {
+                error ??= failure;
                 continue;
             }
-
-            using (doc)
+            // 进度类事件也带 Text，拼进正文会污染回答
+            if (evt is { IsProgress: false, Text: { Length: > 0 } chunk })
             {
-                var root = doc.RootElement;
-                var type = ReadString(root, "type");
-
-                if (string.Equals(type, "text", StringComparison.Ordinal)
-                    && root.TryGetProperty("part", out var part)
-                    && ReadString(part, "text") is { Length: > 0 } chunk)
-                {
-                    if (text.Length > 0) text.Append("\n\n");
-                    text.Append(chunk);
-                    continue;
-                }
-
-                if (string.Equals(type, "error", StringComparison.Ordinal)
-                    && root.TryGetProperty("error", out var err))
-                {
-                    error ??= ReadString(err, "message") ?? ReadString(err, "type") ?? "未知错误";
-                }
+                if (text.Length > 0) text.Append("\n\n");
+                text.Append(chunk);
             }
         }
 
@@ -64,17 +49,35 @@ public static class RunEventParser
     }
 
     /// <summary>
-    /// 把单行事件转成可直接显示的文本；无展示价值的控制类事件返回 <c>null</c>。
-    /// 进度类文案以「opencode 」开头，宿主可据此区分进度与正文。
+    /// 把单行事件转成可直接显示的文本，并标注它是不是进度提示（是则宿主应显示在状态区而不是正文区）。
     /// </summary>
-    public static string? TryFormat(string line)
+    public static (string? Text, bool IsProgress) TryFormat(string line)
     {
-        var trimmed = line.Trim();
-        if (!trimmed.StartsWith('{')) return trimmed.Length == 0 ? null : trimmed;
+        var evt = ParseEvent(line.Trim());
+        if (evt.Error is { Length: > 0 } failure) return (failure, false);
+        return (evt.Text, evt.IsProgress);
+    }
 
+    /// <summary>
+    /// 逐行解析的单一实现：<see cref="ParseAnswer"/> 与 <see cref="TryFormat"/> 共享同一套类型分支，
+    /// 避免两处各写一遍 JSON→type 分发。
+    /// </summary>
+    private static RunEvent ParseEvent(string trimmed)
+    {
+        if (!trimmed.StartsWith('{')) return new(trimmed.Length == 0 ? null : trimmed, null, false);
+
+        JsonDocument doc;
         try
         {
-            using var doc = JsonDocument.Parse(trimmed);
+            doc = JsonDocument.Parse(trimmed);
+        }
+        catch (JsonException)
+        {
+            return new(trimmed, null, false);
+        }
+
+        using (doc)
+        {
             var root = doc.RootElement;
             var type = ReadString(root, "type");
 
@@ -82,34 +85,27 @@ public static class RunEventParser
                 && root.TryGetProperty("part", out var part)
                 && ReadString(part, "text") is { Length: > 0 } chunk)
             {
-                return chunk;
+                return new(chunk, null, false);
             }
 
             if (string.Equals(type, "error", StringComparison.Ordinal)
                 && root.TryGetProperty("error", out var err))
             {
-                return ReadString(err, "message") ?? ReadString(err, "type") ?? "未知错误";
+                return new(null, ReadString(err, "message") ?? ReadString(err, "type") ?? "未知错误", false);
             }
 
-            if (string.Equals(type, "step_start", StringComparison.Ordinal)) return ProgressStarted;
-            if (string.Equals(type, "step_finish", StringComparison.Ordinal)) return ProgressContinuing;
+            if (string.Equals(type, "step_start", StringComparison.Ordinal)) return new(ProgressStarted, null, true);
+            if (string.Equals(type, "step_finish", StringComparison.Ordinal)) return new(ProgressContinuing, null, true);
             if (string.Equals(type, "tool_use", StringComparison.Ordinal)
                 && root.TryGetProperty("part", out var toolPart)
                 && ReadString(toolPart, "tool") is { Length: > 0 } tool)
             {
-                return $"{ProgressToolPrefix}{tool}{ProgressToolSuffix}";
+                return new($"{ProgressToolPrefix}{tool}{ProgressToolSuffix}", null, true);
             }
-        }
-        catch (JsonException)
-        {
-            return trimmed;
-        }
 
-        return null;
+            return default;
+        }
     }
-
-    /// <summary>进度文案前缀（宿主据此判断「这行是进度而不是正文」）。</summary>
-    public const string ProgressPrefix = "opencode ";
 
     internal const string ProgressStarted = "opencode 已开始处理请求。";
     internal const string ProgressContinuing = "opencode 正在继续生成回答。";

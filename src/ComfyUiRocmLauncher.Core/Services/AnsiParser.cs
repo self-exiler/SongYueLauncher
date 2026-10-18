@@ -1,3 +1,5 @@
+using AiDiagnostics.Runtime;
+
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
@@ -6,7 +8,8 @@ namespace ComfyUiRocmLauncher.Core.Services;
 public readonly record struct AnsiRun(string Text, string Color);
 
 /// <summary>
-/// 极简 ANSI 解析：识别 SGR 前景色（30-37 / 90-97）与重置，供 UI 着色；另提供去色纯文本。
+/// 极简 ANSI 解析：识别 SGR 前景色（30-37 / 90-97）与重置，供 UI 着色。
+/// 去色能力见 <see cref="AnsiStripper"/>（由 LogService 在导出纯文本时使用），这里只负责颜色。
 /// </summary>
 public static class AnsiParser
 {
@@ -26,7 +29,7 @@ public static class AnsiParser
 
         while (i < line.Length)
         {
-            if (TryMatchSgr(line, i, out var code, out var next))
+            if (AnsiStripper.TryMatchSgr(line, i, out var code, out var next))
             {
                 if (current.Length > 0)
                 {
@@ -45,25 +48,6 @@ public static class AnsiParser
 
         if (current.Length > 0) runs.Add(new AnsiRun(current.ToString(), color));
         return runs;
-    }
-
-    /// <summary>去掉全部 ANSI 转义序列，用于复制 / 落盘纯文本。</summary>
-    public static string Strip(string line) => AiDiagnostics.Runtime.AnsiStripper.Strip(line);
-
-    /// <summary>仅识别 ESC [ 数字/分号 m 的 SGR 序列；其它转义按普通字符保留，防止吞正文。</summary>
-    private static bool TryMatchSgr(string line, int start, out string code, out int after)
-    {
-        code = string.Empty;
-        after = start + 1;
-        if (start + 1 >= line.Length || line[start] != '\u001b' || line[start + 1] != '[') return false;
-
-        var j = start + 2;
-        while (j < line.Length && (line[j] == ';' || char.IsAsciiDigit(line[j]))) j++;
-        if (j >= line.Length || line[j] != 'm') return false;
-
-        code = line.Substring(start + 2, j - start - 2);
-        after = j + 1;
-        return true;
     }
 
     private static string MapColor(string code, string fallback)

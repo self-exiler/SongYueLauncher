@@ -204,13 +204,21 @@ public class EnvAndConfigTests : IDisposable
     }
 
     [Fact]
-    public void AnsiParser_ParsesAndStrips()
+    public void AnsiParser_ParsesColors()
     {
         var runs = AnsiParser.Parse("\u001b[32mok\u001b[0m tail");
         Assert.Equal("green", runs[0].Color);
         Assert.Equal("ok", runs[0].Text);
         Assert.Equal("default", runs[1].Color);
         Assert.Equal(" tail", runs[1].Text);
-        Assert.Equal("ok tail", AnsiParser.Strip("\u001b[32mok\u001b[0m tail"));
+    }
+
+    [Fact]
+    public void LogService_SnapshotPlainText_StripsAnsi()
+    {
+        var log = new LogService(Path.GetTempPath());
+        log.Append("\u001b[32mok\u001b[0m tail");
+
+        Assert.Equal("ok tail", log.SnapshotPlainText());
     }
 }

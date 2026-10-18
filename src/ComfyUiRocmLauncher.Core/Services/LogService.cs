@@ -1,3 +1,5 @@
+using AiDiagnostics.Runtime;
+
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
@@ -32,6 +34,14 @@ public sealed class LogService
     public IReadOnlyList<string> Snapshot()
     {
         lock (_bufferLock) { return _buffer.ToArray(); }
+    }
+
+    /// <summary>整段缓冲的去色纯文本（复制到剪贴板 / 落盘用）。</summary>
+    public string SnapshotPlainText()
+    {
+        string[] lines;
+        lock (_bufferLock) { lines = _buffer.ToArray(); }
+        return string.Join(Environment.NewLine, lines.Select(AnsiStripper.Strip));
     }
 
     public int Count

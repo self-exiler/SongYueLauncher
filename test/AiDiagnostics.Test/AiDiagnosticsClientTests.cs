@@ -123,23 +123,31 @@ public class AiDiagnosticsClientTests
     [Fact]
     public void TryFormat_ConvertsUsefulEvents()
     {
-        Assert.Equal("结论：显存不足", RunEventParser.TryFormat(
+        Assert.Equal(("结论：显存不足", false), RunEventParser.TryFormat(
             """{"type":"text","part":{"type":"text","text":"结论：显存不足"}}"""));
-        Assert.Equal("opencode 已开始处理请求。", RunEventParser.TryFormat(
+        Assert.Equal(("opencode 已开始处理请求。", true), RunEventParser.TryFormat(
             """{"type":"step_start","part":{"type":"step-start"}}"""));
-        Assert.Equal("Model unavailable: bad/id", RunEventParser.TryFormat(
+        Assert.Equal(("Model unavailable: bad/id", false), RunEventParser.TryFormat(
             """{"type":"error","error":{"type":"provider.no-route","message":"Model unavailable: bad/id"}}"""));
-        Assert.Null(RunEventParser.TryFormat(
+        Assert.Equal(((string?)null, false), RunEventParser.TryFormat(
             """{"type":"unknown","part":{"type":"unknown"}}"""));
     }
 
     [Fact]
-    public void TryFormat_ToolUse_ReportsToolName()
+    public void TryFormat_NonJsonLine_PassesThroughAsPlainText()
     {
-        var text = RunEventParser.TryFormat(
+        Assert.Equal(("plain progress line", false), RunEventParser.TryFormat("  plain progress line  "));
+        Assert.Equal(((string?)null, false), RunEventParser.TryFormat("   "));
+    }
+
+    [Fact]
+    public void TryFormat_ToolUse_ReportsToolNameAndMarksProgress()
+    {
+        var (text, isProgress) = RunEventParser.TryFormat(
             """{"type":"tool_use","part":{"type":"tool","tool":"websearch"}}""");
 
         Assert.Equal("opencode 正在使用 websearch 查证资料。", text);
+        Assert.True(isProgress);
     }
 
     [Fact]

@@ -1,11 +1,15 @@
-using ComfyUiRocmLauncher.Core.Services;
+using ComfyUiRocmLauncher.Core.Ai;
 
 namespace ComfyUiRocmLauncher.Core.Test;
 
-public class ErrorLogExtractorTests
+/// <summary>
+/// 错误日志抓取与提问组装（SRS FR-5.7）。全部经 <see cref="ComfyUiAiService"/> 门面断言——
+/// 界面层看到的就是这些契约，Core.Test 不需要（也不应该）引用 AiDiagnostics。
+/// </summary>
+public class ComfyUiAiServiceTests
 {
     [Fact]
-    public void Extract_ErrorLineAndTracebackBlock_AreGrouped()
+    public void ExtractErrors_ErrorLineAndTracebackBlock_AreGrouped()
     {
         var lines = new[]
         {
@@ -18,7 +22,7 @@ public class ErrorLogExtractorTests
             "[INFO] normal output continues",
         };
 
-        var result = ErrorLogExtractor.Extract(lines);
+        var result = ComfyUiAiService.ExtractErrors(lines);
 
         Assert.False(result.Truncated);
         Assert.Single(result.Blocks);
@@ -32,11 +36,11 @@ public class ErrorLogExtractorTests
     }
 
     [Fact]
-    public void Extract_NoError_ReturnsHintText()
+    public void ExtractErrors_NoError_ReturnsHintText()
     {
         var lines = new[] { "[INFO] Starting server", "To see the GUI go to: http://127.0.0.1:8188" };
 
-        var result = ErrorLogExtractor.Extract(lines);
+        var result = ComfyUiAiService.ExtractErrors(lines);
 
         Assert.Empty(result.Blocks);
         Assert.Equal(0, result.ErrorLineCount);
@@ -44,7 +48,7 @@ public class ErrorLogExtractorTests
     }
 
     [Fact]
-    public void Extract_SeparateErrors_BecomeDistinctBlocks()
+    public void ExtractErrors_SeparateErrors_BecomeDistinctBlocks()
     {
         var lines = new[]
         {
@@ -53,14 +57,14 @@ public class ErrorLogExtractorTests
             "ValueError: second failure",
         };
 
-        var result = ErrorLogExtractor.Extract(lines);
+        var result = ComfyUiAiService.ExtractErrors(lines);
 
         Assert.Equal(2, result.Blocks.Count);
         Assert.Equal(2, result.ErrorLineCount);
     }
 
     [Fact]
-    public void Extract_ExceedsByteBudget_MarksTruncated()
+    public void ExtractErrors_ExceedsByteBudget_MarksTruncated()
     {
         // 每个错误行之间插入普通行，使其成为独立块，才能触发按块预算截断
         var lines = new List<string>();
@@ -70,7 +74,7 @@ public class ErrorLogExtractorTests
             lines.Add("[INFO] heartbeat ok");
         }
 
-        var result = ErrorLogExtractor.Extract(lines, maxBytes: 2_000);
+        var result = ComfyUiAiService.ExtractErrors(lines, maxBytes: 2_000);
 
         Assert.True(result.Truncated);
         Assert.NotEmpty(result.Blocks);
@@ -91,12 +95,13 @@ public class ErrorLogExtractorTests
     [InlineData("To see the GUI go to: http://127.0.0.1:8188", false)]
     [InlineData("[INFO] Loaded 12 nodes", false)]
     public void LooksLikeError_ClassifiesMarkers(string line, bool expected) =>
-        Assert.Equal(expected, ErrorLogExtractor.LooksLikeError(line));
+        Assert.Equal(expected, ComfyUiAiService.LooksLikeError(line));
 
     [Fact]
     public void BuildPrompt_ContainsContextAndStructure()
     {
-        var prompt = ErrorLogExtractor.BuildPrompt("RuntimeError: HIP out of memory", @"C:\pack", @"C:\pack\.venv\Scripts\python.exe");
+        var prompt = ComfyUiDiagnosis.BuildPrompt(
+            "RuntimeError: HIP out of memory", @"C:\pack", @"C:\pack\.venv\Scripts\python.exe");
 
         Assert.Contains("ROCm", prompt);
         Assert.Contains(@"C:\pack", prompt);

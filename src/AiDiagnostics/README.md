@@ -88,11 +88,11 @@ var answer = await client.AskAsync(
     new AiRequest { Prompt = prompt, ModelId = model, Agent = agent },
     onOutputLine: line =>
     {
-        var display = RunEventParser.TryFormat(line);   // 无需自己解析 NDJSON
+        // 无需自己解析 NDJSON；进度与否由返回值直接告知，不必猜字符串前缀
+        var (display, isProgress) = RunEventParser.TryFormat(line);
         if (display is null) return;
 
-        // 进度类文案统一以 "opencode " 开头，可与正文区分
-        if (display.StartsWith(RunEventParser.ProgressPrefix, StringComparison.Ordinal))
+        if (isProgress)
         {
             ShowProgress(display);
         }
@@ -208,7 +208,7 @@ new AiAgentProfile
 
 ### 底层设施（一般无需直接用）
 
-`Runtime.ProcessRunner.RunCapturedAsync`、`Runtime.CommandLine.Quote/Join`、`Runtime.AnsiStripper.Strip`、`Runtime.OpenCodeLocator.Find`、`Parsing.RunEventParser.ParseAnswer/TryFormat`。
+`Runtime.ProcessRunner.RunCapturedAsync` / `Runtime.ProcessRunner.CreateStartInfo`、`Runtime.CommandLine.Quote/Join`、`Runtime.AnsiStripper.Strip` / `AnsiStripper.TryMatchSgr`、`Runtime.OpenCodeLocator.Find`、`Parsing.RunEventParser.ParseAnswer/TryFormat`。
 
 ---
 
@@ -302,9 +302,9 @@ classDiagram
     }
 
     class RunEventParser {
-        +ProgressPrefix string
         +ParseAnswer(stdout)$ AiAnswer
-        +TryFormat(line)$ string?
+        +TryFormat(line)$ (string?, bool)
+        -ParseEvent(trimmed) RunEvent
     }
 
     class ProcessRunner {
@@ -436,11 +436,11 @@ sequenceDiagram
 | --- | --- |
 | `text` | `part.text` 拼接为正文（段间空行分隔） |
 | `error` | `error.message` / `error.type` 作为失败原因 |
-| `step_start` / `step_finish` | 转为进度文案（`opencode 已开始处理请求。` / `opencode 正在继续生成回答。`） |
-| `tool_use` | 转为 `opencode 正在使用 <tool> 查证资料。` |
-| 其它 | `TryFormat` 返回 `null`（无展示价值） |
+| `step_start` / `step_finish` | 转为进度文案（`opencode 已开始处理请求。` / `opencode 正在继续生成回答。`），`IsProgress = true` |
+| `tool_use` | 转为 `opencode 正在使用 <tool> 查证资料。`，`IsProgress = true` |
+| 其它 | `TryFormat` 返回 `(null, false)`（无展示价值） |
 
-非 JSON 行原样返回，便于宿主显示裸输出。
+非 JSON 行原样返回（`IsProgress = false`），便于宿主显示裸输出。
 
 ---
 

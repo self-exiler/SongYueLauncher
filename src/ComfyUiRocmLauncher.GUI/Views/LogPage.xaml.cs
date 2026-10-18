@@ -53,9 +53,8 @@ public sealed partial class LogPage : Page
 
     private void CopyAll_Click(object sender, RoutedEventArgs e)
     {
-        var text = string.Join(Environment.NewLine, App.Services.Log.Snapshot().Select(AnsiParser.Strip));
         var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-        package.SetText(text);
+        package.SetText(App.Services.Log.SnapshotPlainText());
         Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
     }
 
@@ -109,11 +108,7 @@ public sealed partial class LogPage : Page
         }
 
         var panel = new AiAnalysisDialog();
-        void Seed()
-        {
-            var p = CaptureErrors();
-            panel.SeedErrorPreview(p.Text, p.TotalLines, p.ErrorLineCount, p.Truncated);
-        }
+        void Seed() => panel.SeedErrorPreview(CaptureErrors());
         panel.RecaptureRequested += (_, _) => Seed();
         Seed();
 
@@ -159,9 +154,6 @@ public sealed partial class LogPage : Page
         await dialog.ShowAsync();
     }
 
-    private (string Text, int TotalLines, int ErrorLineCount, bool Truncated) CaptureErrors()
-    {
-        var extraction = ErrorLogExtractor.Extract(App.Services.Log.Snapshot());
-        return (extraction.ToPreviewText(), extraction.TotalLines, extraction.ErrorLineCount, extraction.Truncated);
-    }
+    private static ErrorLogExtraction CaptureErrors() =>
+        ComfyUiAiService.ExtractErrors(App.Services.Log.Snapshot());
 }

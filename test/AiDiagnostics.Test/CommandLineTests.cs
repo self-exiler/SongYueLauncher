@@ -1,7 +1,8 @@
-using ComfyUiRocmLauncher.Core.Services;
+using AiDiagnostics.Runtime;
 
-namespace ComfyUiRocmLauncher.Core.Test;
+namespace AiDiagnostics.Test;
 
+/// <summary>Windows 命令行引用规则（从 Core.Test 迁入——实现本来就在这一层）。</summary>
 public class CommandLineTests
 {
     [Theory]
