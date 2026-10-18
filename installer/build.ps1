@@ -62,7 +62,7 @@ else {
         throw "发布产物缺少 ComfyUiRocmLauncher.GUI.exe"
     }
     # 自包含、XAML 资源索引与应用图标是三类静默坏包：缺了本机能跑，但会出现打不开 / 没图标
-    foreach ($required in @('coreclr.dll', 'ComfyUiRocmLauncher.GUI.pri', 'Assets\AppIcon.ico')) {
+    foreach ($required in @('coreclr.dll', 'ComfyUiRocmLauncher.GUI.pri', 'Assets\AppIcon.ico', 'Assets\Agents\comfyui-error-analyst.json')) {
         if (-not (Test-Path (Join-Path $publishDir $required))) {
             throw "发布产物缺少 $required，产物不是可用的自包含包"
         }

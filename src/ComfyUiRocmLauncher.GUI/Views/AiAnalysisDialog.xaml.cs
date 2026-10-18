@@ -174,7 +174,7 @@ public sealed partial class AiAnalysisDialog : UserControl
         var display = OpenCodeClient.TryFormatRunEvent(line);
         if (string.IsNullOrWhiteSpace(display)) return;
 
-        if (display.StartsWith("opencode ", StringComparison.Ordinal))
+        if (IsProgressMessage(display))
         {
             _queue.TryEnqueue(() =>
             {
@@ -192,6 +192,11 @@ public sealed partial class AiAnalysisDialog : UserControl
             AnswerScroll.ChangeView(null, double.MaxValue, null);
         });
     }
+
+    private static bool IsProgressMessage(string display) =>
+        display.StartsWith("opencode 已开始", StringComparison.Ordinal)
+        || display.StartsWith("opencode 正在继续", StringComparison.Ordinal)
+        || display.StartsWith("opencode 正在使用 ", StringComparison.Ordinal);
 
     private void AppendAnswerChunk(string chunk)
     {

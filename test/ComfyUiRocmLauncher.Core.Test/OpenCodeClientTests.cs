@@ -68,6 +68,32 @@ public class OpenCodeClientTests
     }
 
     [Fact]
+    public void BuildAskArguments_UsesStandaloneAndQuotedCustomAgent()
+    {
+        var args = OpenCodeClient.BuildAskArguments("openai/gpt-6-sol");
+
+        Assert.StartsWith("run --standalone --format json --agent ", args);
+        Assert.Contains("--agent \"comfyui-error-analyst\"", args);
+        Assert.Contains("--model \"openai/gpt-6-sol\"", args);
+        Assert.Contains("--title \"ComfyUI 错误日志分析\"", args);
+        Assert.Contains("stdin 附加", args);
+    }
+
+    [Fact]
+    public void ParseRunOutput_ErrorEvent_TakesPrecedenceOverPartialText()
+    {
+        var stdout = string.Join('\n',
+            """{"type":"text","sessionID":"ses_3","part":{"type":"text","text":"部分回答"}}""",
+            """{"type":"error","sessionID":"ses_3","error":{"type":"provider.transport","message":"provider timeout"}}""");
+
+        var answer = OpenCodeClient.ParseRunOutput(stdout);
+
+        Assert.False(answer.Success);
+        Assert.Contains("provider timeout", answer.Text);
+        Assert.Contains("部分回答", answer.Text);
+    }
+
+    [Fact]
     public void TryFormatRunEvent_ConvertsUsefulEvents()
     {
         Assert.Equal("结论：显存不足", OpenCodeClient.TryFormatRunEvent(

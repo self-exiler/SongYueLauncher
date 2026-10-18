@@ -36,7 +36,7 @@ public sealed class OpenCodeClient
     {
         var exe = Locate() ?? throw new InvalidOperationException("未检测到 opencode。");
         var (code, stdout, stderr) = await ProcessService.RunCapturedAsync(
-            exe, "api model.list", Environment.CurrentDirectory, ModelsTimeoutMs, null, cancellationToken)
+            exe, "api model.list --standalone", Environment.CurrentDirectory, ModelsTimeoutMs, null, cancellationToken)
             .ConfigureAwait(false);
 
         if (code != 0)
@@ -88,29 +88,49 @@ public sealed class OpenCodeClient
 
         using var workspace = AnalystWorkspace.Create();
 
-        // 含空格的路径必须按命令行规则逐段引用（不能整体包一对引号）
-        var args = new StringBuilder("run --format json --agent ")
+        // 显式指定临时配置并校正 opencode v2 的 PWD 根目录解析，避免父进程遗留的
+        // PWD 环境变量让 CLI 忽略 WorkingDirectory，从而找不到本次复制的自定义 agent。
+        var environment = new Dictionary<string, string>
+        {
+            ["OPENCODE_CONFIG"] = workspace.ConfigPath,
+            ["PWD"] = workspace.Root,
+        };
+
+        var (code, stdout, stderr) = await ProcessService.RunCapturedAsync(
+            exe,
+            BuildAskArguments(modelQualifiedId),
+            workspace.Root,
+            AskTimeoutMs,
+            onOutputLine,
+            cancellationToken,
+            prompt,
+            environment)
+            .ConfigureAwait(false);
+
+        var parsed = ParseRunOutput(stdout);
+        if (code != 0)
+        {
+            // 超时/取消说明也会追加在 stderr 末尾，因此取最后一行；已有正文时保留给用户排查。
+            var detail = LastNonEmptyLine(stderr) ?? parsed.Text;
+            if (parsed.Success && parsed.Text.Length > 0)
+            {
+                detail = $"{detail}\n\n已收到的部分内容：\n{parsed.Text}";
+            }
+            return new OpenCodeAnswer(false, detail);
+        }
+        return parsed;
+    }
+
+    internal static string BuildAskArguments(string modelQualifiedId) =>
+        new StringBuilder("run --standalone --format json --agent ")
             .Append(CommandLine.Quote(AnalystAgentId))
             .Append(" --model ")
             .Append(CommandLine.Quote(modelQualifiedId))
             .Append(" --title ")
             .Append(CommandLine.Quote("ComfyUI 错误日志分析"))
             .Append(' ')
-            .Append(CommandLine.Quote(RunStdinInstruction));
-
-        var (code, stdout, stderr) = await ProcessService.RunCapturedAsync(
-            exe, args.ToString(), workspace.Root, AskTimeoutMs, onOutputLine, cancellationToken, prompt)
-            .ConfigureAwait(false);
-
-        var parsed = ParseRunOutput(stdout);
-        if (parsed.Success) return parsed;
-
-        if (code != 0 && string.IsNullOrWhiteSpace(parsed.Text))
-        {
-            return new OpenCodeAnswer(false, $"opencode 执行失败（退出码 {code}）：{FirstLine(stderr)}");
-        }
-        return parsed;
-    }
+            .Append(CommandLine.Quote(RunStdinInstruction))
+            .ToString();
 
     internal static OpenCodeAnswer ParseRunOutput(string stdout)
     {
@@ -154,8 +174,13 @@ public sealed class OpenCodeClient
             }
         }
 
+        if (error is not null)
+        {
+            return text.Length > 0
+                ? new OpenCodeAnswer(false, $"{error}\n\n已收到的部分内容：\n{text}")
+                : new OpenCodeAnswer(false, error);
+        }
         if (text.Length > 0) return new OpenCodeAnswer(true, text.ToString());
-        if (error is not null) return new OpenCodeAnswer(false, error);
         return new OpenCodeAnswer(false, "opencode 没有返回可解析的回答内容。");
     }
 
@@ -203,9 +228,15 @@ public sealed class OpenCodeClient
 
     private sealed class AnalystWorkspace : IDisposable
     {
-        private AnalystWorkspace(string root) => Root = root;
+        private AnalystWorkspace(string root, string configPath)
+        {
+            Root = root;
+            ConfigPath = configPath;
+        }
 
         public string Root { get; }
+
+        public string ConfigPath { get; }
 
         public static AnalystWorkspace Create()
         {
@@ -218,8 +249,10 @@ public sealed class OpenCodeClient
             var root = Path.Combine(Path.GetTempPath(), "comfyui_ai_analysis", Guid.NewGuid().ToString("N"));
             var opencodeDirectory = Path.Combine(root, ".opencode");
             Directory.CreateDirectory(opencodeDirectory);
-            File.Copy(source, Path.Combine(opencodeDirectory, "opencode.json"), overwrite: true);
-            return new AnalystWorkspace(root);        }
+            var configPath = Path.Combine(opencodeDirectory, "opencode.json");
+            File.Copy(source, configPath, overwrite: true);
+            return new AnalystWorkspace(root, configPath);
+        }
 
         private static string? FindAnalystAgentSource()
         {
@@ -266,6 +299,17 @@ public sealed class OpenCodeClient
             if (trimmed.Length > 0) return trimmed.Length > 300 ? trimmed[..300] : trimmed;
         }
         return "(无输出)";
+    }
+
+    private static string? LastNonEmptyLine(string text)
+    {
+        string? result = null;
+        foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length > 0) result = trimmed;
+        }
+        return result is { Length: > 300 } ? result[..300] : result;
     }
 
     private static string? ReadString(JsonElement element, string name) =>

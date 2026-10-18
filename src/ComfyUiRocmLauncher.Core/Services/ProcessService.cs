@@ -193,6 +193,7 @@ public sealed class ProcessService
     /// 与 <see cref="RunCommandAsync"/> 共用 CreateStartInfo，因此同样重定向 stdin，
     /// 不会让 Python 子进程在 DuplicateHandle 时抛 WinError 6。
     /// 传入 <paramref name="standardInput"/> 时会写入该文本再关闭 stdin；未传则立即关闭 stdin。
+    /// 传入 <paramref name="environment"/> 时覆盖对应子进程环境变量（opencode 的 OPENCODE_CONFIG/PWD 依赖此项）。
     /// 返回 <c>ExitCode = -1</c> 表示进程未能正常退出（超时或已取消）。
     /// </summary>
     public static async Task<(int ExitCode, string StdOut, string StdErr)> RunCapturedAsync(
@@ -202,13 +203,19 @@ public sealed class ProcessService
         int timeoutMs,
         Action<string>? onOutputLine = null,
         CancellationToken cancellationToken = default,
-        string? standardInput = null)
+        string? standardInput = null,
+        IDictionary<string, string>? environment = null)
     {
         using var process = new Process
         {
             StartInfo = CreateStartInfo(fileName, arguments, workingDirectory),
             EnableRaisingEvents = true,
         };
+        if (environment is not null)
+        {
+            foreach (var kv in environment) process.StartInfo.Environment[kv.Key] = kv.Value;
+        }
+
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
         var outDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -230,13 +237,6 @@ public sealed class ProcessService
         if (!process.Start()) throw new InvalidOperationException($"无法启动进程：{fileName}");
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
-        // 一次性捕获命令不能把 stdin 留成开放管道：opencode run 在非 TTY 下会读到 EOF 才开工。
-        // 需要输入时先写完再关闭；不需要输入时立即关闭，避免子进程等待 stdin。
-        if (standardInput is not null)
-        {
-            await process.StandardInput.WriteAsync(standardInput).ConfigureAwait(false);
-        }
-        process.StandardInput.Close();
 
         using var timeoutCts = new CancellationTokenSource(timeoutMs);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
@@ -251,23 +251,53 @@ public sealed class ProcessService
 
         try
         {
+            // 一次性捕获命令不能把 stdin 留成开放管道：opencode run 在非 TTY 下会读到 EOF 才开工。
+            // 写入也必须纳入同一超时/取消窗口：子进程不读 stdin 且输入超过管道缓冲时，未加时限的
+            // WriteAsync 会永久阻塞，导致界面既等不到 5 分钟超时、点「取消分析」也无效。
+            try
+            {
+                if (standardInput is not null)
+                {
+                    await process.StandardInput.WriteAsync(standardInput).WaitAsync(linked.Token).ConfigureAwait(false);
+                }
+                process.StandardInput.Close();
+            }
+            catch (OperationCanceledException)
+            {
+                return InterruptedRunResult(process, stdout, stderr, timeoutMs, cancellationToken.IsCancellationRequested);
+            }
+            catch (IOException)
+            {
+                // 子进程已主动关闭 stdin（或刚退出）：继续等待进程退出并收集其最终输出。
+            }
+
             await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            var why = cancellationToken.IsCancellationRequested ? "已取消" : "超时";
-            return (SafeExitCode(process), stdout.ToString(), $"{stderr}操作{why}（限时 {timeoutMs / 1000}s）。");
+            return InterruptedRunResult(process, stdout, stderr, timeoutMs, cancellationToken.IsCancellationRequested);
         }
         finally
         {
-            // 等待尾部输出冲刷完毕
-            try { process.WaitForExit(); }
-            catch (InvalidOperationException) { }
+            // 不调用无超时的 WaitForExit()：被拉起的孙进程可能继承 stdout/stderr 句柄，
+            // 导致进程结束后管道仍不关闭。输出读取最多再等 3 秒，到点即返回，避免 GUI 假死。
+            try { await Task.WhenAll(outDone.Task, errDone.Task).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException) { }
         }
 
-        await Task.WhenAll(outDone.Task, errDone.Task).ConfigureAwait(false);
         if (killed) return (SafeExitCode(process), stdout.ToString(), stderr.ToString());
         return (process.ExitCode, stdout.ToString(), stderr.ToString());
+    }
+
+    private static (int ExitCode, string StdOut, string StdErr) InterruptedRunResult(
+        Process process,
+        StringBuilder stdout,
+        StringBuilder stderr,
+        int timeoutMs,
+        bool cancelled)
+    {
+        var why = cancelled ? "已取消" : "超时";
+        return (SafeExitCode(process), stdout.ToString(), $"{stderr}操作{why}（限时 {timeoutMs / 1000}s）。");
     }
 
     private static int SafeExitCode(Process process)
