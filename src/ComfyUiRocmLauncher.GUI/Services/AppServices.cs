@@ -78,7 +78,19 @@ public sealed class AppServices
         }
     }
 
-    /// <summary>读取 .last_update_hash 前 10 位作为当前版本（FR-1.3）。</summary>
-    public string CurrentVersionHash() =>
-        RepoService.ShortHash(RepoService.ReadLocalHash(Settings.ComfyUiDir));
+    /// <summary>当前版本显示（FR-1.3）：.last_update_hash → comfyui_version.py → unknown。</summary>
+    public string CurrentVersionHash()
+    {
+        var hash = RepoService.ReadLocalHash(Settings.ComfyUiDir);
+        if (!string.IsNullOrEmpty(hash)) return RepoService.ShortHash(hash);
+        var version = RepoService.ReadComfyVersion(Settings.ComfyUiDir);
+        return version is null ? "unknown" : "v" + version;
+    }
+
+    /// <summary>hash 文件缺失但目录是 git 检出时补查 HEAD 并回填；返回刷新后的显示值，无进展返回 null。</summary>
+    public async Task<string?> RefreshVersionFromGitAsync()
+    {
+        if (!string.IsNullOrEmpty(RepoService.ReadLocalHash(Settings.ComfyUiDir))) return null;
+        return await RepoService.DetectGitHeadAsync(Settings);
+    }
 }

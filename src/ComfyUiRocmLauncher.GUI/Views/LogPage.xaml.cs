@@ -73,37 +73,21 @@ public sealed partial class LogPage : Page
         }
     }
 
-    /// <summary>AI 智能分析（FR-5.6）：未装 opencode 提醒并退出；否则弹出预览 + 模型下拉 + 发送。</summary>
-    private async void AiAnalyze_Click(object sender, RoutedEventArgs e)
+    /// <summary>AI 智能分析（FR-5.6）：未装 opencode 提醒并退出；否则打开独立分析窗口（标题栏 X 关闭）。</summary>
+    private AiAnalysisWindow? _aiWindow;
+
+    private void AiAnalyze_Click(object sender, RoutedEventArgs e)
     {
         var exe = ComfyUiAiService.LocateOpenCode();
         if (exe is null)
         {
-            var notInstalled = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = "未检测到 opencode",
-                Content = new TextBlock
-                {
-                    TextWrapping = TextWrapping.Wrap,
-                    Text = "AI 智能分析依赖本机已安装的 opencode CLI，当前未在 PATH 与常见安装位置找到它。\n\n"
-                        + "安装方式（任选其一）：\n"
-                        + "• npm install -g @opencode/cli\n"
-                        + "• curl -fsSL https://opencode.ai/install | bash\n\n"
-                        + "安装完成后重新打开本页面即可使用。",
-                },
-                PrimaryButtonText = "复制安装命令",
-                CloseButtonText = "知道了",
-            };
-            notInstalled.PrimaryButtonClick += (_, args) =>
-            {
-                args.Cancel = true;
-                var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                package.SetText("npm install -g @opencode/cli");
-                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-                notInstalled.PrimaryButtonText = "已复制";
-            };
-            await notInstalled.ShowAsync();
+            _ = ShowOpenCodeNotInstalledAsync();
+            return;
+        }
+
+        if (_aiWindow is not null)
+        {
+            _aiWindow.Activate();
             return;
         }
 
@@ -112,46 +96,38 @@ public sealed partial class LogPage : Page
         panel.RecaptureRequested += (_, _) => Seed();
         Seed();
 
-        var dialog = new ContentDialog
+        _aiWindow = new AiAnalysisWindow(panel, "AI 智能分析");
+        _aiWindow.Closed += (_, _) => _aiWindow = null;
+        _aiWindow.Activate();
+    }
+
+    private async Task ShowOpenCodeNotInstalledAsync()
+    {
+        var notInstalled = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = $"AI 智能分析 · {exe}",
-            Content = panel,
-            PrimaryButtonText = panel.SendLabel,
-            SecondaryButtonText = "复制回答",
-            CloseButtonText = "关闭",
-            DefaultButton = ContentDialogButton.Primary,
+            Title = "未检测到 opencode",
+            Content = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Text = "AI 智能分析依赖本机已安装的 opencode CLI，当前未在 PATH 与常见安装位置找到它。\n\n"
+                    + "安装方式（任选其一）：\n"
+                    + "• npm install -g @opencode/cli\n"
+                    + "• curl -fsSL https://opencode.ai/install | bash\n\n"
+                    + "安装完成后重新打开本页面即可使用。",
+            },
+            PrimaryButtonText = "复制安装命令",
+            CloseButtonText = "知道了",
         };
-
-        panel.StateChanged += (_, _) => dialog.PrimaryButtonText = panel.SendLabel;
-
-        // Primary 按钮不自动关闭对话框：分析进行中允许取消，结束后由用户自行关闭
-        dialog.PrimaryButtonClick += async (s, args) =>
+        notInstalled.PrimaryButtonClick += (_, args) =>
         {
             args.Cancel = true;
-            try
-            {
-                await panel.HandleSendAsync();
-            }
-            catch (Exception ex)
-            {
-                var error = new ContentDialog
-                {
-                    XamlRoot = XamlRoot,
-                    Title = "AI 智能分析失败",
-                    Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = ex.Message },
-                    CloseButtonText = "确定",
-                };
-                await error.ShowAsync();
-            }
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText("npm install -g @opencode/cli");
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            notInstalled.PrimaryButtonText = "已复制";
         };
-
-        dialog.SecondaryButtonClick += (s, args) =>
-        {
-            args.Cancel = !panel.TryCopyAnswer();
-        };
-
-        await dialog.ShowAsync();
+        await notInstalled.ShowAsync();
     }
 
     private static ErrorLogExtraction CaptureErrors() =>

@@ -32,10 +32,18 @@ public sealed partial class HomePage : Page
         // 行标签已在 XAML 中给出，代码只赋值
         GpuText.Text = GpuInfoService.GetAmdGpuName();
         VersionHashText.Text = App.Services.CurrentVersionHash();
+        _ = RefreshVersionFromGitAsync();
 
         App.Services.StateChanged += OnStateChanged;
         RefreshState();
         RefreshQuickDirs();
+    }
+
+    /// <summary>hash 文件缺失但目录是 git 检出时补查 HEAD（FR-1.3），回填后刷新显示。</summary>
+    private async Task RefreshVersionFromGitAsync()
+    {
+        var version = await App.Services.RefreshVersionFromGitAsync();
+        if (version is not null) DispatcherQueue.TryEnqueue(() => VersionHashText.Text = version);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)

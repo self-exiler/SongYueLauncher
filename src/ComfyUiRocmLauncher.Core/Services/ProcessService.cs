@@ -1,17 +1,14 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using AiDiagnostics.Runtime;
 
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
-/// 子进程管理（SRS 3.2 / FR-4）：启动 ComfyUI、流式输出、CTRL_BREAK 优雅停止 + 进程树强杀兜底。
+/// 子进程管理（SRS 3.2 / FR-4）：启动 ComfyUI、流式输出、等待优雅退出 + 进程树强杀兜底。
+/// 优雅停止由上层经 HTTP /shutdown 触发（FR-4.2），本类只负责「等待 → 强杀」两段。
 /// </summary>
 public sealed class ProcessService
 {
-    private const int CtrlBreakEvent = 1;
-    private const int StopGraceMs = 5000;
-
     private Process? _process;
 
     /// <summary>合并后的 stdout/stderr 行。</summary>
@@ -42,8 +39,11 @@ public sealed class ProcessService
         _process = process;
     }
 
-    /// <summary>FR-4.2：先发 CTRL_BREAK_EVENT，等待最多 5 秒，未退出则强杀整个进程树。</summary>
-    public async Task StopAsync()
+    /// <summary>
+    /// 停止子进程：先给优雅退出留 gracefulWaitMs 窗口（/shutdown 已由上层发出），
+    /// 仍未退出则强杀整个进程树，再等最多 3 秒收尾。
+    /// </summary>
+    public async Task StopAsync(int gracefulWaitMs = 0)
     {
         var process = _process;
         if (process is null) return;
@@ -55,16 +55,17 @@ public sealed class ProcessService
             return;
         }
 
-        SendCtrlBreak((uint)process.Id);
-
-        try
+        if (gracefulWaitMs > 0)
         {
-            using var graceCts = new CancellationTokenSource(StopGraceMs);
-            await process.WaitForExitAsync(graceCts.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // 5 秒内未退出 → 强杀进程树兜底
+            try
+            {
+                using var graceCts = new CancellationTokenSource(gracefulWaitMs);
+                await process.WaitForExitAsync(graceCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // 窗口内未退出 → 强杀兜底
+            }
         }
 
         if (!process.HasExited)
@@ -164,36 +165,4 @@ public sealed class ProcessService
         cancellationToken.ThrowIfCancellationRequested();
         return exitCode;
     }
-
-    private static void SendCtrlBreak(uint processId)
-    {
-        // 第二个参数必须是「由 CREATE_NEW_PROCESS_GROUP 创建的进程组 id」。Process.Start 不提供该 flag，
-        // 所以 pid 不是组 id：GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid) 只会返回 FALSE 且不抛异常，
-        // 事件从未送达，每次停止都要等满 5 秒强杀。改为附加到子进程的控制台后发给组 0（该控制台全体），
-        // 自身由前面的 SetConsoleCtrlHandler(NULL, TRUE) 忽略。
-        if (!SetConsoleCtrlHandler(IntPtr.Zero, true)) return;
-        try
-        {
-            // 附加控制台可能失败（无权限 / 进程已无控制台）：失败不影响后续强杀兜底。
-            if (!AttachConsole(processId)) return;
-            GenerateConsoleCtrlEvent(CtrlBreakEvent, 0);
-            FreeConsole();
-        }
-        finally
-        {
-            SetConsoleCtrlHandler(IntPtr.Zero, false);
-        }
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool AttachConsole(uint dwProcessId);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool FreeConsole();
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GenerateConsoleCtrlEvent(uint dwCtrlEvent, uint dwProcessGroupId);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool SetConsoleCtrlHandler(IntPtr handlerRoutine, bool add);
 }

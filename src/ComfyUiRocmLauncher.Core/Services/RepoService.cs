@@ -32,6 +32,52 @@ public static class RepoService
         string.IsNullOrEmpty(hash) ? "unknown" : hash.Length <= 10 ? hash : hash[..10];
 
     /// <summary>
+    /// 读取 <c>comfyui_version.py</c> 里的 <c>__version__</c>（FR-1.3 兜底）：
+    /// 手动解压的整合包既无 <c>.last_update_hash</c> 也可能无 <c>.git</c>，但版本文件总在仓库里。
+    /// </summary>
+    public static string? ReadComfyVersion(string comfyUiDir)
+    {
+        if (string.IsNullOrWhiteSpace(comfyUiDir)) return null;
+        try
+        {
+            var file = Path.Combine(comfyUiDir, "comfyui_version.py");
+            if (!File.Exists(file)) return null;
+            foreach (var line in File.ReadLines(file))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(
+                    line, """__version__\s*=\s*["']([^"']+)["']""");
+                if (match.Success) return match.Groups[1].Value;
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return null;
+    }
+
+    /// <summary>
+    /// git 检出但缺 <c>.last_update_hash</c> 时补查本地 HEAD 并回填版本文件（自愈）；
+    /// 返回短版本号，非 git 检出或查询失败返回 null。
+    /// </summary>
+    public static async Task<string?> DetectGitHeadAsync(AppConfig config)
+    {
+        if (!IsGitCheckout(config.ComfyUiDir)) return null;
+
+        var git = ToolLocator.ResolveGit(config);
+        var lines = new List<string>();
+        var code = await ProcessService.RunCommandAsync(
+            git, "rev-parse HEAD", config.ComfyUiDir, lines.Add).ConfigureAwait(false);
+        if (code != 0) return null;
+
+        var hash = lines.FirstOrDefault()?.Trim();
+        if (string.IsNullOrEmpty(hash)) return null;
+
+        try { File.WriteAllText(HashFilePath(config.ComfyUiDir), hash); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return ShortHash(hash);
+    }
+
+    /// <summary>
     /// git ls-remote 取远端 HEAD hash（走镜像）。
     /// **失败返回 null，不要返回空串**——空串会被界面当成「远端版本为空」，进而误判成「有更新」。
     /// </summary>

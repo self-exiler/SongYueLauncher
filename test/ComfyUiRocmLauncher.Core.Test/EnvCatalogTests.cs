@@ -79,6 +79,23 @@ public class EnvCatalogTests
         Assert.True(info.IsLegacy);
     }
 
+    // RDNA2 家族按整合包 detect_gpu.py 的芯片划分：Navi21=gfx1030、Navi22=gfx1031、Navi23=gfx1032、Navi24=gfx1034。
+    // 6800M/6800S 是 Navi 22，必须排在同为 Navi 21 的桌面 6800 之前，否则被「Radeon RX 68」抢先误判。
+    [Theory]
+    [InlineData("AMD Radeon RX 6900 XT", "gfx1030")]
+    [InlineData("AMD Radeon RX 6800", "gfx1030")]
+    [InlineData("AMD Radeon RX 6800M", "gfx1031")]
+    [InlineData("AMD Radeon RX 6800S", "gfx1031")]
+    [InlineData("AMD Radeon RX 6700 XT", "gfx1031")]
+    [InlineData("AMD Radeon RX 6650 XT", "gfx1032")]
+    [InlineData("AMD Radeon RX 6500 XT", "gfx1034")]
+    public void GpuArch_Rdna2FamilyChipsMapToOwnArch(string name, string expectedArch)
+    {
+        var info = GpuArchService.Instance.Map(name);
+        Assert.True(info.Known);
+        Assert.Equal(expectedArch, info.Arch);
+    }
+
     [Fact]
     public void GpuArch_UnknownNameNotKnown()
     {

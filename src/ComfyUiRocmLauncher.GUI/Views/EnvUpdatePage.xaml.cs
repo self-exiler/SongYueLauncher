@@ -77,6 +77,18 @@ public sealed partial class EnvUpdatePage : Page
 
     private void ClearConsole_Click(object sender, RoutedEventArgs e) => _console.Clear();
 
+    /// <summary>折叠任务输出区：只留标题行，为上方内容腾出空间；页面实例被缓存，状态在会话内保持。</summary>
+    private bool _consoleCollapsed;
+
+    private void ToggleConsole_Click(object sender, RoutedEventArgs e)
+    {
+        _consoleCollapsed = !_consoleCollapsed;
+        ConsoleScroll.Visibility = _consoleCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        ConsoleRow.MinHeight = _consoleCollapsed ? 0 : 200;
+        ConsoleToggleLabel.Text = _consoleCollapsed ? "展开" : "收起";
+        ConsoleToggleGlyph.Glyph = _consoleCollapsed ? "\uE70E" : "\uE70D";
+    }
+
     // ---------- 通用任务执行 ----------
     private async Task RunOpAsync(string label, Func<Task> body)
     {

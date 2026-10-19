@@ -40,6 +40,14 @@ public sealed partial class MainWindow : Window
 
         AppWindow.Closing += OnAppWindowClosing;
         App.Services.StateChanged += _ => DispatcherQueue.TryEnqueue(RefreshHeader);
+        _ = RefreshVersionFromGitAsync();
+    }
+
+    /// <summary>标题栏版本徽章同样受益于 HEAD 补查回填（FR-1.3）。</summary>
+    private async Task RefreshVersionFromGitAsync()
+    {
+        if (await App.Services.RefreshVersionFromGitAsync() is not null)
+            DispatcherQueue.TryEnqueue(RefreshHeader);
     }
 
     // ---------- 窗口尺寸 / 位置记忆（FR-9） ----------

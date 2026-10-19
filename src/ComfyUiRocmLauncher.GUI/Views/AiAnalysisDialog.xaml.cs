@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text;
 using ComfyUiRocmLauncher.Core.Ai;
+using ComfyUiRocmLauncher.GUI.Helpers;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -8,11 +9,14 @@ using Microsoft.UI.Xaml.Controls;
 namespace ComfyUiRocmLauncher.GUI.Views;
 
 /// <summary>
-/// AI 智能分析对话框内容（SRS FR-5.6~5.9）：错误日志预览 + opencode 内嵌模型下拉 + 发送与回答展示。
-/// 由 LogPage 包在 ContentDialog 中承载，Primary/Close 按钮由宿主对话框驱动。
+/// AI 智能分析窗口内容（SRS FR-5.6~5.10，原型 v2）：顶部模型栏 + 左日志/右回答两栏 + 竖排按钮列 + 底部状态栏。
+/// 发送 / 取消 / 复制 / 重新抓取全部内聚在本控件；进度提示只进底部状态栏，回答区只放正文。
+/// 由 <see cref="AiAnalysisWindow"/> 承载，关闭走标题栏 X（Unloaded 时取消进行中的分析）。
 /// </summary>
 public sealed partial class AiAnalysisDialog : UserControl
 {
+    private enum StatusKind { Idle, Busy, Ok, Err }
+
     private readonly ComfyUiAiService _client = new();
     private readonly ObservableCollection<AiModelOption> _models = new();
     private readonly DispatcherQueue _queue;
@@ -26,12 +30,11 @@ public sealed partial class AiAnalysisDialog : UserControl
         InitializeComponent();
         _queue = DispatcherQueue.GetForCurrentThread();
         ModelCombo.ItemsSource = _models;
-        RenderToggle.IsChecked = true;
+        AnswerMarkdown.Text = "选择模型并点击「发送给 opencode 分析」。";
         Loaded += (_, _) => _ = LoadModelsAsync();
+        // 宿主窗口被 X 关闭时取消进行中的分析，别让 opencode 子进程白跑
+        Unloaded += (_, _) => _cts?.Cancel();
     }
-
-    /// <summary>宿主对话框的 Primary 按钮文本。</summary>
-    public string SendLabel => _answering ? "取消分析" : "发送给 opencode 分析";
 
     /// <summary>抓取到的错误日志填入预览框（可编辑后再发送）。</summary>
     public void SeedErrorPreview(ErrorLogExtraction extraction)
@@ -42,8 +45,10 @@ public sealed partial class AiAnalysisDialog : UserControl
             $"从 {extraction.TotalLines} 行日志缓冲区中识别到 {extraction.ErrorLineCount} 行错误{suffix}，可自行增删后再发送";
     }
 
-    /// <summary>宿主 Primary 按钮回调：发送或取消。</summary>
-    public async Task HandleSendAsync()
+    /// <summary>宿主重新从日志缓冲抓取错误。</summary>
+    public event EventHandler? RecaptureRequested;
+
+    private async void Send_Click(object sender, RoutedEventArgs e)
     {
         if (_answering)
         {
@@ -54,22 +59,22 @@ public sealed partial class AiAnalysisDialog : UserControl
         var model = ModelCombo.SelectedItem as AiModelOption;
         if (model is null)
         {
-            StatusText.Text = "请先选择一个 opencode 模型。";
+            SetStatus("请先选择一个 opencode 模型。", StatusKind.Err);
             return;
         }
 
         var errorText = ErrorPreviewBox.Text.Trim();
         if (errorText.Length == 0)
         {
-            StatusText.Text = "错误日志预览为空，没有可发送的内容。";
+            SetStatus("错误日志预览为空，没有可发送的内容。", StatusKind.Err);
             return;
         }
 
         SetAnswering(true);
-        SetAnswerText("正在等待 opencode 回应…");
+        SetAnswerText(string.Empty);
         _lastAnswer = string.Empty;
         _answerChunks.Clear();
-        StatusText.Text = $"已提交给 {model.QualifiedId}，分析可能需要数十秒。";
+        SetStatus($"已提交给 {model.QualifiedId}，正在等待 opencode 回应…", StatusKind.Busy);
 
         _cts = new CancellationTokenSource();
         try
@@ -102,60 +107,46 @@ public sealed partial class AiAnalysisDialog : UserControl
             if (cancellationToken.IsCancellationRequested)
             {
                 SetAnswerText("已取消本次分析。");
-                StatusText.Text = "已取消。";
+                SetStatus("已取消。", StatusKind.Err);
             }
             else if (answer.Success)
             {
                 SetAnswerText(answer.Text);
                 _lastAnswer = answer.Text;
-                StatusText.Text = "分析完成，可点击「复制回答」保存。";
+                SetStatus("分析完成，可点击「复制回答」保存。", StatusKind.Ok);
             }
             else
             {
                 SetAnswerText(answer.Text);
-                StatusText.Text = "opencode 返回失败，请检查登录状态（opencode auth login）或更换模型后重试。";
+                SetStatus("opencode 返回失败，请检查登录状态（opencode auth login）或更换模型后重试。", StatusKind.Err);
             }
         }
         catch (OperationCanceledException)
         {
             SetAnswerText("已取消本次分析。");
-            StatusText.Text = "已取消。";
+            SetStatus("已取消。", StatusKind.Err);
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException)
         {
             SetAnswerText(ex.Message);
-            StatusText.Text = "调用 opencode 出错。";
+            SetStatus("调用 opencode 出错。", StatusKind.Err);
         }
         catch (Exception ex)
         {
             SetAnswerText(ex.Message);
-            StatusText.Text = "调用 opencode 发生未预期错误。";
+            SetStatus("调用 opencode 发生未预期错误。", StatusKind.Err);
         }
     }
 
-    /// <summary>同步原文 / Markdown 两个视图（MarkdownTextBlock 不支持选中，保留原文模式兜底）。</summary>
-    private void SetAnswerText(string text)
-    {
-        AnswerText.Text = text;
-        AnswerMarkdown.Text = text;
-    }
+    private void SetAnswerText(string text) => AnswerMarkdown.Text = text;
 
-    private void RenderMode_Changed(object sender, RoutedEventArgs e)
+    private void Copy_Click(object sender, RoutedEventArgs e)
     {
-        var markdown = RenderToggle.IsChecked == true;
-        AnswerMarkdown.Visibility = markdown ? Visibility.Visible : Visibility.Collapsed;
-        AnswerText.Visibility = markdown ? Visibility.Collapsed : Visibility.Visible;
-        RenderToggle.Content = markdown ? "原文" : "Markdown";
-    }
-
-    /// <summary>宿主对话框 Secondary「复制回答」按钮回调；无回答时返回 false。</summary>
-    public bool TryCopyAnswer()
-    {
-        if (string.IsNullOrEmpty(_lastAnswer)) return false;
+        if (_lastAnswer.Length == 0) return;
         var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
         package.SetText(_lastAnswer);
         Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-        return true;
+        SetStatus("已复制回答到剪贴板。", StatusKind.Ok);
     }
 
     private void OnOutputLine(string line)
@@ -166,11 +157,10 @@ public sealed partial class AiAnalysisDialog : UserControl
 
         if (isProgress)
         {
+            // 进度只进底部状态栏——写进回答区会覆盖已流式出现的正文，看起来像永远卡「处理中」
             _queue.TryEnqueue(() =>
             {
-                if (!_answering) return;
-                SetAnswerText($"opencode 处理中…\n{Tail(display, 160)}");
-                AnswerScroll.ChangeView(null, double.MaxValue, null);
+                if (_answering) SetStatus(display, StatusKind.Busy);
             });
             return;
         }
@@ -192,8 +182,6 @@ public sealed partial class AiAnalysisDialog : UserControl
         _lastAnswer = text;
     }
 
-    private static string Tail(string text, int max) => text.Length <= max ? text : text[^max..];
-
     private void SetAnswering(bool answering)
     {
         _answering = answering;
@@ -201,7 +189,20 @@ public sealed partial class AiAnalysisDialog : UserControl
         RefreshModelsButton.IsEnabled = !answering;
         RecaptureButton.IsEnabled = !answering;
         ErrorPreviewBox.IsReadOnly = answering;
-        StateChanged?.Invoke(this, EventArgs.Empty);
+        SendButtonText.Text = answering ? "取消分析" : "发送给 opencode 分析";
+        CopyButton.IsEnabled = !answering && _lastAnswer.Length > 0;
+    }
+
+    private void SetStatus(string text, StatusKind kind)
+    {
+        StatusText.Text = text;
+        StatusDot.Fill = ThemeHelper.Brush(kind switch
+        {
+            StatusKind.Busy => "AccentFillColorDefaultBrush",
+            StatusKind.Ok => "SystemFillColorSuccessBrush",
+            StatusKind.Err => "SystemFillColorCriticalBrush",
+            _ => "TextFillColorDisabledBrush",
+        });
     }
 
     private void RefreshModels_Click(object sender, RoutedEventArgs e) => _ = LoadModelsAsync();
@@ -210,7 +211,7 @@ public sealed partial class AiAnalysisDialog : UserControl
     {
         if (_answering) return;
         ModelCombo.IsEnabled = false;
-        StatusText.Text = "正在读取 opencode 内嵌模型…";
+        SetStatus("正在读取 opencode 内嵌模型…", StatusKind.Busy);
         try
         {
             var models = await _client.ListModelsAsync();
@@ -218,20 +219,20 @@ public sealed partial class AiAnalysisDialog : UserControl
             foreach (var m in models) _models.Add(m);
             if (_models.Count == 0)
             {
-                StatusText.Text = "opencode 未返回可用模型，请先执行 opencode auth login 配置供应商。";
+                SetStatus("opencode 未返回可用模型，请先执行 opencode auth login 配置供应商。", StatusKind.Err);
                 ModelCombo.PlaceholderText = "暂无可用模型";
             }
             else
             {
                 ModelCombo.SelectedIndex = 0;
-                StatusText.Text = $"共读取到 {_models.Count} 个模型。";
+                SetStatus($"共读取到 {_models.Count} 个模型。", StatusKind.Ok);
             }
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException)
         {
             _models.Clear();
             ModelCombo.PlaceholderText = "模型读取失败";
-            StatusText.Text = $"模型读取失败：{ex.Message}";
+            SetStatus($"模型读取失败：{ex.Message}", StatusKind.Err);
         }
         finally
         {
@@ -240,10 +241,4 @@ public sealed partial class AiAnalysisDialog : UserControl
     }
 
     private void Recapture_Click(object sender, RoutedEventArgs e) => RecaptureRequested?.Invoke(this, EventArgs.Empty);
-
-    /// <summary>分析状态变化（开始 / 结束），宿主据此刷新 Primary 按钮文本。</summary>
-    public event EventHandler? StateChanged;
-
-    /// <summary>宿主重新从日志缓冲抓取错误。</summary>
-    public event EventHandler? RecaptureRequested;
 }

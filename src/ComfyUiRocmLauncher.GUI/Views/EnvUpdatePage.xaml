@@ -134,21 +134,34 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- ============ 共享任务控制台（始终终端深色） ============ -->
+        <!-- ============ 共享任务控制台（始终终端深色；标题行右侧可折叠，为上方内容腾出空间） ============ -->
         <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Padding="0" Background="{StaticResource ConsoleBackgroundBrush}">
             <Grid Padding="12,8" RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition MinHeight="200" />
+                    <RowDefinition x:Name="ConsoleRow" Height="Auto" MinHeight="200" />
                 </Grid.RowDefinitions>
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="任务输出" Style="{StaticResource CardTitleStyle}" VerticalAlignment="Center"
-                               Foreground="{StaticResource ConsoleForegroundBrush}" />
-                    <Button x:Name="CancelButton" Content="取消" Click="Cancel_Click" IsEnabled="False" />
-                    <Button Content="清空" Click="ClearConsole_Click" />
-                    <TextBlock x:Name="ConsoleHintText" VerticalAlignment="Center" Style="{StaticResource SecondaryTextStyle}"
-                               Foreground="{StaticResource ConsoleForegroundBrush}" />
-                </StackPanel>
+                <Grid Grid.Row="0" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="任务输出" Style="{StaticResource CardTitleStyle}" VerticalAlignment="Center"
+                                   Foreground="{StaticResource ConsoleForegroundBrush}" />
+                        <Button x:Name="CancelButton" Content="取消" Click="Cancel_Click" IsEnabled="False" />
+                        <Button Content="清空" Click="ClearConsole_Click" />
+                        <TextBlock x:Name="ConsoleHintText" VerticalAlignment="Center" Style="{StaticResource SecondaryTextStyle}"
+                                   Foreground="{StaticResource ConsoleForegroundBrush}" />
+                    </StackPanel>
+                    <Button x:Name="ConsoleToggleButton" Grid.Column="1" Click="ToggleConsole_Click"
+                            ToolTipService.ToolTip="折叠/展开任务输出区">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon x:Name="ConsoleToggleGlyph" Glyph="&#xE70D;" FontSize="12" />
+                            <TextBlock x:Name="ConsoleToggleLabel" Text="收起" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
                 <ScrollViewer x:Name="ConsoleScroll" Grid.Row="1">
                     <TextBlock x:Name="ConsoleText" FontFamily="{StaticResource MonoFontFamily}" FontSize="12"
                                Foreground="{StaticResource ConsoleForegroundBrush}" TextWrapping="Wrap" />

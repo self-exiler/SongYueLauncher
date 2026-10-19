@@ -20,7 +20,9 @@ public sealed record AiRequest
     /// <summary>写在 argv 末尾的短指令，长 prompt 走 stdin。</summary>
     public string Instruction { get; init; } = DefaultInstruction;
 
-    /// <summary>默认短指令：说明 prompt 与日志已从 stdin 传入，避免模型再索要材料。</summary>
+    /// <summary>默认短指令：说明 prompt 与日志已从 stdin 传入，避免模型再索要材料；同时压制联网发散。</summary>
     public const string DefaultInstruction =
-        "完整任务提示词与待分析内容已通过 stdin 附加到本次调用。请只依据 stdin 内容分析，不要要求我重新粘贴内容；不要修改文件，不要运行命令。遇到不确定或版本相关问题时，可使用 websearch/webfetch 查证。";
+        "完整任务提示词与待分析内容已通过 stdin 附加到本次调用。请只依据 stdin 内容分析，不要要求我重新粘贴内容；"
+        + "不要修改文件，不要运行命令，不要读取本地路径，不要浏览代码仓库目录或列文件。"
+        + "仅当结论确实依赖外部事实时才用 websearch 查证，全程最多一次；随后直接给出最终回答。";
 }

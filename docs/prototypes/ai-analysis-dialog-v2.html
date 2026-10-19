@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 智能分析弹窗 — 重构原型 v2</title>
+<style>
+  :root {
+    --accent: #0067c0;
+    --accent-hover: #1975c5;
+    --accent-pressed: #0067b8;
+    --bg-mica: #f3f3f3;
+    --bg-card: #fbfbfb;
+    --bg-card-secondary: #f5f5f5;
+    --bg-control: rgba(255,255,255,0.7);
+    --border: #e0e0e0;
+    --border-strong: #d1d1d1;
+    --text-primary: #1b1b1b;
+    --text-secondary: #606060;
+    --text-disabled: #a0a0a0;
+    --radius: 8px;
+    --mono: "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+    --sans: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background: #e8e8e8;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 48px;
+    color: var(--text-primary);
+    font-size: 14px;
+  }
+  .page-caption {
+    width: 960px;
+    max-width: 100%;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  .page-caption b { color: var(--text-primary); }
+
+  /* ===== 弹窗主体 ===== */
+  .dialog {
+    width: 960px;
+    max-width: 100%;
+    height: 620px;
+    background: var(--bg-mica);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    box-shadow: 0 32px 64px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .dialog-titlebar {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px 10px;
+    gap: 8px;
+  }
+  .dialog-titlebar .title { font-size: 15px; font-weight: 600; flex: 1; }
+  .dialog-titlebar .close-hint {
+    font-size: 12px; color: var(--text-disabled);
+    border: 1px dashed var(--border-strong);
+    padding: 2px 8px; border-radius: 4px;
+  }
+
+  /* ===== 顶部：模型栏 ===== */
+  .model-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 20px 12px;
+  }
+  .model-bar label { white-space: nowrap; }
+  .combo {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    background: var(--bg-control);
+    border: 1px solid var(--border);
+    border-bottom: 2px solid #8a8a8a;
+    border-radius: 6px;
+    padding: 7px 12px;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+  }
+  .combo.disabled { opacity: 0.5; pointer-events: none; }
+  .combo .value { flex: 1; }
+  .combo .chev { color: var(--text-secondary); font-size: 11px; }
+  .combo-dropdown {
+    position: absolute;
+    top: calc(100% + 4px); left: 0; right: 0;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+    z-index: 50;
+    overflow: hidden;
+    display: none;
+  }
+  .combo.open .combo-dropdown { display: block; }
+  .combo-dropdown .item { padding: 8px 12px; cursor: pointer; font-size: 13px; }
+  .combo-dropdown .item:hover { background: var(--bg-card-secondary); }
+  .combo-dropdown .item.selected { background: rgba(0,103,192,0.1); color: var(--accent); }
+
+  /* ===== 按钮 ===== */
+  .btn {
+    font-family: var(--sans);
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-control);
+    color: var(--text-primary);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s;
+  }
+  .btn:hover:not(:disabled) { background: #f0f0f0; }
+  .btn:disabled { color: var(--text-disabled); background: var(--bg-card-secondary); cursor: default; border-color: var(--border); }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn.primary:disabled { background: #9ec9ec; border-color: #9ec9ec; color: #fff; }
+
+  /* ===== 中部：两栏 ===== */
+  .main-area {
+    flex: 1;
+    display: flex;
+    gap: 12px;
+    padding: 0 20px 12px;
+    min-height: 0;
+  }
+  /* 左栏 */
+  .log-pane {
+    width: 40%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+  }
+  .log-pane .pane-header {
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .log-pane .pane-title { font-weight: 600; font-size: 13px; }
+  .log-summary { font-size: 12px; color: var(--text-secondary); flex: 1; }
+  .log-box {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.55;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    resize: none;
+    outline: none;
+    color: var(--text-primary);
+    min-height: 0;
+  }
+  .log-box:focus { border-color: var(--accent); border-bottom-width: 2px; }
+  .log-box.readonly { background: var(--bg-card-secondary); color: var(--text-secondary); }
+  .log-box .err { color: #c42b1c; }
+
+  /* 右栏：回答区 + 窄竖排按钮列 */
+  .answer-pane {
+    flex: 1;
+    display: flex;
+    gap: 8px;
+    min-height: 0;
+  }
+  .answer-card {
+    flex: 1;
+    background: var(--bg-card-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    overflow-y: auto;
+    min-height: 0;
+    line-height: 1.65;
+    font-size: 13.5px;
+  }
+  .answer-card .placeholder { color: var(--text-disabled); }
+  .answer-card .progress-note {
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: pre-wrap;
+  }
+  .button-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 132px;
+    flex-shrink: 0;
+  }
+  .button-rail .btn { width: 100%; text-align: center; padding: 8px 6px; }
+  .rail-spacer { flex: 1; }
+  .rail-note {
+    font-size: 11px; color: var(--text-disabled); text-align: center; line-height: 1.4;
+  }
+
+  /* markdown 渲染样式 */
+  .md h1, .md h2, .md h3 { margin: 12px 0 6px; font-weight: 600; }
+  .md h1 { font-size: 17px; } .md h2 { font-size: 15.5px; } .md h3 { font-size: 14px; }
+  .md p { margin: 6px 0; }
+  .md ul, .md ol { margin: 6px 0 6px 22px; }
+  .md code {
+    font-family: var(--mono); font-size: 12px;
+    background: rgba(0,0,0,0.06); border-radius: 4px; padding: 1px 5px;
+  }
+  .md pre {
+    font-family: var(--mono); font-size: 12px;
+    background: #ececec; border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 12px; margin: 8px 0;
+    overflow-x: auto; line-height: 1.5;
+  }
+  .md pre code { background: none; padding: 0; }
+  .md hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+  .md strong { font-weight: 600; }
+  .cursor-blink {
+    display: inline-block; width: 8px; height: 15px;
+    background: var(--accent); vertical-align: -2px;
+    animation: blink 0.8s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ===== 底部状态栏 ===== */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-card);
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #8a8a8a; flex-shrink: 0; }
+  .status-dot.busy { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  .status-dot.ok { background: #107c10; }
+  .status-dot.err { background: #c42b1c; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+
+  /* ===== 原型说明 ===== */
+  .notes {
+    width: 960px; max-width: 100%;
+    margin-top: 20px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--text-secondary);
+  }
+  .notes h3 { color: var(--text-primary); font-size: 14px; margin-bottom: 6px; }
+  .notes table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  .notes td, .notes th {
+    border: 1px solid var(--border); padding: 5px 10px; text-align: left; font-size: 12.5px;
+  }
+  .notes th { background: var(--bg-card-secondary); color: var(--text-primary); }
+  .notes code { font-family: var(--mono); font-size: 12px; background: var(--bg-card-secondary); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="page-caption">
+  <b>AI 智能分析弹窗 · 重构原型 v2</b>（可交互：发送为模拟流式输出，非真实调用）— 布局：顶部模型栏 / 中部两栏（日志｜回答+竖排按钮）/ 底部状态栏
+</div>
+
+<div class="dialog">
+  <!-- 标题栏：宿主只保留关闭 -->
+  <div class="dialog-titlebar">
+    <span class="title">AI 智能分析</span>
+    <span class="close-hint">宿主 ContentDialog 仅保留「关闭」</span>
+  </div>
+
+  <!-- 顶部模型栏 -->
+  <div class="model-bar">
+    <label>opencode 模型</label>
+    <div class="combo" id="modelCombo">
+      <span class="value" id="modelValue">正在读取 opencode 内嵌模型…</span>
+      <span class="chev">&#9660;</span>
+      <div class="combo-dropdown" id="modelDropdown"></div>
+    </div>
+    <button class="btn" id="refreshBtn">刷新模型</button>
+  </div>
+
+  <!-- 中部两栏 -->
+  <div class="main-area">
+    <!-- 左：问题日志 -->
+    <div class="log-pane">
+      <div class="pane-header">
+        <span class="pane-title">问题日志</span>
+        <span class="log-summary" id="logSummary"></span>
+      </div>
+      <textarea class="log-box" id="logBox" spellcheck="false"></textarea>
+    </div>
+
+    <!-- 右：回答区 + 窄竖排按钮列 -->
+    <div class="answer-pane">
+      <div class="answer-card md" id="answerCard">
+        <span class="placeholder">选择模型并点击「发送给 opencode 分析」。</span>
+      </div>
+      <div class="button-rail">
+        <button class="btn primary" id="sendBtn" disabled>发送给 opencode 分析</button>
+        <button class="btn" id="copyBtn" disabled>复制回答</button>
+        <button class="btn" id="recaptureBtn">重新抓取</button>
+        <div class="rail-spacer"></div>
+        <div class="rail-note">分析中按钮锁定<br>仅 Markdown 渲染</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部状态栏 -->
+  <div class="status-bar">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">就绪。</span>
+  </div>
+</div>
+
+<div class="notes">
+  <h3>设计映射说明（原型 → WinUI 实现）</h3>
+  <table>
+    <tr><th>原型区域</th><th>对应 XAML 控件</th><th>备注</th></tr>
+    <tr><td>顶部模型栏</td><td><code>ComboBox</code> + <code>Button</code></td><td>沿用现有 ModelCombo / RefreshModelsButton</td></tr>
+    <tr><td>左栏日志框</td><td><code>TextBox</code>（AcceptsReturn，等宽字体）</td><td>沿用 ErrorPreviewBox，摘要行改为栏标题右侧小字</td></tr>
+    <tr><td>右栏回答区</td><td><code>MarkdownTextBlock</code>（Labs）</td><td><b>移除原文切换与 AnswerText</b>，仅 Markdown</td></tr>
+    <tr><td>竖排按钮列</td><td><code>StackPanel</code>（Orientation=Vertical）</td><td>发送/取消、复制回答、重新抓取；宿主不再提供 Primary/Secondary</td></tr>
+    <tr><td>底部状态栏</td><td><code>Border</code> + <code>TextBlock</code></td><td>单条文本，沿用 StatusText 语义；圆点为原型示意，可选</td></tr>
+    <tr><td>弹窗宽度 960px</td><td><code>ContentDialog</code> 自定义 <code>ContentDialogMaxWidth</code> 样式</td><td>突破默认 ~548px 限制</td></tr>
+  </table>
+</div>
+
+<script>
+(function () {
+  // ---------- 模拟数据 ----------
+  var MOCK_MODELS = [
+    "github-copilot/gpt-5-mini",
+    "github-copilot/gpt-4.1",
+    "github-copilot/claude-sonnet-4",
+    "opencode/grok-code-fast-1"
+  ];
+  var MOCK_LOG = [
+    "[2026-10-19 20:12:03] [ERROR] torch.cuda.is_available() returned False",
+    "[2026-10-19 20:12:03] [ERROR] RuntimeError: No HIP GPUs are available",
+    "  File \"comfy\\model_management.py\", line 214, in get_torch_device",
+    "    raise RuntimeError(\"No HIP GPUs are available\")",
+    "[2026-10-19 20:12:04] [WARN]  fallback to CPU mode, expect slow inference",
+    "[2026-10-19 20:12:05] [ERROR] ComfyUI-Manager: channel fetch failed:",
+    "  raw.githubusercontent.com:443 - Connection timed out after 10021 ms",
+    "[2026-10-19 20:12:06] [ERROR] Failed to load custom node 'ComfyUI-Impact-Pack':",
+    "  ModuleNotFoundError: No module named 'segment_anything'"
+  ].join("\n");
+  var MOCK_ANSWER_STREAM = [
+    "## 诊断结论\n\n日志中有 **三类独立问题**，按严重程度排序：\n",
+    "\n### 1. ROCm 未识别到 GPU（致命）\n\n`torch.cuda.is_available()` 返回 `False`，随后抛出 `No HIP GPUs are available`。\n\n可能原因：\n\n- 当前 PyTorch 不是 ROCm 构建（检查 `torch.version.hip` 是否为 `None`）\n- RX 6700 XT（gfx1031）未被官方 ROCm 支持，需设置环境变量：\n\n```bat\nset HSA_OVERRIDE_GFX_VERSION=10.3.0\n```\n",
+    "\n### 2. ComfyUI-Manager 通道拉取超时\n\n`raw.githubusercontent.com` 直连超时。建议在 **channels.list** 中改用镜像源，或配置代理。\n",
+    "\n### 3. 自定义节点依赖缺失\n\n`ComfyUI-Impact-Pack` 缺少 `segment_anything`，执行：\n\n```bat\npython -m pip install segment-anything\n```\n\n---\n\n**建议优先解决问题 1**，否则后两项修复后仍只能跑 CPU。"
+  ];
+
+  // ---------- 元素 ----------
+  var combo = document.getElementById("modelCombo");
+  var modelValue = document.getElementById("modelValue");
+  var dropdown = document.getElementById("modelDropdown");
+  var refreshBtn = document.getElementById("refreshBtn");
+  var logSummary = document.getElementById("logSummary");
+  var logBox = document.getElementById("logBox");
+  var answerCard = document.getElementById("answerCard");
+  var sendBtn = document.getElementById("sendBtn");
+  var copyBtn = document.getElementById("copyBtn");
+  var recaptureBtn = document.getElementById("recaptureBtn");
+  var statusDot = document.getElementById("statusDot");
+  var statusText = document.getElementById("statusText");
+
+  var answering = false;
+  var lastAnswer = "";
+  var streamTimer = null;
+  var selectedModel = null;
+
+  // ---------- 极简 Markdown 渲染（仅原型用） ----------
+  function renderMarkdown(src) {
+    var esc = src.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    var blocks = esc.split(/```/);
+    var html = "";
+    for (var i = 0; i < blocks.length; i++) {
+      if (i % 2 === 1) {
+        var code = blocks[i].replace(/^[a-zA-Z]*\n/, "");
+        html += "<pre><code>" + code + "</code></pre>";
+      } else {
+        html += renderInlineBlocks(blocks[i]);
+      }
+    }
+    return html;
+  }
+  function renderInlineBlocks(text) {
+    var lines = text.split("\n");
+    var html = "", inList = false;
+    function inline(s) {
+      return s
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/`([^`]+)`/g, "<code>$1</code>");
+    }
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (/^###\s/.test(line)) { if (inList) { html += "</ul>"; inList = false; } html += "<h3>" + inline(line.slice(4)) + "</h3>"; }
+      else if (/^##\s/.test(line)) { if (inList) { html += "</ul>"; inList = false; } html += "<h2>" + inline(line.slice(3)) + "</h2>"; }
+      else if (/^#\s/.test(line)) { if (inList) { html += "</ul>"; inList = false; } html += "<h1>" + inline(line.slice(2)) + "</h1>"; }
+      else if (/^---+$/.test(line.trim())) { if (inList) { html += "</ul>"; inList = false; } html += "<hr>"; }
+      else if (/^-\s/.test(line)) { if (!inList) { html += "<ul>"; inList = true; } html += "<li>" + inline(line.slice(2)) + "</li>"; }
+      else if (/^\s{2,}-\s/.test(line)) { if (!inList) { html += "<ul>"; inList = true; } html += "<li>" + inline(line.replace(/^\s+-\s/, "")) + "</li>"; }
+      else if (line.trim() === "") { if (inList) { html += "</ul>"; inList = false; } }
+      else { if (inList) { html += "</ul>"; inList = false; } html += "<p>" + inline(line) + "</p>"; }
+    }
+    if (inList) html += "</ul>";
+    return html;
+  }
+
+  // ---------- 状态栏 ----------
+  function setStatus(text, kind) {
+    statusText.textContent = text;
+    statusDot.className = "status-dot" + (kind ? " " + kind : "");
+  }
+
+  // ---------- 模型下拉 ----------
+  function loadModels(simulate) {
+    combo.classList.add("disabled");
+    modelValue.textContent = "正在读取 opencode 内嵌模型…";
+    setStatus("正在读取 opencode 内嵌模型…", "busy");
+    setTimeout(function () {
+      dropdown.innerHTML = "";
+      MOCK_MODELS.forEach(function (m, idx) {
+        var div = document.createElement("div");
+        div.className = "item";
+        div.textContent = m;
+        div.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          selectModel(m, div);
+          combo.classList.remove("open");
+        });
+        dropdown.appendChild(div);
+      });
+      selectModel(MOCK_MODELS[0], dropdown.children[0]);
+      combo.classList.remove("disabled");
+      setStatus("共读取到 " + MOCK_MODELS.length + " 个模型。", "ok");
+      sendBtn.disabled = false;
+    }, simulate ? 600 : 900);
+  }
+  function selectModel(name, el) {
+    selectedModel = name;
+    modelValue.textContent = name;
+    var items = dropdown.querySelectorAll(".item");
+    for (var i = 0; i < items.length; i++) items[i].classList.remove("selected");
+    if (el) el.classList.add("selected");
+  }
+  combo.addEventListener("click", function () {
+    if (!combo.classList.contains("disabled")) combo.classList.toggle("open");
+  });
+  document.addEventListener("click", function (ev) {
+    if (!combo.contains(ev.target)) combo.classList.remove("open");
+  });
+
+  // ---------- 日志 ----------
+  function seedLog() {
+    logBox.value = MOCK_LOG;
+    var errCount = (MOCK_LOG.match(/\[ERROR\]/g) || []).length + 2;
+    logSummary.textContent = "从 128 行日志缓冲区中识别到 " + errCount + " 行错误（已按长度截断），可自行增删后再发送";
+  }
+
+  // ---------- 发送 / 取消 / 流式 ----------
+  function setAnswering(on) {
+    answering = on;
+    sendBtn.textContent = on ? "取消分析" : "发送给 opencode 分析";
+    combo.classList.toggle("disabled", on);
+    refreshBtn.disabled = on;
+    recaptureBtn.disabled = on;
+    copyBtn.disabled = on || !lastAnswer;
+    logBox.classList.toggle("readonly", on);
+    logBox.readOnly = on;
+  }
+
+  sendBtn.addEventListener("click", function () {
+    if (answering) {
+      clearTimeout(streamTimer);
+      setAnswering(false);
+      answerCard.innerHTML = '<span class="placeholder">已取消本次分析。</span>';
+      setStatus("已取消。", "err");
+      return;
+    }
+    if (!selectedModel) { setStatus("请先选择一个 opencode 模型。", "err"); return; }
+    if (!logBox.value.trim()) { setStatus("错误日志预览为空，没有可发送的内容。", "err"); return; }
+
+    lastAnswer = "";
+    setAnswering(true);
+    setStatus("已提交给 " + selectedModel + "，分析可能需要数十秒。", "busy");
+    answerCard.innerHTML = '<div class="progress-note">正在等待 opencode 回应…</div>';
+
+    var chunkIdx = 0, charIdx = 0, buf = "";
+    // 模拟：先等 1.2s「处理中」，随后逐块流式
+    streamTimer = setTimeout(function step() {
+      if (chunkIdx < MOCK_ANSWER_STREAM.length) {
+        var chunk = MOCK_ANSWER_STREAM[chunkIdx];
+        var n = Math.min(6, chunk.length - charIdx);
+        buf += chunk.substr(charIdx, n);
+        charIdx += n;
+        answerCard.innerHTML = renderMarkdown(buf) + '<span class="cursor-blink"></span>';
+        answerCard.scrollTop = answerCard.scrollHeight;
+        if (charIdx >= chunk.length) { chunkIdx++; charIdx = 0; }
+        streamTimer = setTimeout(step, 60);
+      } else {
+        lastAnswer = buf;
+        answerCard.innerHTML = renderMarkdown(buf);
+        setAnswering(false);
+        setStatus("分析完成，可点击「复制回答」保存。", "ok");
+      }
+    }, 1200);
+  });
+
+  // ---------- 复制回答 ----------
+  copyBtn.addEventListener("click", function () {
+    if (!lastAnswer) return;
+    navigator.clipboard.writeText(lastAnswer).then(function () {
+      setStatus("已复制回答到剪贴板。", "ok");
+    });
+  });
+
+  // ---------- 重新抓取 ----------
+  recaptureBtn.addEventListener("click", function () {
+    seedLog();
+    setStatus("已重新从日志缓冲区抓取错误。", "ok");
+  });
+
+  refreshBtn.addEventListener("click", function () { loadModels(true); });
+
+  // ---------- 初始化 ----------
+  seedLog();
+  loadModels(false);
+})();
+</script>
+</body>
+</html>
