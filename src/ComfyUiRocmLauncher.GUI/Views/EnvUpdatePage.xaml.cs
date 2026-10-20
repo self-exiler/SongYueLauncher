@@ -230,17 +230,19 @@ public sealed partial class EnvUpdatePage : Page
 
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
+        string? result = null;
         await RunOpAsync("检查更新", async () =>
         {
             var remote = await RepoService.QueryRemoteHashAsync(App.Services.Tasks, Settings, Append);
             var local = RepoService.ReadLocalHash(Settings.ComfyUiDir);
             // remote 为 null = 查询失败（镜像不通 / 仓库私有 / 网络中断），不能当成「有更新」
-            DispatcherQueue.TryEnqueue(() => ProjectStatusText.Text =
-                remote is null
-                    ? $"本地 {RepoService.ShortHash(local)} · 远端版本未知（检查失败）"
-                    : $"本地 {RepoService.ShortHash(local)} · 远端 {RepoService.ShortHash(remote)}"
-                      + (remote == local ? "（已最新）" : "（有更新）"));
+            result = remote is null
+                ? $"本地 {RepoService.ShortHash(local)} · 远端版本未知（检查失败）"
+                : $"本地 {RepoService.ShortHash(local)} · 远端 {RepoService.ShortHash(remote)}"
+                  + (remote == local ? "（已最新）" : "（有更新）");
         });
+        // RunOpAsync 的 finally 会用 RefreshStatus 重写状态行，比较结果必须等它结束后再写。
+        if (result is not null) ProjectStatusText.Text = result;
     }
 
     private async void Clone_Click(object sender, RoutedEventArgs e)

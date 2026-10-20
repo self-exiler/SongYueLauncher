@@ -75,6 +75,19 @@ public class AiDiagnosticsClientTests
     }
 
     [Fact]
+    public void ParseAnswer_TruncatedJsonLine_IsSkippedInsteadOfAppendedAsText()
+    {
+        var stdout = string.Join('\n',
+            """{"type":"text","sessionID":"ses_4","part":{"type":"text","text":"残缺""",
+            """{"type":"text","sessionID":"ses_4","part":{"type":"text","text":"完整回答"}}""");
+
+        var answer = RunEventParser.ParseAnswer(stdout);
+
+        Assert.True(answer.Success);
+        Assert.Equal("完整回答", answer.Text);
+    }
+
+    [Fact]
     public void ParseAnswer_ErrorEvent_TakesPrecedenceOverPartialText()
     {
         var stdout = string.Join('\n',
@@ -97,6 +110,7 @@ public class AiDiagnosticsClientTests
             ModelId = "openai/gpt-6-sol",
             Agent = Analyst,
             Title = "日志分析",
+            Instruction = "完整内容已通过 stdin 附加。",
         });
 
         Assert.StartsWith("run --standalone --format json --agent ", args);
@@ -141,6 +155,13 @@ public class AiDiagnosticsClientTests
     }
 
     [Fact]
+    public void TryFormat_TruncatedJsonLine_ProducesNoDisplayText()
+    {
+        Assert.Equal(((string?)null, false), RunEventParser.TryFormat(
+            """{"type":"text","part":{"type":"text","text":"残缺"""));
+    }
+
+    [Fact]
     public void TryFormat_ToolUse_ReportsToolNameAndMarksProgress()
     {
         var (text, isProgress) = RunEventParser.TryFormat(
@@ -163,7 +184,7 @@ public class AiDiagnosticsClientTests
         Assert.Equal("primary", agent.GetProperty("mode").GetString());
         Assert.Equal("只读分析日志。", agent.GetProperty("system").GetString());
         Assert.Equal("deny", permission.GetProperty("*").GetString());
-        Assert.Equal("allow", permission.GetProperty("read").GetString());
+        Assert.Equal("deny", permission.GetProperty("read").GetString());
         Assert.Equal("allow", permission.GetProperty("webfetch").GetString());
         Assert.Equal("allow", permission.GetProperty("websearch").GetString());
     }

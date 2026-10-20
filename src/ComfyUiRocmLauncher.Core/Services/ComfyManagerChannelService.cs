@@ -39,8 +39,8 @@ public static class ComfyManagerChannelService
     // ================= 目录定位 =================
 
     /// <summary>
-    /// user 目录：<c>--user-directory</c>（**必须真的启用**，结构化参数，相对路径按 ComfyUI 目录解析）
-    /// → 否则 <c>&lt;ComfyUI 目录&gt;/user</c>。与 ComfyUI 自己的取值规则一致。
+    /// user 目录：<c>--user-directory</c> → <c>--base-directory</c>/user → <c>&lt;ComfyUI 目录&gt;/user</c>。
+    /// 与 ComfyUI 的取值规则一致（user-directory 覆盖 base-directory；相对路径按 ComfyUI 目录解析）。
     /// </summary>
     /// <remarks>
     /// 只认 Enabled 的原因：关闭开关只会把它移出 Enabled，Values 里的旧值仍留着（`SetValue` 仅在写空时删）。
@@ -48,15 +48,23 @@ public static class ComfyManagerChannelService
     /// </remarks>
     public static string ResolveUserDirectory(AppConfig config)
     {
-        var overridden = config.Args is { } args && args.IsEnabled("user-directory")
-            ? args.Value("user-directory").Trim().Trim('"')
-            : string.Empty;
-        if (overridden.Length == 0) return Path.GetFullPath(Path.Combine(config.ComfyUiDir, "user"));
-        var full = Path.IsPathRooted(overridden)
-            ? overridden
-            : Path.Combine(config.ComfyUiDir, overridden);
-        return Path.GetFullPath(full);
+        var userOverride = EnabledValue(config, "user-directory");
+        if (userOverride.Length > 0) return ResolveAgainstComfyDir(config, userOverride);
+
+        var baseOverride = EnabledValue(config, "base-directory");
+        if (baseOverride.Length > 0)
+            return Path.Combine(ResolveAgainstComfyDir(config, baseOverride), "user");
+
+        return Path.GetFullPath(Path.Combine(config.ComfyUiDir, "user"));
     }
+
+    private static string EnabledValue(AppConfig config, string name) =>
+        config.Args is { } args && args.IsEnabled(name)
+            ? args.Value(name).Trim().Trim('"')
+            : string.Empty;
+
+    private static string ResolveAgainstComfyDir(AppConfig config, string path) =>
+        Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(config.ComfyUiDir, path));
 
     /// <summary>
     /// 已初始化的 Manager 目录（0–2 个）：新版 <c>&lt;user&gt;/__manager</c>（ComfyUI ≥ 0.3.76）与

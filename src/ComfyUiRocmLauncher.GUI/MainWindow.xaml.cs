@@ -43,7 +43,7 @@ public sealed partial class MainWindow : Window
         _ = RefreshVersionFromGitAsync();
     }
 
-    /// <summary>标题栏版本徽章同样受益于 HEAD 补查回填（FR-1.3）。</summary>
+    /// <summary>标题栏版本徽章读取本地 git HEAD（FR-1.3），外部 pull 后也能显示真实版本。</summary>
     private async Task RefreshVersionFromGitAsync()
     {
         if (await App.Services.RefreshVersionFromGitAsync() is not null)

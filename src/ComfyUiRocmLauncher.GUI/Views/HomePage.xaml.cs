@@ -39,7 +39,7 @@ public sealed partial class HomePage : Page
         RefreshQuickDirs();
     }
 
-    /// <summary>hash 文件缺失但目录是 git 检出时补查 HEAD（FR-1.3），回填后刷新显示。</summary>
+    /// <summary>git 检出每次读取本地 HEAD（FR-1.3），外部 pull 后也能刷新显示。</summary>
     private async Task RefreshVersionFromGitAsync()
     {
         var version = await App.Services.RefreshVersionFromGitAsync();

@@ -17,8 +17,12 @@
     { "match": "Radeon RX 67", "arch": "gfx1031", "template": "rdna12" },
     { "match": "Radeon RX 66", "arch": "gfx1032", "template": "rdna12" },
     { "match": "Radeon RX 65", "arch": "gfx1034", "template": "rdna12" },
-    { "match": "Radeon RX 5", "arch": "gfx1012", "template": "rdna12" },
-    { "match": "Radeon RX Vega", "arch": "gfx908", "template": "rdna12" },
+    { "match": "Radeon RX 5700", "arch": "gfx1010", "template": "rdna12" },
+    { "match": "Radeon RX 5600", "arch": "gfx1010", "template": "rdna12" },
+    { "match": "Radeon RX 5500", "arch": "gfx1012", "template": "rdna12" },
+    { "match": "Radeon RX 5300", "arch": "gfx1012", "template": "rdna12" },
+    { "match": "Radeon RX 5", "arch": "gfx803", "archAvailable": false },
+    { "match": "Radeon RX Vega", "arch": "gfx900", "template": "rdna12" },
     { "match": "Instinct MI300", "arch": "gfx942", "template": "rdna3" },
     { "match": "Instinct MI325", "arch": "gfx950", "template": "rdna3" }
   ]

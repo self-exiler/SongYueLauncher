@@ -39,8 +39,16 @@ public sealed class AiAnalysisWindow : Window
         AppWindow.Resize(new Windows.Graphics.SizeInt32(980, 720));
         if (File.Exists(appIcon)) AppWindow.SetIcon(appIcon);
 
+        // 主窗口关闭后独立窗口不会自动退出，进程会悬着；随主窗口一起关（顺带触发 Unloaded 取消分析）。
+        App.Window.Closed += OnMainWindowClosed;
+        Closed += OnClosed;
+
         CenterOverMainWindow();
     }
+
+    private void OnMainWindowClosed(object sender, WindowEventArgs args) => Close();
+
+    private void OnClosed(object sender, WindowEventArgs args) => App.Window.Closed -= OnMainWindowClosed;
 
     private void CenterOverMainWindow()
     {

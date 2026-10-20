@@ -76,6 +76,7 @@ var answer = await client.AskAsync(new AiRequest
     ModelId = models[0].QualifiedId,   // 形如 opencode/claude-haiku-5-5
     Agent = agent,
     Title = "依赖排查",
+    Instruction = "完整内容已通过 stdin 附加，请直接作答。",
 });
 
 Console.WriteLine(answer.Success ? answer.Text : $"失败：{answer.Text}");
@@ -85,7 +86,13 @@ Console.WriteLine(answer.Success ? answer.Text : $"失败：{answer.Text}");
 
 ```csharp
 var answer = await client.AskAsync(
-    new AiRequest { Prompt = prompt, ModelId = model, Agent = agent },
+    new AiRequest
+    {
+        Prompt = prompt,
+        ModelId = model,
+        Agent = agent,
+        Instruction = "完整内容已通过 stdin 附加，请直接作答。",
+    },
     onOutputLine: line =>
     {
         // 无需自己解析 NDJSON；进度与否由返回值直接告知，不必猜字符串前缀
@@ -142,6 +149,7 @@ var answer = await client.AskAsync(new AiRequest
     Prompt = prompt,
     ModelId = model,
     Agent = agent,
+    Instruction = "完整内容已通过 stdin 附加，请直接作答。",
 });
 ```
 
@@ -170,7 +178,7 @@ var answer = await client.AskAsync(new AiRequest
 | `ModelId` | ✅ | — | `provider/model` |
 | `Agent` | ✅ | — | agent 画像 |
 | `Title` | | `"AI 分析"` | 会话标题 |
-| `Instruction` | | `AiRequest.DefaultInstruction` | argv 末尾的短指令，说明内容已从 stdin 传入 |
+| `Instruction` | ✅ | — | argv 末尾的短指令，通常只说明内容已从 stdin 传入；行为边界写在 agent 人设里 |
 
 ### `AiAgentProfile`
 
@@ -183,7 +191,7 @@ new AiAgentProfile
 }
 ```
 
-画像只有这三个字段。`opencode.json` 里其余三项由库固定，不开放覆写：`mode = "primary"`、`temperature = 0.1`、`permission = { "*": "deny", read/webfetch/websearch: "allow" }`——分析任务只出结论与步骤，不改文件、不跑命令，只允许读文件与联网查证。
+画像只有这三个字段。`opencode.json` 里其余三项由库固定，不开放覆写：`mode = "primary"`、`temperature = 0.1`、`permission = { "*": "deny", read: "deny", webfetch/websearch: "allow" }`——分析任务只出结论与步骤，不改文件、不跑命令、不读本机文件，只允许联网查证。
 
 ### 日志与提示词
 
@@ -226,7 +234,6 @@ classDiagram
         +Agent AiAgentProfile
         +Title string
         +Instruction string
-        +DefaultInstruction string
     }
 
     class AiAnswer {
@@ -392,6 +399,8 @@ sequenceDiagram
 
 7. **`--model` 值必须是 `provider/model`。** `AiModel.QualifiedId` 已拼好。
 
+8. **日志是不可信文本，权限矩阵拒绝 `read`。** 模型可能被日志内容诱导去读取本机文件；分析只需 stdin 里的材料，因此 `read` 固定为 `deny`，行为规则也只写在 agent 人设里，不在请求模板中重复。
+
 ---
 
 ## 7. 事件流约定（`opencode run --format json`）
@@ -406,7 +415,7 @@ sequenceDiagram
 | `tool_use` | 转为 `opencode 正在使用 <tool> 查证资料。`，`IsProgress = true` |
 | 其它 | `TryFormat` 返回 `(null, false)`（无展示价值） |
 
-非 JSON 行原样返回（`IsProgress = false`），便于宿主显示裸输出。
+非 JSON 行原样返回（`IsProgress = false`），便于宿主显示裸输出；以 `{` 开头但解析失败的截断行会被丢弃，避免 JSON 片段混进回答正文。
 
 ---
 
@@ -427,6 +436,7 @@ var answer = await client.AskAsync(new AiRequest
     Prompt = "请只回复 OK 两个字母。",
     ModelId = models[0].QualifiedId,
     Agent = agent,
+    Instruction = "完整内容已通过 stdin 附加，请直接作答。",
 });
 ```
 

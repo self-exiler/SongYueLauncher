@@ -8,15 +8,9 @@ namespace ComfyUiRocmLauncher.Core.Services;
 /// </summary>
 public sealed class LaunchService
 {
-    private const int StopGraceMs = 5000;
-    private static readonly TimeSpan ShutdownRequestTimeout = TimeSpan.FromSeconds(2);
-
     private readonly ProcessService _process = new();
     private readonly CliArgsCatalog _catalog = CliArgsCatalog.Instance;
     private readonly AppStateMachine _stateMachine;
-
-    /// <summary>本次启动推导出的服务地址（FR-4.3 同源），供 /shutdown 优雅停止使用。</summary>
-    private string? _launchedUrl;
 
     public LaunchService(LogService log, AppStateMachine stateMachine)
     {
@@ -103,7 +97,6 @@ public sealed class LaunchService
         Log.Append($"[启动器] spawn: {config.PythonExe} {arguments}");
 
         _process.Start(config.PythonExe, arguments, comfyDir, env);
-        _launchedUrl = ArgsBuilder.DeriveBrowserUrl(config.Args);
 
         var ready = await WaitForReadyAsync(config, readyTimeout, cancellationToken).ConfigureAwait(false);
         if (ready)
@@ -129,36 +122,14 @@ public sealed class LaunchService
         if (State is not (LaunchState.Starting or LaunchState.Running)) return;
         SetState(LaunchState.Stopping);
 
-        // FR-4.2：优雅停止走 ComfyUI 自身的 /shutdown 端点。绝不再用 AttachConsole + CTRL_BREAK——
+        // FR-4.2：上游 ComfyUI 未提供 /shutdown 端点（server.py 的 POST 路由只有 prompt/queue/
+        // interrupt/free 等），停止只能强杀进程树。绝不用 AttachConsole + CTRL_BREAK——
         // 组 0 信号会广播给控制台内全部进程，事件异步派发晚于保护窗口撤销，实测把启动器自己打死。
-        var shutdownUrl = _launchedUrl is null ? null : _launchedUrl + "/shutdown";
-        Log.Append(shutdownUrl is null
-            ? "[启动器] 未记录服务地址，直接强杀进程树…"
-            : $"[启动器] POST {shutdownUrl} 请求优雅停止…");
-        var accepted = shutdownUrl is not null && await TryPostShutdownAsync(shutdownUrl);
-        Log.Append(accepted
-            ? "[启动器] /shutdown 已接受，等待进程退出（最多 5 秒）…"
-            : "[启动器] /shutdown 未生效，直接强杀进程树…");
-
-        await _process.StopAsync(accepted ? StopGraceMs : 0).ConfigureAwait(false);
+        Log.Append("[启动器] 强杀进程树…");
+        await _process.StopAsync().ConfigureAwait(false);
         Log.EndSession();
         Log.Append("[启动器] 进程已退出");
         SetState(LaunchState.Idle);
-    }
-
-    private static async Task<bool> TryPostShutdownAsync(string url)
-    {
-        try
-        {
-            using var http = new System.Net.Http.HttpClient { Timeout = ShutdownRequestTimeout };
-            var response = await http.PostAsync(url, content: null).ConfigureAwait(false);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or OperationCanceledException)
-        {
-            // 超时（OperationCanceledException）与服务不可达同样按「未生效」处理
-            return false;
-        }
     }
 
     private async Task<string?> RunRocmSdkStepsAsync(AppConfig config)

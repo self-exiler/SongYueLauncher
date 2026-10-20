@@ -55,26 +55,34 @@ public static class RepoService
     }
 
     /// <summary>
-    /// git 检出但缺 <c>.last_update_hash</c> 时补查本地 HEAD 并回填版本文件（自愈）；
+    /// 读取 git 检出的本地 HEAD 并回填版本文件（用户可能在外部 <c>git pull</c>，hash 文件会过期）；
     /// 返回短版本号，非 git 检出或查询失败返回 null。
     /// </summary>
     public static async Task<string?> DetectGitHeadAsync(AppConfig config)
     {
         if (!IsGitCheckout(config.ComfyUiDir)) return null;
 
-        var git = ToolLocator.ResolveGit(config);
-        var lines = new List<string>();
-        var code = await ProcessService.RunCommandAsync(
-            git, "rev-parse HEAD", config.ComfyUiDir, lines.Add).ConfigureAwait(false);
-        if (code != 0) return null;
+        try
+        {
+            var git = ToolLocator.ResolveGit(config);
+            var lines = new List<string>();
+            var code = await ProcessService.RunCommandAsync(
+                git, "rev-parse HEAD", config.ComfyUiDir, lines.Add).ConfigureAwait(false);
+            if (code != 0) return null;
 
-        var hash = lines.FirstOrDefault()?.Trim();
-        if (string.IsNullOrEmpty(hash)) return null;
+            var hash = lines.FirstOrDefault()?.Trim();
+            if (string.IsNullOrEmpty(hash)) return null;
 
-        try { File.WriteAllText(HashFilePath(config.ComfyUiDir), hash); }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-        return ShortHash(hash);
+            try { File.WriteAllText(HashFilePath(config.ComfyUiDir), hash); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return ShortHash(hash);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // git 缺失或无法启动：版本显示降级为现有 hash 文件，不影响启动
+            return null;
+        }
     }
 
     /// <summary>

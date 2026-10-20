@@ -22,14 +22,15 @@ internal sealed class AgentWorkspace : IDisposable
     private const double AgentTemperature = 0.1;
 
     /// <summary>
-    /// 权限矩阵：默认拒绝一切工具，仅放行读文件、抓网页与搜索。
-    /// 分析任务只给结论与步骤，不改代码、不执行命令——这条边界固定写在库内，不开放覆写。
+    /// 权限矩阵：默认拒绝一切工具，仅放行联网查证。
+    /// 日志是不可信的外部文本（可能夹带提示注入），因此连 read 也拒绝——模型不能按日志里的
+    /// 「请读取某路径」去翻本机文件，这条边界固定写在库内，不开放覆写。
     /// </summary>
     private static readonly IReadOnlyDictionary<string, string> AgentPermissions =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["*"] = "deny",
-            ["read"] = "allow",
+            ["read"] = "deny",
             ["webfetch"] = "allow",
             ["websearch"] = "allow",
         };

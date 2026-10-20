@@ -4,8 +4,8 @@ using AiDiagnostics.Runtime;
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
-/// 子进程管理（SRS 3.2 / FR-4）：启动 ComfyUI、流式输出、等待优雅退出 + 进程树强杀兜底。
-/// 优雅停止由上层经 HTTP /shutdown 触发（FR-4.2），本类只负责「等待 → 强杀」两段。
+/// 子进程管理（SRS 3.2 / FR-4）：启动 ComfyUI、流式输出、停止时强杀整个进程树。
+/// 上游 ComfyUI 没有可用的 HTTP 停止端点（FR-4.2），因此不存在「优雅退出」阶段。
 /// </summary>
 public sealed class ProcessService
 {
@@ -39,11 +39,8 @@ public sealed class ProcessService
         _process = process;
     }
 
-    /// <summary>
-    /// 停止子进程：先给优雅退出留 gracefulWaitMs 窗口（/shutdown 已由上层发出），
-    /// 仍未退出则强杀整个进程树，再等最多 3 秒收尾。
-    /// </summary>
-    public async Task StopAsync(int gracefulWaitMs = 0)
+    /// <summary>停止子进程：强杀整个进程树，再等最多 3 秒收尾。</summary>
+    public async Task StopAsync()
     {
         var process = _process;
         if (process is null) return;
@@ -55,33 +52,17 @@ public sealed class ProcessService
             return;
         }
 
-        if (gracefulWaitMs > 0)
+        try { process.Kill(entireProcessTree: true); }
+        catch (InvalidOperationException) { }
+
+        try
         {
-            try
-            {
-                using var graceCts = new CancellationTokenSource(gracefulWaitMs);
-                await process.WaitForExitAsync(graceCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // 窗口内未退出 → 强杀兜底
-            }
+            using var killCts = new CancellationTokenSource(3000);
+            await process.WaitForExitAsync(killCts.Token).ConfigureAwait(false);
         }
-
-        if (!process.HasExited)
+        catch (OperationCanceledException)
         {
-            try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { }
-
-            try
-            {
-                using var killCts = new CancellationTokenSource(3000);
-                await process.WaitForExitAsync(killCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // 强杀后仍未退出：不再等待，交由系统回收
-            }
+            // 强杀后仍未退出：不再等待，交由系统回收
         }
 
         process.Dispose();

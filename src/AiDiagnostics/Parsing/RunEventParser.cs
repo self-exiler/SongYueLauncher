@@ -73,7 +73,9 @@ public static class RunEventParser
         }
         catch (JsonException)
         {
-            return new(trimmed, null, false);
+            // 以 { 开头却解析失败 = 被截断的 NDJSON 半行。当成正文会把 JSON 片段写进回答；
+            // 当成错误又过于严重，直接丢弃（完整事件会另起一行重发）。
+            return default;
         }
 
         using (doc)

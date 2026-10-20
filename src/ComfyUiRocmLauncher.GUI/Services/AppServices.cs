@@ -78,7 +78,12 @@ public sealed class AppServices
         }
     }
 
-    /// <summary>当前版本显示（FR-1.3）：.last_update_hash → comfyui_version.py → unknown。</summary>
+    private Task<string?>? _gitHeadRefresh;
+
+    /// <summary>
+    /// 当前版本显示（FR-1.3）：.last_update_hash → comfyui_version.py → unknown。
+    /// git 检出的 HEAD 由后台刷新回填，hash 文件在这里只是同步缓存。
+    /// </summary>
     public string CurrentVersionHash()
     {
         var hash = RepoService.ReadLocalHash(Settings.ComfyUiDir);
@@ -87,10 +92,14 @@ public sealed class AppServices
         return version is null ? "unknown" : "v" + version;
     }
 
-    /// <summary>hash 文件缺失但目录是 git 检出时补查 HEAD 并回填；返回刷新后的显示值，无进展返回 null。</summary>
-    public async Task<string?> RefreshVersionFromGitAsync()
+    /// <summary>
+    /// git 检出每次读取本地 HEAD——用户可能在外部 <c>git pull</c>，只看 hash 文件会显示过期版本。
+    /// 并发调用共用同一个查询；返回显示值，非 git 检出或查询失败返回 null。
+    /// </summary>
+    public Task<string?> RefreshVersionFromGitAsync()
     {
-        if (!string.IsNullOrEmpty(RepoService.ReadLocalHash(Settings.ComfyUiDir))) return null;
-        return await RepoService.DetectGitHeadAsync(Settings);
+        if (!RepoService.IsGitCheckout(Settings.ComfyUiDir)) return Task.FromResult<string?>(null);
+        if (_gitHeadRefresh is { IsCompleted: false }) return _gitHeadRefresh;
+        return _gitHeadRefresh = RepoService.DetectGitHeadAsync(Settings);
     }
 }

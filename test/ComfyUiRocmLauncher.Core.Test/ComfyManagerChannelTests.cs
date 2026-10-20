@@ -273,6 +273,50 @@ public class ComfyManagerChannelTests : IDisposable
     }
 
     [Fact]
+    public void ResolveUserDirectory_UsesBaseDirectoryWhenUserDirectoryAbsent()
+    {
+        var config = NewConfig();
+        var baseDir = Path.Combine(_tempRoot, "shared-base");
+        config.Args.Enable("base-directory", true);
+        config.Args.SetValue("base-directory", baseDir);
+
+        Assert.Equal(Path.Combine(baseDir, "user"), ComfyManagerChannelService.ResolveUserDirectory(config));
+    }
+
+    [Fact]
+    public void ResolveUserDirectory_UserDirectoryOverridesBaseDirectory()
+    {
+        var config = NewConfig();
+        config.Args.Enable("base-directory", true);
+        config.Args.SetValue("base-directory", Path.Combine(_tempRoot, "shared-base"));
+        config.Args.Enable("user-directory", true);
+        config.Args.SetValue("user-directory", Path.Combine(_tempRoot, "explicit-user"));
+
+        Assert.Equal(Path.Combine(_tempRoot, "explicit-user"),
+            ComfyManagerChannelService.ResolveUserDirectory(config));
+    }
+
+    [Fact]
+    public void ResolveUserDirectory_ResolvesRelativeBaseDirectoryAgainstComfyDir()
+    {
+        var config = NewConfig();
+        config.Args.Enable("base-directory", true);
+        config.Args.SetValue("base-directory", "shared");
+
+        Assert.Equal(Path.Combine(config.ComfyUiDir, "shared", "user"),
+            ComfyManagerChannelService.ResolveUserDirectory(config));
+    }
+
+    [Fact]
+    public void ResolveUserDirectory_IgnoresValueOfDisabledBaseArgument()
+    {
+        var config = NewConfig();
+        config.Args.SetValue("base-directory", Path.Combine(_tempRoot, "stale-base"));
+
+        Assert.Equal(UserDir(config), ComfyManagerChannelService.ResolveUserDirectory(config));
+    }
+
+    [Fact]
     public void Sync_CoversLegacyLayoutToo()
     {
         var config = NewConfig();

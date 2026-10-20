@@ -40,6 +40,7 @@ public sealed class ComfyUiAiService
                 ModelId = modelQualifiedId,
                 Agent = ComfyUiDiagnosis.Agent,
                 Title = ComfyUiDiagnosis.AnalysisTitle,
+                Instruction = ComfyUiDiagnosis.AnalysisInstruction,
             },
             onOutputLine,
             cancellationToken).ConfigureAwait(false);

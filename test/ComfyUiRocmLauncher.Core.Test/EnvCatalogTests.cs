@@ -96,6 +96,38 @@ public class EnvCatalogTests
         Assert.Equal(expectedArch, info.Arch);
     }
 
+    // RDNA1 不能按「Radeon RX 5」前缀一刀切成 Navi 14：5700/5600 是 Navi 10（gfx1010），
+    // 5500/5300 才是 Navi 14（gfx1012）；RX 500 系（Polaris）是 gfx803。
+    [Theory]
+    [InlineData("AMD Radeon RX 5700 XT", "gfx1010")]
+    [InlineData("AMD Radeon RX 5600 XT", "gfx1010")]
+    [InlineData("AMD Radeon RX 5500 XT", "gfx1012")]
+    [InlineData("AMD Radeon RX 5300M", "gfx1012")]
+    [InlineData("AMD Radeon RX 6550M", "gfx1034")] // 移动版仍是 Navi 24
+    public void GpuArch_Rdna1AndMobileChipsUseOwnArch(string name, string expectedArch)
+    {
+        var info = GpuArchService.Instance.Map(name);
+        Assert.True(info.Known);
+        Assert.Equal(expectedArch, info.Arch);
+    }
+
+    [Theory]
+    [InlineData("AMD Radeon RX 580")]
+    [InlineData("AMD Radeon RX 560")]
+    public void GpuArch_PolarisIsKnownButHasNoWindowsRocmBuild(string name)
+    {
+        var info = GpuArchService.Instance.Map(name);
+
+        Assert.Equal("gfx803", info.Arch);
+        Assert.False(info.IsAvailable);
+    }
+
+    [Fact]
+    public void GpuArch_VegaIsGfx900NotMi100()
+    {
+        Assert.Equal("gfx900", GpuArchService.Instance.Map("AMD Radeon RX Vega 64").Arch);
+    }
+
     [Fact]
     public void GpuArch_UnknownNameNotKnown()
     {
