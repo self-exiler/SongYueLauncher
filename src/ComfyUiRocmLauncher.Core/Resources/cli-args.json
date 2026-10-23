@@ -153,7 +153,7 @@
         { "name": "dont-print-server", "type": "flag", "description": "不打印服务输出" },
         { "name": "quick-test-for-ci", "type": "flag", "description": "CI 快速测试" },
         { "name": "windows-standalone-build", "type": "flag", "description": "独立版便利行为（隐含 auto-launch）" },
-        { "name": "auto-launch", "type": "flag", "description": "自动打开浏览器（与启动器侧开关互不影响）" },
+        { "name": "auto-launch", "type": "flag", "description": "自动打开浏览器（启动器不代开，此为唯一入口）" },
         { "name": "disable-auto-launch", "type": "flag", "description": "禁止自动打开浏览器" },
         { "name": "disable-metadata", "type": "flag", "description": "文件中不保存 prompt 元数据" },
         { "name": "multi-user", "type": "flag", "description": "启用多用户独立存储" },

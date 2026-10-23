@@ -6,7 +6,7 @@ using ComfyUiRocmLauncher.GUI.Helpers;
 
 namespace ComfyUiRocmLauncher.GUI.Views;
 
-/// <summary>环境变量页（SRS FR-3）：固定注入层只读 + 可编辑自定义层。GPU 模板应用已移至配置管理页（FR-7）。</summary>
+/// <summary>环境变量页（SRS FR-3）：固定注入层只读 + 可编辑自定义层。GPU 模板应用见主页启动控制区（FR-7）。</summary>
 public sealed partial class EnvVarsPage : Page
 {
     public EnvVarsPage()

@@ -194,7 +194,7 @@ public static class RepoService
         }
         onOutput?.Invoke($"      robocopy 成功（退出码 {code}）");
         WriteHash(config, hash, onOutput);
-        onOutput?.Invoke("√ 项目覆盖更新完成（提示：可在轮子页同步项目依赖）");
+        onOutput?.Invoke("√ 项目覆盖更新完成（提示：可在「环境与更新」页执行「安装项目依赖」同步通用 whl 包）");
         return true;
     }
 

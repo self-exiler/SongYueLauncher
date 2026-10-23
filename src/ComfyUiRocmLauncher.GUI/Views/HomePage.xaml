@@ -74,7 +74,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="2" VerticalAlignment="Center">
                                 <TextBlock Text="运行 ComfyUI" Style="{StaticResource CardTitleStyle}" />
-                                <TextBlock Text="启动后可停止；就绪后按设置自动打开浏览器"
+                                <TextBlock Text="启动后可停止；自动打开浏览器请在「启动参数」中启用 --auto-launch"
                                            Style="{StaticResource SecondaryTextStyle}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
@@ -98,18 +98,52 @@
 
                         <Border Style="{StaticResource CardDividerStyle}" />
 
-                        <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12">
+                        <!-- GPU 架构模板（原配置管理页 FR-7，应用为全量替换） -->
+                        <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12" RowSpacing="6">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="2" VerticalAlignment="Center">
-                                <TextBlock Text="启动后自动打开浏览器" Style="{StaticResource CardTitleStyle}" />
-                                <TextBlock Text="与 ComfyUI --auto-launch 互不影响"
-                                           Style="{StaticResource SecondaryTextStyle}" />
+                            <TextBlock Text="GPU 架构模板" VerticalAlignment="Center"
+                                       ToolTipService.ToolTip="应用模板会把当前环境变量与启动参数整体替换为模板内容，之后仍可在「启动参数 / 环境变量」页编辑。自定义模板中的目录路径存为占位符，换目录仍可用。" />
+                            <ComboBox x:Name="TemplateCombo" Grid.Column="1" MaxWidth="420" HorizontalAlignment="Stretch"
+                                      DisplayMemberPath="Title" SelectionChanged="TemplateCombo_SelectionChanged" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="ApplyButton" Content="应用模板" Style="{StaticResource AccentButtonStyle}"
+                                        Click="Apply_Click" />
+                                <Button x:Name="SaveAsButton" Content="另存为模板" Click="SaveAs_Click" />
+                                <Button x:Name="DeleteButton" Content="删除模板" IsEnabled="False" Click="Delete_Click" />
                             </StackPanel>
-                            <ToggleSwitch x:Name="AutoBrowserToggle" Grid.Column="1" VerticalAlignment="Center"
-                                          OnContent="" OffContent="" Toggled="AutoBrowserToggle_Toggled" />
+                            <!-- 只在应用/另存/删除后显示一行反馈，平时为空不占位 -->
+                            <TextBlock x:Name="TemplateStatusText" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                                       Style="{StaticResource SecondaryTextStyle}" FontSize="12" TextWrapping="Wrap" />
+                        </Grid>
+
+                        <Border Style="{StaticResource CardDividerStyle}" />
+
+                        <!-- 导出启动脚本（原配置管理页，脱离启动器直接跑） -->
+                        <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12" RowSpacing="6">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="导出启动脚本" VerticalAlignment="Center"
+                                       ToolTipService.ToolTip="把当前配置（目录、解释器、环境变量、参数）导出为可在 Windows PowerShell 直接运行的 .ps1，用于桌面快捷方式或计划任务。" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="ExportPs1Button" Content="导出为 .ps1" Click="ExportPs1_Click" />
+                            </StackPanel>
+                            <TextBlock x:Name="ExportStatusText" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                                       Style="{StaticResource SecondaryTextStyle}" FontSize="12" TextWrapping="Wrap" />
                         </Grid>
                     </StackPanel>
                 </Border>

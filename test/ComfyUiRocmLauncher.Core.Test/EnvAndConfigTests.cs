@@ -121,7 +121,6 @@ public class EnvAndConfigTests : IDisposable
         {
             ComfyUiDir = @"D:\AI\comfyui-rocm",
             PythonExe = @"D:\AI\comfyui-rocm\.venv\Scripts\python.exe",
-            AutoOpenBrowser = true,
             ExtraArgs = "--verbose",
         };
         config.Args.Enable("enable-manager", true);
@@ -141,7 +140,6 @@ public class EnvAndConfigTests : IDisposable
         var loaded = svc.Load();
 
         Assert.Equal(config.ComfyUiDir, loaded.ComfyUiDir);
-        Assert.True(loaded.AutoOpenBrowser);
         Assert.Equal("--verbose", loaded.ExtraArgs);
         Assert.True(loaded.Args.IsEnabled("enable-manager"));
         Assert.Equal("2", loaded.CustomEnvVars["MIOPEN_FIND_MODE"]);

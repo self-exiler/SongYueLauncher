@@ -337,18 +337,28 @@ public static class WheelService
         }
     }
 
-    /// <summary>项目依赖同步（FR-8.6）：过滤 torch 系后 uv pip install -r，报告变更。</summary>
+    /// <summary>整合包根目录的项目通用依赖清单（SRS FR-8.6）：按序安装，除主清单外缺失即跳过。</summary>
+    public static readonly string[] RequirementFiles = ["requirements.txt", "manager_requirements.txt", "agent_requirements.txt"];
+
+    /// <summary>项目通用依赖安装（FR-8.6）：三个依赖清单逐一过滤 torch 系后 uv pip install -r，报告变更。</summary>
     public static async Task<IReadOnlyList<string>> SyncRequirementsAsync(TaskRunner runner, AppConfig config, Action<string>? onOutput = null)
     {
-        var req = Path.Combine(config.ComfyUiDir, "requirements.txt");
-        if (!File.Exists(req)) { onOutput?.Invoke("[错误] 未找到 requirements.txt"); return Array.Empty<string>(); }
+        var files = RequirementFiles
+            .Select(f => Path.Combine(config.ComfyUiDir, f))
+            .Where(File.Exists)
+            .ToArray();
+        if (files.Length == 0) { onOutput?.Invoke("[错误] 整合包目录未找到 requirements.txt"); return Array.Empty<string>(); }
 
         var before = await FreezeAsync(runner, config).ConfigureAwait(false);
-        var filtered = RequirementsFilter.WriteFilteredFile(req, config.ComfyUiDir);
-        onOutput?.Invoke("同步项目依赖（已过滤 torch 系）…");
-        var code = await RunUvAsync(runner, config, $"pip install -r {CommandLine.Quote(filtered)} {PypiIndex(config)}{PythonArg(config)}", onOutput)
-            .ConfigureAwait(false);
-        if (code != 0) { onOutput?.Invoke($"[错误] 依赖安装失败（退出码 {code}）"); return Array.Empty<string>(); }
+        foreach (var req in files)
+        {
+            var name = Path.GetFileName(req);
+            var filtered = RequirementsFilter.WriteFilteredFile(req, config.ComfyUiDir);
+            onOutput?.Invoke($"安装项目通用依赖：{name}（已过滤 torch 系）…");
+            var code = await RunUvAsync(runner, config, $"pip install -r {CommandLine.Quote(filtered)} {PypiIndex(config)}{PythonArg(config)}", onOutput)
+                .ConfigureAwait(false);
+            if (code != 0) { onOutput?.Invoke($"[错误] {name} 安装失败（退出码 {code}）"); return Array.Empty<string>(); }
+        }
 
         var after = await FreezeAsync(runner, config).ConfigureAwait(false);
         return DiffPackages(before, after);

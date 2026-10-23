@@ -173,6 +173,30 @@ public class EnvCatalogTests
     }
 
     [Fact]
+    public void RequirementsFilter_FilteredFileNamedPerSource()
+    {
+        // 三清单（requirements / manager_requirements / agent_requirements）共用输出目录时，过滤件必须各自派生名字
+        var dir = Path.Combine(Path.GetTempPath(), "reqfilter-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var src = Path.Combine(dir, "manager_requirements.txt");
+            File.WriteAllText(src, "torch==2.9.0\ncomfyui_manager==4.2.2\n");
+
+            var target = RequirementsFilter.WriteFilteredFile(src, dir);
+            var lines = File.ReadAllLines(target);
+
+            Assert.Equal(Path.Combine(dir, "manager_requirements_filtered.txt"), target);
+            Assert.DoesNotContain("torch==2.9.0", lines);
+            Assert.Contains("comfyui_manager==4.2.2", lines);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void BuildTorchUninstallList_IncludesFixedAndDynamicPrefixes()
     {
         var list = WheelService.BuildTorchUninstallList(new[] { "rocm-sdk-core", "amd-torch-device-gfx1100", "einops" });

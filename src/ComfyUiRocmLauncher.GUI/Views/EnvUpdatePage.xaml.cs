@@ -21,7 +21,12 @@ public sealed partial class EnvUpdatePage : Page
         GithubMirrorBox.ItemsSource = MirrorCatalog.GithubMirrors;
         PypiMirrorBox.ItemsSource = MirrorCatalog.PypiMirrors;
         Loaded += OnLoaded;
-        Unloaded += (_, _) => App.Services.StateChanged -= OnStateChanged;
+        Unloaded += (_, _) =>
+        {
+            App.Services.StateChanged -= OnStateChanged;
+            // 离开页面时退回主视图，下次进入不从二级页中间状态续起
+            ShowPackages(false);
+        };
     }
 
     private AppConfig Settings => App.Services.Settings;
@@ -63,6 +68,9 @@ public sealed partial class EnvUpdatePage : Page
     /// <summary>控制台渲染行数上限（与日志页一致），避免长任务下 Inlines 无限增长。</summary>
     private const int MaxConsoleLines = 3000;
 
+    /// <summary>任务输出区展开时的固定高度（行高与折叠置 0 对应）。</summary>
+    private const int ConsoleFixedHeight = 200;
+
     private void Append(string line)
     {
         DispatcherQueue.TryEnqueue(() =>
@@ -84,7 +92,7 @@ public sealed partial class EnvUpdatePage : Page
     {
         _consoleCollapsed = !_consoleCollapsed;
         ConsoleScroll.Visibility = _consoleCollapsed ? Visibility.Collapsed : Visibility.Visible;
-        ConsoleRow.MinHeight = _consoleCollapsed ? 0 : 200;
+        ConsoleRow.Height = new GridLength(_consoleCollapsed ? 0 : ConsoleFixedHeight);
         ConsoleToggleLabel.Text = _consoleCollapsed ? "展开" : "收起";
         ConsoleToggleGlyph.Glyph = _consoleCollapsed ? "\uE70E" : "\uE70D";
     }
@@ -302,7 +310,7 @@ public sealed partial class EnvUpdatePage : Page
 
     private async void SyncDeps_Click(object sender, RoutedEventArgs e)
     {
-        await RunOpAsync("同步项目依赖", async () =>
+        await RunOpAsync("安装项目依赖", async () =>
         {
             var changes = await WheelService.SyncRequirementsAsync(App.Services.Tasks, Settings, Append);
             Append("变更包：");
@@ -310,7 +318,27 @@ public sealed partial class EnvUpdatePage : Page
         });
     }
 
-    private async void RefreshPackages_Click(object sender, RoutedEventArgs e)
+    // ---------- 二级页：通用 PyPI 包 ----------
+    // 返回入口在主窗口页头：大标题切换为「环境与更新 › 通用 PyPI 包」面包屑（Win11 设置风格）
+    private void ShowPackages(bool on)
+    {
+        PackagesPanel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        MainScroll.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        var header = (MainWindow)App.Window;
+        if (on) header.ShowBreadcrumb("环境与更新", "通用 PyPI 包", () => ShowPackages(false));
+        else header.HideBreadcrumb();
+    }
+
+    private async void PackagesOpen_Click(object sender, RoutedEventArgs e)
+    {
+        ShowPackages(true);
+        // 进入即刷新一次已装列表（前置不满足时按钮本就禁用）
+        if (RefreshListButton.IsEnabled) await RefreshPackagesAsync();
+    }
+
+    private async void RefreshPackages_Click(object sender, RoutedEventArgs e) => await RefreshPackagesAsync();
+
+    private async Task RefreshPackagesAsync()
     {
         await RunOpAsync("刷新已装列表", async () =>
         {

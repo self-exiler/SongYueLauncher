@@ -9,7 +9,6 @@ public sealed class AppConfig
     public string PythonExe { get; set; } = string.Empty;
     public string? UvExe { get; set; }
     public string? GitExe { get; set; }
-    public bool AutoOpenBrowser { get; set; }
     public StructuredArgs Args { get; set; } = new();
     public string ExtraArgs { get; set; } = string.Empty;
     public Dictionary<string, string> CustomEnvVars { get; set; } = new(StringComparer.OrdinalIgnoreCase);

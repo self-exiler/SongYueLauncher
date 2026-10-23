@@ -3,7 +3,7 @@ using ComfyUiRocmLauncher.Core.Models;
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
-/// GPU 模板（SRS FR-7 配置管理页）：内置模板（附录 B）+ 用户自定义模板的统一解析、应用（全量替换）与捕获。
+/// GPU 模板（SRS FR-7，界面位于主页启动控制区）：内置模板（附录 B）+ 用户自定义模板的统一解析、应用（全量替换）与捕获。
 /// </summary>
 public sealed class TemplateCatalog
 {
@@ -66,7 +66,7 @@ public sealed class TemplateCatalog
         }
     }
 
-    /// <summary>内置 + 自定义模板的合并列表（供配置管理页下拉）。</summary>
+    /// <summary>内置 + 自定义模板的合并列表（供主页启动控制区下拉）。</summary>
     public IReadOnlyList<GpuTemplate> AllTemplates(AppConfig config) =>
         BuiltinTemplates.Concat(config.CustomTemplates).ToList();
 

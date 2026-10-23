@@ -3,7 +3,8 @@ using System.Text.RegularExpressions;
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
-/// requirements.txt 过滤（SRS FR-8.6）：剔除 torch / torchvision / torchaudio 行（由 FR-8.5 单独管理）。
+/// 项目依赖清单过滤（SRS FR-8.6，适用于 requirements / manager_requirements / agent_requirements）：
+/// 剔除 torch / torchvision / torchaudio 行（由 FR-8.5 单独管理）。
 /// </summary>
 public static class RequirementsFilter
 {
@@ -15,12 +16,13 @@ public static class RequirementsFilter
     public static IEnumerable<string> Filter(IEnumerable<string> lines) =>
         lines.Where(line => !TorchLine.IsMatch(line));
 
-    /// <summary>读取 requirements 文件、过滤、写临时文件，返回新文件路径。</summary>
+    /// <summary>读取 requirements 文件、过滤、写同名派生的过滤件（requirements.txt → requirements_filtered.txt），返回其路径。</summary>
     public static string WriteFilteredFile(string requirementsPath, string outputDir)
     {
         var lines = File.ReadAllLines(requirementsPath);
         var filtered = Filter(lines).ToArray();
-        var target = Path.Combine(outputDir, "requirements_filtered.txt");
+        var stem = Path.GetFileNameWithoutExtension(requirementsPath);
+        var target = Path.Combine(outputDir, stem + "_filtered.txt");
         File.WriteAllLines(target, filtered);
         return target;
     }

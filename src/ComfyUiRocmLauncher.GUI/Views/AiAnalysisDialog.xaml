@@ -12,8 +12,9 @@
     <!-- 重构原型 v2（docs/prototypes/ai-analysis-dialog-v2.html）：
          顶部模型栏 / 中部两栏（问题日志｜回答 + 竖排按钮列）/ 底部状态栏。
          宿主为独立窗口 AiAnalysisWindow（标题栏 X 关闭），发送 / 复制 / 重新抓取全部内聚在本控件。
-         高度用 MinHeight 而非固定值：窗口可拉伸，两栏随需放大。 -->
-    <Grid MinHeight="520" RowSpacing="12">
+         高度用 MinHeight 而非固定值：窗口可拉伸，两栏随需放大。
+         间隙必须打在根 Grid 的 Padding 上：WinUI 的 UserControl 模板不绑定 Padding 属性，宿主设 content.Padding 不生效。 -->
+    <Grid MinHeight="520" RowSpacing="12" Padding="36,14,36,24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />

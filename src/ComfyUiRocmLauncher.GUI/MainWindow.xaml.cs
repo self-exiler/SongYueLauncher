@@ -181,7 +181,6 @@ public sealed partial class MainWindow : Window
         var pageType = item.Tag?.ToString() switch
         {
             "EnvUpdatePage" => typeof(EnvUpdatePage),
-            "ConfigPage" => typeof(ConfigPage),
             "ArgsPage" => typeof(ArgsPage),
             "EnvVarsPage" => typeof(EnvVarsPage),
             "LogPage" => typeof(LogPage),
@@ -197,6 +196,7 @@ public sealed partial class MainWindow : Window
             RootFrame.BackStack.Clear();
         }
         PageTitle.Text = item.Content?.ToString() ?? string.Empty;
+        HideBreadcrumb();
 
         // 记住上次停留的页面（FR-9）：存 Tag 而非序号，菜单顺序调整后仍能对上
         var navTag = item.Tag?.ToString() ?? string.Empty;
@@ -222,7 +222,28 @@ public sealed partial class MainWindow : Window
         StateTextBlock.Foreground = key is null
             ? ThemeHelper.Brush("TextFillColorPrimaryBrush")
             : ThemeHelper.Brush(key);
-
-        VersionText.Text = "版本 " + App.Services.CurrentVersionHash();
     }
+
+    // ---------- 页头面包屑（二级页导航，Win11 设置风格） ----------
+    private Action? _crumbBack;
+
+    /// <summary>大标题切换为「父级 › 当前页」面包屑，点父级段执行 onBack。</summary>
+    public void ShowBreadcrumb(string parent, string current, Action onBack)
+    {
+        _crumbBack = onBack;
+        CrumbParent.Content = parent;
+        CrumbCurrent.Text = current;
+        PageTitle.Visibility = Visibility.Collapsed;
+        PageBreadcrumb.Visibility = Visibility.Visible;
+    }
+
+    public void HideBreadcrumb()
+    {
+        if (PageBreadcrumb.Visibility != Visibility.Visible) return;
+        _crumbBack = null;
+        PageBreadcrumb.Visibility = Visibility.Collapsed;
+        PageTitle.Visibility = Visibility.Visible;
+    }
+
+    private void CrumbParent_Click(object sender, RoutedEventArgs e) => _crumbBack?.Invoke();
 }

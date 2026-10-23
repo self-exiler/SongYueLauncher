@@ -4,7 +4,7 @@ using ComfyUiRocmLauncher.Core.Models;
 namespace ComfyUiRocmLauncher.Core.Services;
 
 /// <summary>
-/// 把当前配置导出为可直接运行的 PowerShell 启动脚本（配置管理页「导出启动脚本」）。
+/// 把当前配置导出为可直接运行的 PowerShell 启动脚本（主页启动控制区「导出启动脚本」）。
 /// 与真实启动同源：固定注入层、自定义层、GitHub 镜像注入、缓存目录、结构化参数 + 额外参数。
 /// 与启动器有意不同之处：
 /// <list type="bullet">

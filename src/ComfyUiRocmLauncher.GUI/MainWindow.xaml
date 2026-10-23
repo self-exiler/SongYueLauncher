@@ -38,9 +38,6 @@
                 <NavigationViewItem Content="环境与更新" Tag="EnvUpdatePage">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Download" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="配置管理" Tag="ConfigPage">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Edit" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
                 <NavigationViewItem Content="启动参数" Tag="ArgsPage">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
@@ -58,14 +55,24 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <!-- 设置应用风格页头：大标题居左，版本号与运行状态居右，无工具条背景 -->
+                <!-- 设置应用风格页头：大标题居左，运行状态徽章居右，无工具条背景 -->
                 <Border Grid.Row="0" Padding="36,8,36,0">
                     <Grid>
                         <TextBlock x:Name="PageTitle" Text="主页" Style="{StaticResource TitleTextBlockStyle}"
                                    VerticalAlignment="Center" />
+                        <!-- 二级页时大标题变身面包屑（Win11 设置风格）：父级段可点击返回 -->
+                        <StackPanel x:Name="PageBreadcrumb" Orientation="Horizontal" Spacing="8"
+                                    Visibility="Collapsed" VerticalAlignment="Center">
+                            <Button x:Name="CrumbParent" Click="CrumbParent_Click" Padding="0" Margin="0"
+                                    Background="Transparent" BorderThickness="0" VerticalAlignment="Center"
+                                    FontSize="{ThemeResource TitleTextBlockFontSize}" FontWeight="SemiBold"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <FontIcon Glyph="&#xE76C;" FontSize="16" VerticalAlignment="Center"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="CrumbCurrent" Style="{StaticResource TitleTextBlockStyle}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
-                            <TextBlock x:Name="VersionText" Text="版本 unknown" VerticalAlignment="Center"
-                                       Style="{StaticResource SecondaryTextStyle}" />
                             <!-- 横向 StackPanel 会把子项垂直拉伸到整行高（行高由大标题撑起），
                                  徽章必须显式居中，否则文字贴顶不居中 -->
                             <Border x:Name="StateBadge" Padding="12,4" CornerRadius="8" VerticalAlignment="Center"

@@ -13,7 +13,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ScrollViewer Grid.Row="0">
+        <ScrollViewer x:Name="MainScroll" Grid.Row="0">
             <!-- 内容铺满可用宽度（左右只留页面边距）；底部控制台单独整宽 -->
             <StackPanel>
 
@@ -104,33 +104,72 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- 初次部署顺序：建 venv → 装 torch → 装项目通用依赖 → 装作者专用轮子（与整合包 install.bat 同序） -->
                     <Border Style="{StaticResource CardBorderStyle}">
                         <StackPanel Style="{StaticResource SettingsCardStackStyle}">
-                            <TextBlock Text="作者专用轮子与项目依赖" Style="{StaticResource CardTitleStyle}" />
-                            <TextBlock x:Name="CatalogVersionText" Style="{StaticResource SecondaryTextStyle}" />
-                            <TextBlock x:Name="WheelListText" FontFamily="{StaticResource MonoFontFamily}" Style="{StaticResource SecondaryTextStyle}" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button x:Name="WheelsButton" Content="安装专用轮子" Click="InstallWheels_Click" />
-                                <Button x:Name="DepsButton" Content="同步项目依赖" Click="SyncDeps_Click" />
-                            </StackPanel>
+                            <TextBlock Text="项目通用依赖（requirements / manager / agent 三清单）" Style="{StaticResource CardTitleStyle}" />
+                            <TextBlock Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
+                                       Text="依序安装整合包 requirements.txt、manager_requirements.txt、agent_requirements.txt 列出的通用 whl 包（后两个不存在时自动跳过；torch / torchvision / torchaudio 已剔除，由上方「PyTorch for ROCm」单独管理）。初次部署在装完 torch 后执行本步，再装下方专用轮子。" />
+                            <Button x:Name="DepsButton" Content="安装项目依赖" Style="{StaticResource AccentButtonStyle}" Click="SyncDeps_Click" HorizontalAlignment="Left" />
                         </StackPanel>
                     </Border>
 
                     <Border Style="{StaticResource CardBorderStyle}">
                         <StackPanel Style="{StaticResource SettingsCardStackStyle}">
-                            <TextBlock Text="通用 PyPI 包" Style="{StaticResource CardTitleStyle}" />
-                            <Button x:Name="RefreshListButton" Content="刷新已装列表" Click="RefreshPackages_Click" HorizontalAlignment="Left" />
-                            <TextBox x:Name="PackageListText" AcceptsReturn="True" IsReadOnly="True" MinHeight="120"
-                                     FontFamily="{StaticResource MonoFontFamily}" />
-                            <TextBox x:Name="PackageInputBox" Header="安装 / 卸载（包名、包名==版本 或 whl URL）" PlaceholderText="einops==0.8.0" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button x:Name="PkgInstallButton" Content="安装" Click="InstallPackage_Click" />
-                                <Button x:Name="PkgUninstallButton" Content="卸载" Click="UninstallPackage_Click" />
-                            </StackPanel>
+                            <TextBlock Text="作者专用轮子" Style="{StaticResource CardTitleStyle}" />
+                            <TextBlock x:Name="CatalogVersionText" Style="{StaticResource SecondaryTextStyle}" />
+                            <TextBlock x:Name="WheelListText" FontFamily="{StaticResource MonoFontFamily}" Style="{StaticResource SecondaryTextStyle}" />
+                            <Button x:Name="WheelsButton" Content="安装专用轮子" Click="InstallWheels_Click" HorizontalAlignment="Left" />
                         </StackPanel>
+                    </Border>
+
+                    <!-- 二级页入口卡（Windows 设置 drill-in 风格：整卡可点，右侧 chevron） -->
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Button x:Name="PackagesEntryButton" Click="PackagesOpen_Click"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                Background="Transparent" BorderThickness="0" Padding="16,12">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="通用 PyPI 包" Style="{StaticResource CardTitleStyle}" />
+                                    <TextBlock Text="查看已装列表、按包名 / 版本 / whl URL 安装与卸载"
+                                               Style="{StaticResource SecondaryTextStyle}" />
+                                </StackPanel>
+                                <FontIcon Grid.Column="1" Glyph="&#xE76C;" FontSize="12" VerticalAlignment="Center"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </Button>
                     </Border>
                 </StackPanel>
 
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ============ 二级页：通用 PyPI 包（覆盖主内容区；返回入口为页头大标题面包屑） ============ -->
+        <ScrollViewer x:Name="PackagesPanel" Grid.Row="0" Visibility="Collapsed">
+            <StackPanel>
+                <Border Style="{StaticResource CardBorderStyle}">
+                    <StackPanel Style="{StaticResource SettingsCardStackStyle}">
+                        <TextBlock Text="已装包列表" Style="{StaticResource CardTitleStyle}" />
+                        <Button x:Name="RefreshListButton" Content="刷新已装列表" Click="RefreshPackages_Click" HorizontalAlignment="Left" />
+                        <TextBox x:Name="PackageListText" AcceptsReturn="True" IsReadOnly="True" MinHeight="200"
+                                 FontFamily="{StaticResource MonoFontFamily}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardBorderStyle}" Margin="0,8,0,0">
+                    <StackPanel Style="{StaticResource SettingsCardStackStyle}">
+                        <TextBlock Text="安装 / 卸载" Style="{StaticResource CardTitleStyle}" />
+                        <TextBox x:Name="PackageInputBox" Header="包名、包名==版本 或 whl URL" PlaceholderText="einops==0.8.0" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="PkgInstallButton" Content="安装" Style="{StaticResource AccentButtonStyle}" Click="InstallPackage_Click" />
+                            <Button x:Name="PkgUninstallButton" Content="卸载" Click="UninstallPackage_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 
@@ -139,7 +178,8 @@
             <Grid Padding="12,8" RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition x:Name="ConsoleRow" Height="Auto" MinHeight="200" />
+                    <!-- 定高：Auto 行会随输出无限撑高，滚动条永远不出现；折叠由代码置 0 -->
+                    <RowDefinition x:Name="ConsoleRow" Height="200" />
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
@@ -162,7 +202,7 @@
                         </StackPanel>
                     </Button>
                 </Grid>
-                <ScrollViewer x:Name="ConsoleScroll" Grid.Row="1">
+                <ScrollViewer x:Name="ConsoleScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <TextBlock x:Name="ConsoleText" FontFamily="{StaticResource MonoFontFamily}" FontSize="12"
                                Foreground="{StaticResource ConsoleForegroundBrush}" TextWrapping="Wrap" />
                 </ScrollViewer>

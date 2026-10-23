@@ -31,7 +31,6 @@ public sealed class AiAnalysisWindow : Window
         }
         root.Children.Add(titleBar);
 
-        content.Padding = (Thickness)Application.Current.Resources["SettingsPagePadding"];
         Grid.SetRow(content, 1);
         root.Children.Add(content);
         Content = root;
