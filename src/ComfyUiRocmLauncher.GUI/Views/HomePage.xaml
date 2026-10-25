@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
 
     <!-- 内容铺满可用宽度（左右只留页面边距）。若将来要加上限，必须用「单星号列 + MaxWidth」实现，
@@ -15,186 +16,196 @@
 
                 <!-- ===== 路径设置 ===== -->
                 <TextBlock Text="路径设置" Style="{StaticResource SettingsSectionHeaderFirstStyle}" />
-                <Border Style="{StaticResource CardBorderStyle}">
-                    <StackPanel>
-                        <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="8">
+                <StackPanel Spacing="{StaticResource SettingsCardSpacing}">
+                    <settings:SettingsCard Header="ComfyUI 目录" Description="整合包解压目录（需含 main.py）">
+                        <settings:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="&#xE8B7;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        </settings:SettingsCard.HeaderIcon>
+                        <Grid Width="{StaticResource SettingsCardContentWidth}" ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="ComfyUI 目录" VerticalAlignment="Center" />
-                            <TextBox x:Name="ComfyDirBox" Grid.Column="1"
-                                     PlaceholderText="整合包解压目录（需含 main.py）"
+                            <TextBox x:Name="ComfyDirBox" PlaceholderText="整合包解压目录（需含 main.py）"
                                      TextChanged="ComfyDirBox_TextChanged" />
-                            <Button Grid.Column="2" Content="浏览…" MinWidth="96" Click="BrowseComfyDir_Click" />
+                            <Button Grid.Column="1" Content="浏览…" MinWidth="96" Click="BrowseComfyDir_Click" />
                         </Grid>
+                    </settings:SettingsCard>
 
-                        <Border Style="{StaticResource CardDividerStyle}" />
-
-                        <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="8" RowSpacing="8">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Python 解释器" VerticalAlignment="Center" />
-                            <TextBox x:Name="PythonBox" Grid.Column="1"
+                    <settings:SettingsCard Header="Python 解释器" Description="留空时默认取 ComfyUI 目录下 .venv 的解释器">
+                        <settings:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="&#xE943;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        </settings:SettingsCard.HeaderIcon>
+                        <StackPanel Width="{StaticResource SettingsCardContentWidth}" Spacing="8">
+                            <TextBox x:Name="PythonBox"
                                      PlaceholderText="&lt;ComfyUI目录&gt;\.venv\Scripts\python.exe"
                                      TextChanged="PythonBox_TextChanged" />
-                            <Button Grid.Column="2" Content="浏览…" MinWidth="96" Click="BrowsePython_Click" />
-                            <Button Grid.Column="3" Content="验证" MinWidth="96" Click="VerifyPython_Click" />
-                            <TextBlock x:Name="PythonVerifyText" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
-                                       Style="{StaticResource SecondaryTextStyle}" />
-                        </Grid>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                                <Button Content="浏览…" MinWidth="96" Click="BrowsePython_Click" />
+                                <Button Content="验证" MinWidth="96" Click="VerifyPython_Click" />
+                            </StackPanel>
+                            <TextBlock x:Name="PythonVerifyText" Style="{StaticResource SecondaryTextStyle}" />
+                        </StackPanel>
+                    </settings:SettingsCard>
 
-                        <Border Style="{StaticResource CardDividerStyle}" />
-
-                        <Grid Style="{StaticResource SettingsRowStyle}">
-                            <TextBlock x:Name="UvStatusText" Text="uv.exe：检查中…"
-                                       Style="{StaticResource SecondaryTextStyle}" VerticalAlignment="Center" />
-                        </Grid>
-                    </StackPanel>
-                </Border>
+                    <settings:SettingsCard Header="uv.exe">
+                        <TextBlock x:Name="UvStatusText" Text="检查中…"
+                                   Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap"
+                                   MaxWidth="{StaticResource SettingsCardContentWidth}" HorizontalAlignment="Right" />
+                    </settings:SettingsCard>
+                </StackPanel>
 
                 <!-- ===== 启动控制 ===== -->
                 <TextBlock Text="启动控制" Style="{StaticResource SettingsSectionHeaderStyle}" />
-                <Border Style="{StaticResource CardBorderStyle}">
-                    <StackPanel>
-                        <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="2" VerticalAlignment="Center">
-                                <TextBlock Text="运行 ComfyUI" Style="{StaticResource CardTitleStyle}" />
-                                <TextBlock Text="启动后可停止；自动打开浏览器请在「启动参数」中启用 --auto-launch"
-                                           Style="{StaticResource SecondaryTextStyle}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                                <Button x:Name="StartButton" Style="{StaticResource AccentButtonStyle}"
-                                        MinWidth="104" Click="Start_Click">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <FontIcon Glyph="&#xE768;" FontSize="14" />
-                                        <TextBlock Text="启动" />
-                                    </StackPanel>
-                                </Button>
-                                <Button x:Name="StopButton" MinWidth="104" IsEnabled="False" Click="Stop_Click">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <FontIcon Glyph="&#xE71A;" FontSize="14" />
-                                        <TextBlock Text="停止" />
-                                    </StackPanel>
-                                </Button>
-                                <Button x:Name="BrowserButton" Content="打开浏览器" MinWidth="116" IsEnabled="False"
-                                        Click="OpenBrowser_Click" />
-                            </StackPanel>
-                        </Grid>
+                <StackPanel Spacing="{StaticResource SettingsCardSpacing}">
+                    <settings:SettingsCard Header="运行 ComfyUI"
+                                           Description="启动后可停止；自动打开浏览器请在「启动参数」中启用 --auto-launch">
+                        <settings:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="&#xE768;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        </settings:SettingsCard.HeaderIcon>
+                        <StackPanel Width="{StaticResource SettingsCardContentWidth}" Orientation="Horizontal"
+                                    HorizontalAlignment="Right" Spacing="8">
+                            <Button x:Name="StartButton" Style="{StaticResource AccentButtonStyle}"
+                                    MinWidth="104" Click="Start_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE768;" FontSize="14" />
+                                    <TextBlock Text="启动" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="StopButton" MinWidth="104" IsEnabled="False" Click="Stop_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE71A;" FontSize="14" />
+                                    <TextBlock Text="停止" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="BrowserButton" Content="打开浏览器" MinWidth="116" IsEnabled="False"
+                                    Click="OpenBrowser_Click" />
+                        </StackPanel>
+                    </settings:SettingsCard>
 
-                        <Border Style="{StaticResource CardDividerStyle}" />
-
-                        <!-- GPU 架构模板（原配置管理页 FR-7，应用为全量替换） -->
-                        <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12" RowSpacing="6">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="GPU 架构模板" VerticalAlignment="Center"
-                                       ToolTipService.ToolTip="应用模板会把当前环境变量与启动参数整体替换为模板内容，之后仍可在「启动参数 / 环境变量」页编辑。自定义模板中的目录路径存为占位符，换目录仍可用。" />
-                            <ComboBox x:Name="TemplateCombo" Grid.Column="1" MaxWidth="420" HorizontalAlignment="Stretch"
+                    <!-- GPU 架构模板（原配置管理页 FR-7，应用为全量替换） -->
+                    <settings:SettingsCard Header="GPU 架构模板"
+                                           Description="应用后整体替换当前的环境变量与启动参数，之后仍可在「启动参数 / 环境变量」页编辑"
+                                           ToolTipService.ToolTip="自定义模板中的目录路径存为占位符，换目录仍可用。">
+                        <settings:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="&#xE7AB;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        </settings:SettingsCard.HeaderIcon>
+                        <StackPanel Width="{StaticResource SettingsCardContentWidth}" Spacing="8">
+                            <ComboBox x:Name="TemplateCombo"
                                       DisplayMemberPath="Title" SelectionChanged="TemplateCombo_SelectionChanged" />
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                                 <Button x:Name="ApplyButton" Content="应用模板" Style="{StaticResource AccentButtonStyle}"
                                         Click="Apply_Click" />
                                 <Button x:Name="SaveAsButton" Content="另存为模板" Click="SaveAs_Click" />
                                 <Button x:Name="DeleteButton" Content="删除模板" IsEnabled="False" Click="Delete_Click" />
                             </StackPanel>
                             <!-- 只在应用/另存/删除后显示一行反馈，平时为空不占位 -->
-                            <TextBlock x:Name="TemplateStatusText" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
-                                       Style="{StaticResource SecondaryTextStyle}" FontSize="12" TextWrapping="Wrap" />
-                        </Grid>
+                            <TextBlock x:Name="TemplateStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </settings:SettingsCard>
 
-                        <Border Style="{StaticResource CardDividerStyle}" />
-
-                        <!-- 导出启动脚本（原配置管理页，脱离启动器直接跑） -->
-                        <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12" RowSpacing="6">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="导出启动脚本" VerticalAlignment="Center"
-                                       ToolTipService.ToolTip="把当前配置（目录、解释器、环境变量、参数）导出为可在 Windows PowerShell 直接运行的 .ps1，用于桌面快捷方式或计划任务。" />
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                                <Button x:Name="ExportPs1Button" Content="导出为 .ps1" Click="ExportPs1_Click" />
-                            </StackPanel>
-                            <TextBlock x:Name="ExportStatusText" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
-                                       Style="{StaticResource SecondaryTextStyle}" FontSize="12" TextWrapping="Wrap" />
-                        </Grid>
-                    </StackPanel>
-                </Border>
+                    <!-- 导出启动脚本（原配置管理页，脱离启动器直接跑） -->
+                    <settings:SettingsCard Header="导出启动脚本"
+                                           Description="把当前配置导出为可在 Windows PowerShell 直接运行的 .ps1（桌面快捷方式 / 计划任务可用）">
+                        <settings:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="&#xE72D;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        </settings:SettingsCard.HeaderIcon>
+                        <StackPanel Width="{StaticResource SettingsCardContentWidth}" Spacing="8">
+                            <Button x:Name="ExportPs1Button" Content="导出为 .ps1" HorizontalAlignment="Right" Click="ExportPs1_Click" />
+                            <TextBlock x:Name="ExportStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </settings:SettingsCard>
+                </StackPanel>
 
                 <!-- ===== 状态 ===== -->
                 <TextBlock Text="状态" Style="{StaticResource SettingsSectionHeaderStyle}" />
-                <Border Style="{StaticResource CardBorderStyle}">
-                    <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12" RowSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="150" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition /><RowDefinition /><RowDefinition />
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="运行状态" VerticalAlignment="Center" />
-                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                            <Ellipse x:Name="RunStateDot" Width="8" Height="8" Fill="{ThemeResource TextFillColorDisabledBrush}" VerticalAlignment="Center" />
+                <StackPanel Spacing="{StaticResource SettingsCardSpacing}">
+                    <settings:SettingsCard Header="运行状态">
+                        <StackPanel Width="{StaticResource SettingsCardContentWidth}" Orientation="Horizontal"
+                                    HorizontalAlignment="Right" Spacing="8">
+                            <Ellipse x:Name="RunStateDot" Width="8" Height="8"
+                                     Fill="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
                             <TextBlock x:Name="RunStateText" Text="已停止" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </StackPanel>
-
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="当前版本" VerticalAlignment="Center" />
-                        <TextBlock x:Name="VersionHashText" Grid.Row="1" Grid.Column="1" Text="unknown"
-                                   FontFamily="{StaticResource MonoFontFamily}" VerticalAlignment="Center" />
-
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="GPU 型号" VerticalAlignment="Center" />
-                        <TextBlock x:Name="GpuText" Grid.Row="2" Grid.Column="1" Text="读取中…" VerticalAlignment="Center" />
-                    </Grid>
-                </Border>
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="当前版本">
+                        <TextBlock x:Name="VersionHashText" Text="unknown"
+                                   FontFamily="{StaticResource MonoFontFamily}" VerticalAlignment="Center"
+                                   MaxWidth="{StaticResource SettingsCardContentWidth}" HorizontalAlignment="Right"
+                                   TextTrimming="CharacterEllipsis" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="GPU 型号">
+                        <TextBlock x:Name="GpuText" Text="读取中…" VerticalAlignment="Center"
+                                   MaxWidth="{StaticResource SettingsCardContentWidth}" HorizontalAlignment="Right"
+                                   TextTrimming="CharacterEllipsis" />
+                    </settings:SettingsCard>
+                </StackPanel>
 
                 <!-- ===== 快捷目录 ===== -->
                 <TextBlock Text="快捷目录" Style="{StaticResource SettingsSectionHeaderStyle}" />
-                <Border Style="{StaticResource CardBorderStyle}">
-                    <StackPanel Style="{StaticResource SettingsCardStackStyle}">
-                        <TextBlock Text="在文件资源管理器中打开整合包下的常用目录；目录不存在时对应按钮自动禁用。"
-                                   Style="{StaticResource SecondaryTextStyle}" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="QdOutput" Content="输出目录" ToolTipService.ToolTip="output"
-                                    Click="QuickDir_Click" Tag="output" />
-                            <Button x:Name="QdModels" Content="模型目录" ToolTipService.ToolTip="models"
-                                    Click="QuickDir_Click" Tag="models" />
-                            <Button x:Name="QdWorkflow" Content="用户工作流" ToolTipService.ToolTip="user\workflow"
-                                    Click="QuickDir_Click" Tag="user\workflow" />
-                            <Button x:Name="QdCustomNodes" Content="自定义节点" ToolTipService.ToolTip="custom_nodes"
-                                    Click="QuickDir_Click" Tag="custom_nodes" />
-                            <Button x:Name="QdInput" Content="输入目录" ToolTipService.ToolTip="input"
-                                    Click="QuickDir_Click" Tag="input" />
-                        </StackPanel>
+                <settings:SettingsCard Header="快捷目录"
+                                       Description="在文件资源管理器中打开整合包下的常用目录；目录不存在时对应按钮自动禁用。">
+                    <!-- 窄窗口放不下五个按钮时由 code-behind 切为纵向排列 -->
+                    <StackPanel x:Name="QuickDirsPanel" Width="{StaticResource SettingsCardContentWidth}"
+                                HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="QdOutput" Content="输出目录" ToolTipService.ToolTip="output"
+                                Click="QuickDir_Click" Tag="output" />
+                        <Button x:Name="QdModels" Content="模型目录" ToolTipService.ToolTip="models"
+                                Click="QuickDir_Click" Tag="models" />
+                        <Button x:Name="QdWorkflow" Content="用户工作流" ToolTipService.ToolTip="user\workflow"
+                                Click="QuickDir_Click" Tag="user\workflow" />
+                        <Button x:Name="QdCustomNodes" Content="自定义节点" ToolTipService.ToolTip="custom_nodes"
+                                Click="QuickDir_Click" Tag="custom_nodes" />
+                        <Button x:Name="QdInput" Content="输入目录" ToolTipService.ToolTip="input"
+                                Click="QuickDir_Click" Tag="input" />
                     </StackPanel>
-                </Border>
+                </settings:SettingsCard>
+
+                <!-- FR-1.5：把 models / output 链接为整合包外数据目录的 junction，删除/重装整合包不丢模型与输出 -->
+                <settings:SettingsCard Header="目录外置链接"
+                                       Description="把模型 / 输出目录链接到整合包外的数据目录（目录联接）：删除或重装整合包时，模型与输出保留在外部目录，不会随之丢失。">
+                    <settings:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE71B;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    </settings:SettingsCard.HeaderIcon>
+                    <StackPanel Width="{StaticResource SettingsCardContentWidth}" Spacing="8">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="模型目录（models）" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="ModelsLinkButton" Content="外置…" MinWidth="80"
+                                        ToolTipService.ToolTip="选择外部数据目录，把 models 链接出去"
+                                        Click="LinkDir_Click" Tag="models" />
+                                <Button x:Name="ModelsUnlinkButton" Content="还原" MinWidth="72"
+                                        ToolTipService.ToolTip="解除链接，把内容搬回整合包目录"
+                                        Click="UnlinkDir_Click" Tag="models" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock x:Name="ModelsLinkStatus" Style="{StaticResource SecondaryTextStyle}"
+                                   TextWrapping="Wrap" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="输出目录（output）" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="OutputLinkButton" Content="外置…" MinWidth="80"
+                                        ToolTipService.ToolTip="选择外部数据目录，把 output 链接出去"
+                                        Click="LinkDir_Click" Tag="output" />
+                                <Button x:Name="OutputUnlinkButton" Content="还原" MinWidth="72"
+                                        ToolTipService.ToolTip="解除链接，把内容搬回整合包目录"
+                                        Click="UnlinkDir_Click" Tag="output" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock x:Name="OutputLinkStatus" Style="{StaticResource SecondaryTextStyle}"
+                                   TextWrapping="Wrap" />
+                        <!-- 操作进度与结果反馈，平时为空不占位 -->
+                        <TextBlock x:Name="DirLinkOpText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </settings:SettingsCard>
 
             </StackPanel>
         </ScrollViewer>

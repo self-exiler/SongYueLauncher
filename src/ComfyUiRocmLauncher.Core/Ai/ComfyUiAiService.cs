@@ -1,65 +1,59 @@
 using AiDiagnostics;
 using AiDiagnostics.Logs;
-using AiDiagnostics.Parsing;
+using AiDiagnostics.Tools;
 
 namespace ComfyUiRocmLauncher.Core.Ai;
 
 /// <summary>
-/// AI 智能分析的宿主门面（SRS FR-5.6~5.9）：把 ComfyUI 领域画像与通用 <see cref="AiDiagnosticsClient"/> 组装起来。
-/// 界面层只依赖本类，既不接触 opencode 的命令行细节，也不接触诊断库的公开类型。
+/// AI 智能分析的宿主门面（SRS v2.0 FR-5.6~5.9）：把 ComfyUI 领域画像与通用 <see cref="AiDiagnosticsClient"/> 组装起来。
+/// 界面层只依赖本类，既不接触网关的 HTTP 细节，也不接触诊断库的公开类型。
 /// </summary>
 public sealed class ComfyUiAiService
 {
     private readonly AiDiagnosticsClient _client;
 
-    public ComfyUiAiService(AiDiagnosticsClient? client = null) => _client = client ?? new AiDiagnosticsClient();
+    /// <param name="optionsFactory">每次调用时取最新的网关地址与 Key（Key 可能在服务首次启动后才生成）。</param>
+    public ComfyUiAiService(Func<GatewayOptions>? optionsFactory = null)
+    {
+        _client = new AiDiagnosticsClient(
+            optionsFactory,
+            tools: new CompositeToolExecutor(new WebSearchTool(), new WebFetchTool()));
+    }
 
-    /// <summary>定位本机 opencode CLI；未安装返回 null。</summary>
-    public static string? LocateOpenCode() => AiDiagnosticsClient.Locate();
-
-    /// <summary>列举 opencode 当前可用的内嵌模型。</summary>
+    /// <summary>列举网关当前可用的模型。</summary>
     public async Task<IReadOnlyList<AiModelOption>> ListModelsAsync(CancellationToken cancellationToken = default)
     {
         var models = await _client.ListModelsAsync(cancellationToken).ConfigureAwait(false);
-        return models.Select(m => new AiModelOption(m.ProviderId, m.ModelId, m.DisplayName)).ToList();
+        return models.Select(m => new AiModelOption(m.QualifiedId, m.DisplayName)).ToList();
     }
 
-    /// <summary>把错误日志交给 ComfyUI 诊断 agent 分析；输出行通过回调流式返回。</summary>
+    /// <summary>把错误日志交给 ComfyUI 诊断 agent 分析；正文增量与状态提示分开回调。</summary>
     public async Task<AiAnswerResult> AskAsync(
-        string errorText,
-        string modelQualifiedId,
+        ErrorLogExtraction extraction,
+        string modelId,
         string? comfyUiDir,
         string? pythonExe,
-        Action<string>? onOutputLine = null,
+        Action<string>? onDelta = null,
+        Action<string>? onStatus = null,
         CancellationToken cancellationToken = default)
     {
         var answer = await _client.AskAsync(
             new AiRequest
             {
-                Prompt = ComfyUiDiagnosis.BuildPrompt(errorText, comfyUiDir, pythonExe),
-                ModelId = modelQualifiedId,
+                Prompt = ComfyUiDiagnosis.BuildPrompt(extraction, comfyUiDir, pythonExe),
+                ModelId = modelId,
                 Agent = ComfyUiDiagnosis.Agent,
-                Title = ComfyUiDiagnosis.AnalysisTitle,
-                Instruction = ComfyUiDiagnosis.AnalysisInstruction,
+                UseTools = true,
             },
-            onOutputLine,
+            onDelta,
+            onStatus,
             cancellationToken).ConfigureAwait(false);
         return new AiAnswerResult(answer.Success, answer.Text);
     }
 
     /// <summary>
-    /// 把一行 opencode 输出转成可显示文本，并告知它是不是进度提示（SRS FR-5.9）。
-    /// 界面层据此分派到「状态区」还是「正文区」，不再靠字符串前缀猜测。
-    /// </summary>
-    public static bool TryFormatEvent(string line, out string? text, out bool isProgress)
-    {
-        (text, isProgress) = RunEventParser.TryFormat(line);
-        return !string.IsNullOrEmpty(text);
-    }
-
-    /// <summary>
-    /// 从日志环形缓冲抓取 error 级日志与 Python 报错（SRS FR-5.7）。
-    /// 扫描算法在 <see cref="LogErrorScanner"/>，关键词/噪声词/预算由 <see cref="ComfyUiDiagnosis.ScanOptions"/> 注入。
+    /// 从日志环形缓冲抓取错误材料并按三类归并分组（SRS v2.0 FR-5.7/5.11）。
+    /// 扫描与归并在 <see cref="LogErrorScanner"/> / <see cref="ErrorGrouper"/>，关键词/噪声词/预算由 <see cref="ComfyUiDiagnosis.ScanOptions"/> 注入。
     /// </summary>
     public static ErrorLogExtraction ExtractErrors(IEnumerable<string> lines, int maxBytes = 12_000)
     {
@@ -67,9 +61,16 @@ public sealed class ComfyUiAiService
         if (maxBytes != options.MaxBytes) options = options with { MaxBytes = maxBytes };
 
         var result = LogErrorScanner.Scan(lines, options);
-        return new ErrorLogExtraction(result.Blocks, result.TotalLines, result.Truncated)
+        var groups = ErrorGrouper.Group(result.Blocks);
+        return new ErrorLogExtraction(
+            groups.Select(g => new ErrorGroupView(
+                g.Title, (ErrorGroupKind)(int)g.Kind, g.Count, g.FirstLine, g.LastLine, g.Representative.Text)).ToList(),
+            result.TotalLines,
+            result.Truncated)
         {
             ErrorLineCount = result.ErrorLineCount,
+            WarningLineCount = result.WarningLineCount,
+            DroppedBlockCount = result.DroppedBlockCount,
         };
     }
 

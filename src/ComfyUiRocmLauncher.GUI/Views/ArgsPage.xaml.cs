@@ -2,13 +2,14 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
+using CommunityToolkit.WinUI.Controls;
 using ComfyUiRocmLauncher.Core.Models;
 using ComfyUiRocmLauncher.Core.Services;
 using ComfyUiRocmLauncher.GUI.Helpers;
 
 namespace ComfyUiRocmLauncher.GUI.Views;
 
-/// <summary>启动参数页（SRS FR-2）：数据驱动生成全部参数控件 + 实时命令预览。分组懒加载以避免进入页面卡顿。</summary>
+/// <summary>启动参数页（SRS FR-2）：数据驱动生成全部参数控件 + 实时命令预览。分组行渐进构建以避免进入页面卡顿。</summary>
 public sealed partial class ArgsPage : Page
 {
     private readonly CliArgsCatalog _catalog = CliArgsCatalog.Instance;
@@ -16,41 +17,51 @@ public sealed partial class ArgsPage : Page
     private readonly List<GroupUi> _groups = new();
     private bool _syncing;
     private bool _shellBuilt;
+    /// <summary>搜索同步时抑制手风琴互斥：搜索需要同时展开多个命中分组。</summary>
+    private bool _suppressAccordion;
 
-    /// <summary>一个参数分组的 UI 引用；行控件在首次展开时才创建（懒加载）。</summary>
+    /// <summary>
+    /// 一个参数分组的 UI 引用。分组外壳是 SettingsExpander（自带展开动画 / 悬停 / chevron），
+    /// 行控件由 BuildAllRowsAsync 在页面载入后渐进创建，直接作为 Expander 的 Items。
+    /// </summary>
     private sealed class GroupUi(CliArgGroup definition)
     {
         public readonly CliArgGroup Definition = definition;
-        public StackPanel? Body;
-        public TextBlock HeaderText = null!;
-        public Button Header = null!;
-        public FontIcon Chevron = null!;
-        public StackPanel Container = null!;
+        public SettingsExpander Expander = null!;
+        /// <summary>分组头的右侧计数文本（N 启用 · M 项）。</summary>
+        public TextBlock CountText = null!;
         public bool Built;
         /// <summary>构造时缓存参数名列表：计数与搜索会反复按分组取用，避免每次重新 Select().ToList()。</summary>
         public readonly IReadOnlyList<string> ArgNames = definition.Args.Select(a => a.Name).ToList();
     }
 
     /// <summary>
-    /// 一个参数行的 UI 引用（卡片 / 开关 / 取值控件）。
+    /// 一个参数行的 UI 引用（行网格 / 文本列 / 开关 / 取值控件）。
+    /// 行是 SettingsExpander 内容区里的「平底行」：无卡片边框，靠分隔线区隔（避免卡中卡）。
     /// <c>Refresh</c> 是该行「把 Settings 写回控件」的唯一途径：构建控件时一并生成，
     /// 因此不必再靠 <c>Children[0] is ComboBox</c> 反推控件类型。
+    /// 行网格与文本列一并缓存：窄窗口需要把这些元素从「左右两列」重排为「上下两行」。
     /// </summary>
-    private sealed record RowUi(Border Card, ToggleSwitch Toggle, FrameworkElement? Control, Action Refresh);
+    private sealed record RowUi(Grid Row, StackPanel Text, ToggleSwitch Toggle,
+        FrameworkElement? Control, Action Refresh);
 
     public ArgsPage()
     {
         InitializeComponent();
-        Loaded += (_, _) =>
+        // 窄窗口时参数行要重排为上下两行：监听内容区实际宽度，避免 300/220 固定列宽把行挤出可视区
+        GroupsHost.SizeChanged += (_, _) => ApplyRowLayout();
+        Loaded += async (_, _) =>
         {
-            if (_shellBuilt) SyncControlsFromSettings(); // 复用实例：只就地同步，不重建
-            else { BuildShell(); _shellBuilt = true; }
+            if (_shellBuilt) { SyncControlsFromSettings(); return; } // 复用实例：只就地同步，不重建
+            BuildShell();
+            _shellBuilt = true;
+            await BuildAllRowsAsync();
         };
     }
 
     private AppConfig Settings => App.Services.Settings;
 
-    /// <summary>轻量构建：只创建分组外壳（头部+空折叠体），行控件延迟到首次展开时生成。</summary>
+    /// <summary>轻量构建：只创建分组外壳（SettingsExpander 头部），行控件随后由 BuildAllRowsAsync 渐进生成。</summary>
     private void BuildShell()
     {
         GroupsHost.Children.Clear();
@@ -65,42 +76,26 @@ public sealed partial class ArgsPage : Page
         foreach (var group in _catalog.Groups)
         {
             var info = new GroupUi(group);
-            info.Body = new StackPanel { Spacing = 4, Margin = new Thickness(0, 4, 0, 0), Visibility = Visibility.Collapsed };
+            info.CountText = new TextBlock { Style = (Style)Application.Current.Resources["SecondaryTextStyle"] };
 
-            info.HeaderText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
-            info.Chevron = new FontIcon
+            info.Expander = new SettingsExpander
             {
-                Glyph = "\uE70D", // ChevronRight：折叠态；展开时旋转 90°
-                FontSize = 12,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Center,
-                RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5),
-            };
-
-            var headerContent = new Grid { ColumnSpacing = 12 };
-            headerContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            headerContent.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            headerContent.Children.Add(info.HeaderText);
-            Grid.SetColumn(info.Chevron, 1);
-            headerContent.Children.Add(info.Chevron);
-
-            info.Header = new Button
-            {
-                Content = headerContent,
+                Header = group.Title,
+                Content = info.CountText,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Padding = new Thickness(16, 12, 16, 12),
-                CornerRadius = new CornerRadius(8),
-                Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
-                BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
-                BorderThickness = new Thickness(1),
             };
-            info.Header.Click += (_, _) => SetExpanded(info, info.Body!.Visibility != Visibility.Visible);
 
-            info.Container = new StackPanel { Spacing = 0 };
-            info.Container.Children.Add(info.Header);
-            info.Container.Children.Add(info.Body);
-            GroupsHost.Children.Add(info.Container);
+            // 用户点开某组时收起其他组（手风琴：任何时刻最多一个分组展开）；
+            // 搜索走 SetExpandedRaw 并以 _suppressAccordion 旁路本互斥
+            info.Expander.Expanded += (_, _) =>
+            {
+                if (_suppressAccordion) return;
+                foreach (var other in _groups)
+                    if (!ReferenceEquals(other, info) && other.Expander.IsExpanded)
+                        other.Expander.IsExpanded = false;
+            };
+
+            GroupsHost.Children.Add(info.Expander);
 
             _groups.Add(info);
         }
@@ -110,56 +105,56 @@ public sealed partial class ArgsPage : Page
 
         // 含已启用参数的组：只展开第一个（手风琴：任何时刻最多一个分组展开，避免页面过长）
         var firstEnabled = _groups.FirstOrDefault(g => g.ArgNames.Any(Settings.Args.IsEnabled));
-        if (firstEnabled is not null) SetExpanded(firstEnabled, true);
+        if (firstEnabled is not null) firstEnabled.Expander.IsExpanded = true;
 
         UpdatePreview();
+        ApplyRowLayout();
     }
 
-    /// <summary>展开/收起分组。展开时自动收起其他分组（手风琴语义：任何时刻最多一个展开）。</summary>
-    private void SetExpanded(GroupUi group, bool expanded)
+    /// <summary>
+    /// 渐进式创建全部分组行：每组构建后让出 UI 线程，避免一次性创建 110 行卡顿（NFR-1）。
+    /// 行不再「首次展开时懒建」——SettingsExpander 没有 Expanding 事件，展开后再建会闪空内容。
+    /// </summary>
+    private async Task BuildAllRowsAsync()
     {
-        if (expanded)
+        foreach (var group in _groups)
         {
-            foreach (var other in _groups)
-            {
-                if (ReferenceEquals(other, group)) continue;
-                SetExpandedRaw(other, false);
-            }
+            EnsureBodyBuilt(group);
+            await Task.Yield(); // DispatcherQueue 同步上下文保证回到 UI 线程继续
         }
-        SetExpandedRaw(group, expanded);
     }
 
-    /// <summary>只切显隐与箭头，不参与手风琴——搜索需要同时展开多个命中分组。</summary>
+    /// <summary>只切展开态，不参与手风琴——搜索需要同时展开多个命中分组。</summary>
     private void SetExpandedRaw(GroupUi group, bool expanded)
     {
-        // 只有展开时才懒建行控件；从未展开过的分组被折叠时直接返回
+        // 只有展开时才懒建行控件；未建过行就折叠是无操作
         if (expanded) EnsureBodyBuilt(group);
-        if (group.Body is null) return;
-        group.Body.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
-        group.Chevron.RenderTransform = new Microsoft.UI.Xaml.Media.RotateTransform { Angle = expanded ? 90 : 0 };
+        group.Expander.IsExpanded = expanded;
     }
 
-    /// <summary>首次展开时才创建该组的行控件。</summary>
+    /// <summary>创建该组的行控件（平底行 + 行间分隔线，直接进 Expander.Items）。</summary>
     private void EnsureBodyBuilt(GroupUi group)
     {
         if (group.Built) return;
         group.Built = true;
-        foreach (var arg in group.Definition.Args)
-            group.Body!.Children.Add(BuildRow(arg));
+        var items = group.Expander.Items;
+        for (var i = 0; i < group.Definition.Args.Count; i++)
+        {
+            if (i > 0) items.Add(new Border { Style = (Style)Application.Current.Resources["CardDividerStyle"] });
+            items.Add(BuildRow(group.Definition.Args[i]));
+        }
     }
 
-    /// <summary>组头计数：N 启用 · M 项。</summary>
+    /// <summary>组头计数：N 启用 · M 项（计数放右侧 Content，不混进标题文本）。</summary>
     private void UpdateGroupCounts()
     {
         foreach (var g in _groups)
         {
             var on = g.ArgNames.Count(n => Settings.Args.IsEnabled(n));
-            var text = on > 0
-                ? $"{g.Definition.Title}（{on} 启用 · {g.ArgNames.Count} 项）"
-                : $"{g.Definition.Title}（{g.ArgNames.Count} 项）";
-            g.HeaderText.Text = text;
-            // 头部内容是 Grid，需手动给按钮一个自动化名称（屏幕阅读器 / UI 自动化）
-            AutomationProperties.SetName(g.Header, text);
+            var text = on > 0 ? $"{on} 启用 · {g.ArgNames.Count} 项" : $"{g.ArgNames.Count} 项";
+            g.CountText.Text = text;
+            // Expander 的 Header 是纯标题字符串：自动化名称补上完整语义（含计数）
+            AutomationProperties.SetName(g.Expander, $"{g.Definition.Title}（{text}）");
         }
     }
 
@@ -171,6 +166,9 @@ public sealed partial class ArgsPage : Page
             OnContent = string.Empty,
             OffContent = string.Empty,
         };
+        // 开关本身没有可见标题：把参数名与说明写进自动化名称/帮助文本，读屏才知道在开什么
+        AutomationProperties.SetName(toggle, $"启用参数 --{arg.Name}");
+        AutomationProperties.SetHelpText(toggle, arg.Description);
         toggle.IsOn = Settings.Args.IsEnabled(arg.Name);
         toggle.Toggled += (_, _) => Commit(() =>
         {
@@ -205,42 +203,105 @@ public sealed partial class ArgsPage : Page
         textColumn.Children.Add(descText);
 
         var (control, refresh) = BuildControl(arg);
+        if (control is not null)
+        {
+            control.HorizontalAlignment = HorizontalAlignment.Stretch;
+            control.MaxWidth = 460;
+            AutomationProperties.SetName(control, $"--{arg.Name} 取值");
+        }
 
-        // 设置应用行布局：左侧「参数名 + 说明」，右侧「取值控件 + 启用开关」
-        // 列宽随窗体比例伸缩：文本列 2*（有下限），控件列 1*（控件本身设上下限），开关列 Auto
-        // 行内边距与最小行高交给 SettingsRowStyle（16,12 / 48），不再手写 16,10
+        // 设置应用行布局：宽窗口「左侧参数名 + 说明，右侧取值控件与启用开关」；
+        // 窄窗口由 ApplyRowLayout 重排为上下两段，不再依赖 300/220 固定列宽。
+        // 行是 Expander 内容区里的平底行（无卡片边框），行内边距与最小行高交给 SettingsRowStyle（16,12 / 48）。
+        // Tag 记参数名：搜索过滤时靠它同步「行 + 前置换行分隔线」的可见性。
         var grid = new Grid
         {
             ColumnSpacing = 12,
             Style = (Style)Application.Current.Resources["SettingsRowStyle"],
+            Tag = arg.Name,
         };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star), MinWidth = 300 });
-        if (control is not null)
+
+        grid.Children.Add(textColumn);
+        if (control is not null) grid.Children.Add(control);
+        grid.Children.Add(toggle);
+
+        _rows[arg.Name] = new RowUi(grid, textColumn, toggle, control, refresh);
+        ApplyRowLayout();
+        SyncControlState(arg.Name);
+        return grid;
+    }
+
+    /// <summary>
+    /// 参数行响应式布局：内容区较窄时改为「说明一行、取值控件与启用开关一行」，
+    /// 避免固定列宽把控件挤出可视区（窄窗口下也不再出现横向挤压）。
+    /// </summary>
+    private void ApplyRowLayout()
+    {
+        // GroupsHost 位于 ScrollViewer 内，其 ActualWidth 即行可用宽度（已扣除页面边距与滚动条）
+        var narrow = GroupsHost.ActualWidth > 0 && GroupsHost.ActualWidth < 640;
+        foreach (var row in _rows.Values) ApplyRowLayout(row, narrow);
+    }
+
+    private static void ApplyRowLayout(RowUi row, bool narrow)
+    {
+        var grid = row.Row;
+        grid.ColumnDefinitions.Clear();
+        grid.RowDefinitions.Clear();
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowSpacing = 0;
+
+        if (narrow)
         {
-            control.MinWidth = 220;
-            control.MaxWidth = 460;
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowSpacing = 8;
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            Grid.SetRow(row.Text, 0);
+            Grid.SetColumn(row.Text, 0);
+            Grid.SetColumnSpan(row.Text, 2);
+
+            if (row.Control is not null)
+            {
+                Grid.SetRow(row.Control, 1);
+                Grid.SetColumn(row.Control, 0);
+                Grid.SetColumnSpan(row.Control, 1);
+            }
+            // 无取值控件（纯开关参数）时，开关单独占第二行右侧
+            Grid.SetRow(row.Toggle, 1);
+            Grid.SetColumn(row.Toggle, 1);
+            Grid.SetColumnSpan(row.Toggle, 1);
+            return;
+        }
+
+        grid.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(2, GridUnitType.Star),
+            MinWidth = 180,
+        });
+        if (row.Control is not null)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = new GridLength(1, GridUnitType.Star),
+                MinWidth = 160,
+            });
         }
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        grid.Children.Add(textColumn);
-        if (control is not null)
+        Grid.SetRow(row.Text, 0);
+        Grid.SetColumn(row.Text, 0);
+        Grid.SetColumnSpan(row.Text, 1);
+
+        if (row.Control is not null)
         {
-            Grid.SetColumn(control, 1);
-            grid.Children.Add(control);
+            Grid.SetRow(row.Control, 0);
+            Grid.SetColumn(row.Control, 1);
+            Grid.SetColumnSpan(row.Control, 1);
         }
-        Grid.SetColumn(toggle, grid.ColumnDefinitions.Count - 1);
-        grid.Children.Add(toggle);
-
-        var card = new Border
-        {
-            Style = (Style)Application.Current.Resources["CardBorderStyle"],
-            Child = grid,
-        };
-
-        _rows[arg.Name] = new RowUi(card, toggle, control, refresh);
-        SyncControlState(arg.Name);
-        return card;
+        Grid.SetRow(row.Toggle, 0);
+        Grid.SetColumn(row.Toggle, row.Control is null ? 1 : 2);
+        Grid.SetColumnSpan(row.Toggle, 1);
     }
 
     /// <summary>
@@ -255,13 +316,37 @@ public sealed partial class ArgsPage : Page
         UpdatePreview();
     }
 
-    /// <summary>未启用行的取值控件灰显并禁止交互。</summary>
+    /// <summary>
+    /// 未启用行的取值控件必须真正禁用：只改透明度/命中测试会留下一个「看得见灰、键盘仍能编辑」的控件。
+    /// 灰显交给原生控件模板，自动化树也会同步为 Disabled。
+    /// </summary>
     private void SyncControlState(string name)
     {
-        if (!_rows.TryGetValue(name, out var row) || row.Control is null) return;
-        var on = row.Toggle.IsOn;
-        row.Control.Opacity = on ? 1 : 0.35;
-        row.Control.IsHitTestVisible = on;
+        if (!_rows.TryGetValue(name, out var row)) return;
+        SetControlEnabled(row.Control, row.Toggle.IsOn);
+    }
+
+    /// <summary>
+    /// 真正禁用取值控件：Control 直接置 IsEnabled=false（键盘焦点与自动化状态同步）；
+    /// 组合控件（如「下拉 + 路径框」的 StackPanel）递归禁用其中的控件，容器本身再灰显并停止命中。
+    /// </summary>
+    private static void SetControlEnabled(FrameworkElement? element, bool enabled)
+    {
+        if (element is null) return;
+
+        if (element is Control control)
+        {
+            control.IsEnabled = enabled;
+            return;
+        }
+
+        element.Opacity = enabled ? 1 : 0.35;
+        element.IsHitTestVisible = enabled;
+        if (element is Panel panel)
+        {
+            foreach (var child in panel.Children.OfType<FrameworkElement>())
+                SetControlEnabled(child, enabled);
+        }
     }
 
     /// <summary>
@@ -296,6 +381,7 @@ public sealed partial class ArgsPage : Page
                 if (arg.Type == ArgType.Enum) return (combo, RefreshCombo);
 
                 var fileBox = new TextBox { PlaceholderText = "可选：日志文件路径", Margin = new Thickness(0, 4, 0, 0) };
+                AutomationProperties.SetName(fileBox, $"--{arg.Name} 日志文件路径");
                 fileBox.Text = Settings.Args.Value(arg.Name + ":file");
                 fileBox.TextChanged += (_, _) =>
                     Commit(() => Settings.Args.SetValue(arg.Name + ":file", fileBox.Text.Trim()));
@@ -319,6 +405,8 @@ public sealed partial class ArgsPage : Page
                 foreach (var choice in arg.Choices ?? new List<string>())
                 {
                     var check = new CheckBox { Content = choice, IsChecked = selected.Contains(choice) };
+                    // 多个开关同处一行，读屏需要知道每个勾选项属于哪个参数
+                    AutomationProperties.SetName(check, $"--{arg.Name} {choice}");
                     check.Checked += (_, _) => UpdateMulti(arg, panel);
                     check.Unchecked += (_, _) => UpdateMulti(arg, panel);
                     panel.Children.Add(check);
@@ -402,26 +490,55 @@ public sealed partial class ArgsPage : Page
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         var query = SearchBox.Text.Trim();
-        foreach (var g in _groups)
+        // 展开命中分组时旁路手风琴互斥：搜索需要同时看到多个分组
+        _suppressAccordion = true;
+        try
         {
-            var matches = g.ArgNames.Where(n => query.Length == 0 || n.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
-            var anyVisible = matches.Count > 0;
-            g.Container.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
-            if (!anyVisible) continue;
-
-            // 搜索命中要能同时看到多个分组的匹配项，故绕过手风琴
-            if (query.Length > 0) SetExpandedRaw(g, true);
-            else
+            foreach (var g in _groups)
             {
-                // 空查询：恢复各行可见
-                foreach (var name in g.ArgNames)
-                    if (_rows.TryGetValue(name, out var row)) row.Card.Visibility = Visibility.Visible;
+                var matches = g.ArgNames.Where(n => query.Length == 0 || n.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+                var anyVisible = matches.Count > 0;
+                g.Expander.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
+                if (!anyVisible) continue;
+
+                if (query.Length == 0)
+                {
+                    // 空查询：恢复该组全部行（未建过行的组无需处理，展开时会按其时的 Settings 创建）
+                    SyncRowVisibility(g, null);
+                    continue;
+                }
+
+                // 搜索命中要能同时看到多个分组的匹配项，故绕过手风琴
+                SetExpandedRaw(g, true);
+                SyncRowVisibility(g, matches.Contains);
+            }
+        }
+        finally { _suppressAccordion = false; }
+    }
+
+    /// <summary>
+    /// 同步一组内「行 + 前置换行分隔线」的可见性：行按 match 过滤；
+    /// 分隔线仅在其前后都有可见行时保留，避免隐藏行处残留空线或双线。
+    /// </summary>
+    private static void SyncRowVisibility(GroupUi group, Func<string, bool>? match)
+    {
+        var items = group.Expander.Items.OfType<FrameworkElement>().ToList();
+        var seenVisible = false;
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (items[i] is Grid row && row.Tag is string name)
+            {
+                var visible = match is null || match(name);
+                row.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                if (visible) seenVisible = true;
                 continue;
             }
-
-            foreach (var name in g.ArgNames)
-                if (_rows.TryGetValue(name, out var row))
-                    row.Card.Visibility = matches.Contains(name) ? Visibility.Visible : Visibility.Collapsed;
+            if (items[i] is Border divider)
+            {
+                var nextVisible = i + 1 < items.Count && items[i + 1] is Grid next
+                    && next.Visibility == Visibility.Visible;
+                divider.Visibility = seenVisible && nextVisible ? Visibility.Visible : Visibility.Collapsed;
+            }
         }
     }
 

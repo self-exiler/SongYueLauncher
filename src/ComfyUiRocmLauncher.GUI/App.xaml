@@ -18,6 +18,12 @@
             <Thickness x:Key="SettingsPagePadding">36,4,36,36</Thickness>
             <x:Double x:Key="SettingsCardMinHeight">48</x:Double>
 
+            <!-- 同一分组内相邻设置卡的间距（Windows 设置卡片近贴排布，非 8 大间距） -->
+            <x:Double x:Key="SettingsCardSpacing">2</x:Double>
+
+            <!-- 主窗口页头（大标题/面包屑行）内边距：左右与 SettingsPagePadding 对齐，单一来源 -->
+            <Thickness x:Key="SettingsHeaderPadding">36,8,36,0</Thickness>
+
             <!-- 分组标题：基于内置 Subtitle 文本样式（上疏下密） -->
             <Style x:Key="SettingsSectionHeaderStyle" TargetType="TextBlock"
                    BasedOn="{StaticResource SubtitleTextBlockStyle}">
@@ -34,6 +40,10 @@
             <!-- 输入类控件的统一宽度（下拉框 / 单行文本框），避免各页 240/260/340/520 混用 -->
             <x:Double x:Key="SettingsFieldMinWidth">320</x:Double>
             <x:Double x:Key="SettingsFieldMaxWidth">480</x:Double>
+
+            <!-- 设置卡内容列统一宽度：SettingsCard 的内容列按各卡内容自适应，宽度不一会让
+                 右侧控件的左缘逐卡错位；把内容套进同一宽度的容器即可全页对齐（内含控件 Stretch 填充） -->
+            <x:Double x:Key="SettingsCardContentWidth">460</x:Double>
 
             <!-- 卡片容器：无内边距（供分隔线全幅贴边）；行内边距由 SettingsRowStyle 负责 -->
             <Style x:Key="CardBorderStyle" TargetType="Border">

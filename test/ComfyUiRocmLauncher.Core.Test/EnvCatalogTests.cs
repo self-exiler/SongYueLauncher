@@ -273,7 +273,21 @@ public class EnvCatalogTests
             ("sageattention-2.2.0-cp312-win_amd64.whl", "https://x/sage.whl"),
         };
         Assert.Equal("https://x/sage.whl", WheelService.SelectReleaseAsset(assets, "cp312"));
-        Assert.Equal("https://x/sage.whl", WheelService.SelectReleaseAsset(assets, "nonexistent"));
+        Assert.Equal("https://x/sage.whl", WheelService.SelectReleaseAsset(assets, null));
+    }
+
+    /// <summary>
+    /// 指定了 assetMatch 却没有命中时必须返回 null，而不是退回 release 里的任意 whl——
+    /// 上游常混发 Linux 轮（如 ROCm/aiter 只有 manylinux），退回会把必然装失败的包交给 uv。
+    /// </summary>
+    [Fact]
+    public void SelectReleaseAsset_NoFallbackWhenMatchMisses()
+    {
+        var assets = new[]
+        {
+            ("amd_aiter-0.1.26-cp312-manylinux.whl", "https://x/aiter.whl"),
+        };
+        Assert.Null(WheelService.SelectReleaseAsset(assets, "win_amd64"));
     }
 
     [Fact]

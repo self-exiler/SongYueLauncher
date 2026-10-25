@@ -5,8 +5,11 @@ public sealed class WheelArchRule
 {
     /// <summary>命中架构；"*" 为兜底。</summary>
     public string Arch { get; set; } = "*";
-    /// <summary>GitHub 仓库（releases/latest 动态解析）。</summary>
+    /// <summary>GitHub 仓库（默认 releases/latest 动态解析）。</summary>
     public string? GhRepo { get; set; }
+    /// <summary>钉死 release tag：设置时按 /releases/tags/{tag} 解析而非 latest——
+    /// 上游 latest 未必是可用版本（如 0xDELUXA/flash-attention 的 latest 是 v3，作者实际用 v2.8.4）。</summary>
+    public string? Tag { get; set; }
     /// <summary>release 资产名匹配子串。</summary>
     public string? AssetMatch { get; set; }
     public bool UseGhMirror { get; set; }

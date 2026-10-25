@@ -1,10 +1,10 @@
 namespace AiDiagnostics;
 
-/// <summary>可供选择的模型条目（下拉列表用）。</summary>
+/// <summary>网关广播的模型条目（下拉列表用）。</summary>
 public sealed record AiModel(string ProviderId, string ModelId, string DisplayName)
 {
-    /// <summary>opencode <c>--model</c> 需要的 <c>provider/model</c> 形式。</summary>
-    public string QualifiedId => $"{ProviderId}/{ModelId}";
+    /// <summary>发送给网关的原始模型 id（免费车道为裸 id，聚合渠道为 provider/model 复合 id）。</summary>
+    public string QualifiedId => ModelId;
 
     public override string ToString() => DisplayName;
 }

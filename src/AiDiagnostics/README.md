@@ -1,8 +1,8 @@
 # AiDiagnostics
 
-通过本机 [opencode](https://opencode.ai) CLI 做 AI 诊断的通用 .NET 库：**零 UI 依赖、零业务域假设**，任何 .NET 10 宿主（WinUI / WPF / Avalonia / 控制台 / ASP.NET）都可以直接引用。
+通过 **OpenAI 兼容本地网关**（[dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) 独立服务）做 AI 诊断的通用 .NET 库：**零 UI 依赖、零业务域假设、零第三方包**，任何 .NET 10 宿主（WinUI / WPF / Avalonia / 控制台 / ASP.NET）都可以直接引用。
 
-典型用途：把一段日志或现象描述交给指定的模型与自定义 agent（只读、可联网查证），拿回结构化建议，并把过程流式显示在界面上。
+典型用途：把一段日志或现象描述交给指定的模型与只读人设，拿回结构化建议，正文增量与状态提示分开流式回调到界面上。
 
 ---
 
@@ -10,33 +10,32 @@
 
 **做**：
 
-- 定位本机 opencode CLI（npm 全局 / 用户目录 / PATH，自动绕过 npm 的 shim 脚本）
-- 列举当前可用的模型（`provider/model` 形式，可直接喂给 `--model`）
-- 按 **agent 画像** 在运行时生成临时 `opencode.json`（人设来自宿主；模式/温度/权限由库固定为「只读 + 联网查证」），分析结束自动清理
-- 调 `opencode run --format json`，解析 NDJSON 事件流，逐行回调进度与正文
-- 日志错误扫描（关键字 / Traceback 归并 / 字节预算截断，关键词可配置）
+- 对接 OpenAI 兼容网关：`GET /v1/models` 列举模型、`POST /v1/chat/completions`（SSE 流式）执行分析、`/health` 免 Key 探活
+- **function calling 工具循环**：宿主可选注入 `websearch` / `webfetch` 执行器（均内置、免 Key），轮次熔断、未知工具名兜底、上游不支持 tools 时自动降级为纯离线分析
+- 错误日志**三类化扫描**（Python 解释器报错 / error 级 / warning 级），按「解释器 → error → warning」优先级装填字节预算
+- 错误材料**指纹归并分组**（数字/路径/UUID/IP/十六进制归一，同型错误合并 ×N 计数）
 - 提示词模板占位符渲染
-- 进程执行（stdin 写入、超时、取消、进程树强杀、输出冲刷一次做对）
+- ANSI 转义序列剥离（公开给宿主复用）；进程执行与命令行工具（供宿主复用）
 
 **不做**：
 
 - 不含任何人设、关键词或提示词文案 —— 全部由宿主注入（见 §4）
-- 不含任何 UI 控件；进度回调是 `Action<string>`，切线程由宿主负责
-- 不管理 opencode 的登录态（凭据由用户自行执行 `opencode auth login` 配置）
+- 不含任何 UI 控件；回调发生在后台线程，切线程由宿主负责
+- 不管理网关的安装与进程生命周期 —— 宿主负责安装、拉起、Key 的读取（本仓库的实现见 `ComfyUiRocmLauncher.Core/Services/AiGatewayService.cs`）
 - 不做多模型编排、不做会话持久化、不做 RAG
 
 ---
 
 ## 2. 环境要求
 
-| 项 | 要求 |
-| --- | --- |
-| 运行时 | .NET 10（`net10.0`） |
-| 外部依赖 | opencode CLI（实测 2.0.18；1.x 不保证兼容） |
-| 平台 | Windows 为一等公民（参数引用按 `CommandLineToArgvW` 规则）；进程执行本身跨平台 |
-| 凭据 | 宿主或用户事先配置好 provider（`opencode auth login`） |
+| 项       | 要求                                                                                |
+| -------- | ------------------------------------------------------------------------------------ |
+| 运行时   | .NET 10（`net10.0`）                                                               |
+| 外部依赖 | OpenAI 兼容本地网关（dsh-our-free-model 独立服务，回环监听，Bearer Key 鉴权）      |
+| 平台     | 跨平台（HTTP + System.Text.Json，无 P/Invoke）                                      |
+| 凭据     | 网关 API Key（forwardKey），经 `GatewayOptions.ApiKey` 注入                        |
 
-模型额度由 opencode 账号决定：额度不足时 `AskAsync` 会返回 `Success=false`、正文为上游错误（例如 `provider.quota` / HTTP 402），**不会挂起**。
+上游额度/限流由网关与免费车道决定：限流（429）/配额/网络错误会以失败答案或 `InvalidOperationException` 返回，**不会挂起**。
 
 ---
 
@@ -52,105 +51,73 @@ dotnet add reference path/to/src/AiDiagnostics/AiDiagnostics.csproj
 using AiDiagnostics;
 using AiDiagnostics.Agents;
 
-var client = new AiDiagnosticsClient();
+var client = new AiDiagnosticsClient(() => new GatewayOptions
+{
+    BaseUrl = "http://127.0.0.1:18900",
+    ApiKey = forwardKey,               // 网关数据目录 settings.json 的 forwardKey
+});
 
-// 1) 列模型（内部已处理后台服务冷启动重试）
+// 1) 列模型（OpenAI 格式；裸 id 与 provider/model 复合 id 都能解析）
 var models = await client.ListModelsAsync();
 if (models.Count == 0)
 {
-    throw new InvalidOperationException("没有可用模型，请先 opencode auth login");
+    throw new InvalidOperationException("没有可用模型，请确认网关服务已启动并完成模型探测");
 }
 
-// 2) 定义 agent：只读 + 可联网查证
+// 2) 人设：只读 + 可联网查证（行为边界只写在 system prompt，v1.15 防发散原则）
 var agent = new AiAgentProfile
 {
-    Id = "readonly-analyst",
     Description = "Read-only analyst.",
-    SystemPrompt = "你是只读排障助手。只依据用户提供的内容分析，不修改文件、不执行命令。",
+    SystemPrompt = "你是只读排障助手。只依据用户提供的内容分析，不修改文件、不执行命令；"
+                 + "联网查证是可选兜底，整次分析最多一轮。",
 };
 
-// 3) 提问
-var answer = await client.AskAsync(new AiRequest
-{
-    Prompt = "解释一下这个报错：ModuleNotFoundError: No module named 'torch'",
-    ModelId = models[0].QualifiedId,   // 形如 opencode/claude-haiku-5-5
-    Agent = agent,
-    Title = "依赖排查",
-    Instruction = "完整内容已通过 stdin 附加，请直接作答。",
-});
-
-Console.WriteLine(answer.Success ? answer.Text : $"失败：{answer.Text}");
-```
-
-### 3.2 流式显示（命令行 / 界面通用）
-
-```csharp
+// 3) 提问（流式：正文增量进 onDelta，工具/思考状态进 onStatus）
 var answer = await client.AskAsync(
     new AiRequest
     {
-        Prompt = prompt,
-        ModelId = model,
+        Prompt = "解释一下这个报错：ModuleNotFoundError: No module named 'torch'",
+        ModelId = models[0].QualifiedId,   // 网关原始 id，原样发送
         Agent = agent,
-        Instruction = "完整内容已通过 stdin 附加，请直接作答。",
+        UseTools = true,
     },
-    onOutputLine: line =>
-    {
-        // 无需自己解析 NDJSON；进度与否由返回值直接告知，不必猜字符串前缀
-        var (display, isProgress) = RunEventParser.TryFormat(line);
-        if (display is null) return;
+    onDelta: Console.Write,
+    onStatus: status => Console.Error.WriteLine($"[状态] {status}"));
 
-        if (isProgress)
-        {
-            ShowProgress(display);
-        }
-        else
-        {
-            AppendBody(display);
-        }
-    },
-    cancellationToken: cts.Token);
+Console.WriteLine(answer.Success ? "" : $"失败：{answer.Text}");
 ```
 
-> WinUI/WPF 宿主记得把回调切回 UI 线程（例如 `DispatcherQueue.TryEnqueue`）；本库的回调发生在后台线程。
-
-### 3.3 日志诊断：扫描 + 模板 + 分析
+### 3.2 日志诊断：三类扫描 + 归并分组 + 模板
 
 ```csharp
 using AiDiagnostics.Logs;
 
-// 1) 只捞 error 行与 Traceback 块，按 12KB 预算截断
+// 1) 三类抓取：Traceback/裸异常尾行 → 解释器；显式 WARNING 前缀 → warning；关键字 → error。
+//    字节预算按「解释器 → error → warning」优先级整块装填——warning 刷屏不再挤掉 Traceback。
 var scan = LogErrorScanner.Scan(logLines, new LogScanOptions
 {
     ErrorMarkers = ["ERROR", "Exception", "CRITICAL", "Segmentation fault"],
-    NoiseHints = ["listening at", "Starting server"],   // 心跳噪声，即便含关键字也不算错误
-    MaxBytes = 12_000,
+    WarnMarkers  = ["WARNING"],                          // 显式前缀，优先于 error 关键字判定
+    NoiseHints   = ["listening at", "Starting server"],  // 心跳噪声，即便含关键字也不算错误
+    MaxBytes     = 12_000,
 });
 
-// 2) 渲染自家提示词模板（未知占位符原样保留，模板里可安全写含花括号的代码块）
+// 2) 指纹归并：数字/路径/UUID/IP/十六进制归一后同型错误合并计数
+var groups = ErrorGrouper.Group(scan.Blocks);
+foreach (var g in groups)
+{
+    Console.WriteLine($"[{g.Kind}] {g.Title} ×{g.Count}（第 {g.FirstLine}~{g.LastLine} 行）");
+}
+
+// 3) 渲染自家提示词模板（未知占位符原样保留，模板里可安全写含花括号的代码块）
 var prompt = PromptComposer.Render(
     """
-    你在排查应用故障。
-    运行环境：{context}
-
-    ```log
-    {log}
-    ```
+    你在排查应用故障。运行环境：{context}
+    材料已分组：{material}
 
     请给出：根因 / 证据 / 解决步骤。
     """,
-    new Dictionary<string, string>
-    {
-        ["context"] = $"版本 1.2.3，路径 {appDir}",
-        ["log"] = string.Join("\n\n", scan.Blocks),
-    });
-
-var answer = await client.AskAsync(new AiRequest
-{
-    Prompt = prompt,
-    ModelId = model,
-    Agent = agent,
-    Instruction = "完整内容已通过 stdin 附加，请直接作答。",
-});
+    new Dictionary<string, string> { ["context"] = "…", ["material"] = "…" });
 ```
 
 ---
@@ -161,51 +128,58 @@ var answer = await client.AskAsync(new AiRequest
 
 | 成员 | 说明 |
 | --- | --- |
-| `AiDiagnosticsClient()` | 无参构造；超时与重试次数为库内常量，见下方说明 |
-| `static string? Locate()` | 返回 opencode 可执行文件路径，未安装为 `null`（不抛异常） |
-| `Task<IReadOnlyList<AiModel>> ListModelsAsync(CancellationToken)` | 列举已启用模型；列表为空时重试一次（间隔 2s，容忍后台服务冷启动） |
-| `Task<AiAnswer> AskAsync(AiRequest, Action<string>? onOutputLine, CancellationToken)` | 执行分析；`onOutputLine` 收到的是**原始行**（NDJSON 或普通输出） |
+| `AiDiagnosticsClient(Func<GatewayOptions>?, HttpClient?, IAiToolExecutor?)` | 选项工厂每次调用时取最新值（Key 可能晚于服务启动生成）；HttpClient 与工具执行器可注入（测试桩） |
+| `Task<bool> IsHealthyAsync(CancellationToken)` | `GET /health` 免 Key 探活，3 秒超时 |
+| `Task<IReadOnlyList<AiModel>> ListModelsAsync(CancellationToken)` | `GET /v1/models`；非 2xx 抛 `InvalidOperationException`（含 HTTP 码与 error.message） |
+| `Task<AiAnswer> AskAsync(AiRequest, Action<string>? onDelta, Action<string>? onStatus, CancellationToken)` | SSE 流式分析；`onDelta` 收**正文增量原样拼接**（不要额外加分隔），`onStatus` 收「模型思考中… / 正在调用 …」类提示 |
 
-抛错约定：未安装 opencode / 模型列表命令非零退出 → `InvalidOperationException`；`model.list` 返回体不是合法 JSON → `JsonException`。
+### `GatewayOptions`
 
-内置超时常量：列模型 60s、单次分析 300s。它们曾经是可注入的 `AiDiagnosticsOptions`，但全仓库只有"用默认值"一个构造点，故收成常量；若将来真需要按宿主调参，再加回构造参数。
+| 属性 | 默认 | 说明 |
+| --- | --- | --- |
+| `BaseUrl` | `http://127.0.0.1:18900` | 网关根地址（不含末尾斜杠） |
+| `ApiKey` | 空 | Bearer Key（forwardKey） |
+| `ModelsTimeoutMs` | 30 000 | 列举模型超时 |
+| `AnswerTimeoutMs` | 600 000 | 单次分析超时（上游长思考可静默 60 秒以上） |
 
 ### `AiRequest`
 
-| 属性 | 必填 | 默认 | 说明 |
-| --- | --- | --- | --- |
-| `Prompt` | ✅ | — | 完整 prompt，走 **stdin** 传入，不受命令行长度限制 |
-| `ModelId` | ✅ | — | `provider/model` |
-| `Agent` | ✅ | — | agent 画像 |
-| `Title` | | `"AI 分析"` | 会话标题 |
-| `Instruction` | ✅ | — | argv 末尾的短指令，通常只说明内容已从 stdin 传入；行为边界写在 agent 人设里 |
+| 属性 | 必填 | 说明 |
+| --- | --- | --- |
+| `Prompt` | ✅ | 完整提问文本，作为 user 消息发送 |
+| `ModelId` | ✅ | 网关原始模型 id（`/v1/models` 的 `id` 原样） |
+| `Agent` | ✅ | 人设（system prompt 直传 system 消息） |
+| `UseTools` |  | 是否启用联网查证工具（需构造时传入执行器；上游 400 自动降级） |
 
 ### `AiAgentProfile`
 
-```csharp
-new AiAgentProfile
-{
-    Id = "readonly-analyst",          // 即 opencode run --agent 的取值
-    SystemPrompt = "...",             // 人设 + 回答结构
-    Description = "只读日志分析",      // 列表里显示的说明
-}
-```
+只有 `SystemPrompt` 与 `Description` 两个字段。采样温度 0.1、只读边界、工具能力由库与客户端固定，不开放覆写。
 
-画像只有这三个字段。`opencode.json` 里其余三项由库固定，不开放覆写：`mode = "primary"`、`temperature = 0.1`、`permission = { "*": "deny", read: "deny", webfetch/websearch: "allow" }`——分析任务只出结论与步骤，不改文件、不跑命令、不读本机文件，只允许联网查证。
+### 工具（`AiDiagnostics.Tools`）
+
+| 成员 | 说明 |
+| --- | --- |
+| `IAiToolExecutor` | 宿主可自定义的工具执行器接口（Definitions + ExecuteAsync） |
+| `CompositeToolExecutor` | 组合多个执行器；执行异常折算为结果文本 |
+| `WebFetchTool` | 仅 http/https、响应体 200 KB 上限、30 秒超时、HTML 剥标签、输出 16K 字符截断 |
+| `WebSearchTool` | GitHub Issues + Stack Overflow 免 Key 域特化搜索（各前 5 条，附链接） |
+
+未知工具名兜底在客户端执行：无论执行器是否自带守卫，未声明的能力一律回填 `Tool '<name>' is not available.`。
 
 ### 日志与提示词
 
 | 成员 | 说明 |
 | --- | --- |
-| `LogErrorScanner.Scan(IEnumerable<string> lines, LogScanOptions?)` | 返回 `LogScanResult`（`Blocks` / `TotalLines` / `ErrorLineCount` / `Truncated`） |
-| `LogErrorScanner.LooksLikeError(string line, LogScanOptions?)` | 单行判定，便于自行过滤 |
-| `LogScanResult` | `Blocks` / `TotalLines` / `ErrorLineCount` / `Truncated`；拼提示词用 `string.Join("\n\n", Blocks)` |
-| `LogScanOptions` | `ErrorMarkers` / `NoiseHints` / `MaxBytes`（record，可 `with`）；Traceback 头与去色是固定行为，不开放配置 |
+| `LogErrorScanner.Scan(lines, LogScanOptions?)` | 返回 `LogScanResult`（`Blocks` 按「解释器 → error → warning」优先序、`ErrorLineCount`/`WarningLineCount`、`TotalBlockCount`/`DroppedBlockCount`、`Truncated`） |
+| `LogErrorScanner.LooksLikeError(line, options?)` | 单行判定，便于自行过滤 |
+| `LogBlock` / `LogErrorKind` | 带类别与起始行号的块；`PythonInterpreter` / `Error` / `Warning` |
+| `ErrorGrouper.Group(blocks)` | 指纹归并 → `ErrorGroup`（归一化标题、`Count`、首末行号、代表块） |
+| `LogScanOptions` | `ErrorMarkers` / `WarnMarkers` / `NoiseHints` / `MaxBytes`（record，可 `with`） |
 | `PromptComposer.Render(template, values)` | `{name}` 占位符替换；未知键保持不变 |
 
 ### 底层设施（一般无需直接用）
 
-`Runtime.ProcessRunner.RunCapturedAsync` / `Runtime.ProcessRunner.CreateStartInfo`、`Runtime.CommandLine.Quote/Join`、`Runtime.AnsiStripper.Strip` / `AnsiStripper.TryMatchSgr`、`Runtime.OpenCodeLocator.Find`、`Parsing.RunEventParser.ParseAnswer/TryFormat`。
+`Runtime.ProcessRunner.RunCapturedAsync`、`Runtime.CommandLine.Quote/Join`、`Runtime.AnsiStripper.Strip / TryMatchSgr`——进程执行、命令行引用与 ANSI 剥离是通用工具，宿主（如本仓库的 `LogService`）可直接复用。
 
 ---
 
@@ -213,27 +187,32 @@ new AiAgentProfile
 
 ### 5.1 类图
 
-图中类型分属五个命名空间：`AiDiagnostics`（根：`AiDiagnosticsClient` / `AiModel` / `AiAnswer` / `AiRequest`）、`AiDiagnostics.Agents`、`AiDiagnostics.Logs`、`AiDiagnostics.Parsing`、`AiDiagnostics.Runtime`。带 `<<internal>>` 的是内部实现，不对外暴露。
-
-> 图中 `$` 表示静态方法；`PromptComposer`、`RunEventParser`、`ProcessRunner`、`CommandLine`、`AnsiStripper`、`OpenCodeLocator`、`LogErrorScanner` 是纯静态工具类（`ModelListParser`、`AgentWorkspace` 为 internal），其常量与静态属性未逐成员标注。
+图中类型分属四个命名空间：`AiDiagnostics`（根）、`AiDiagnostics.Agents`、`AiDiagnostics.Logs`、`AiDiagnostics.Tools`。带 `<<internal>>` 的是内部实现。
 
 ```mermaid
 classDiagram
     direction LR
 
     class AiDiagnosticsClient {
-        +AiDiagnosticsClient()
-        +Locate()$ string?
+        +AiDiagnosticsClient(optionsFactory, http, tools)
+        +IsHealthyAsync(ct) Task~bool~
         +ListModelsAsync(ct) Task~AiModel[]~
-        +AskAsync(request, onOutputLine, ct) Task~AiAnswer~
+        +AskAsync(request, onDelta, onStatus, ct) Task~AiAnswer~
+        -ReadChatStreamAsync(body, ...)$ Task~ChatStreamState~
+    }
+
+    class GatewayOptions {
+        +BaseUrl string
+        +ApiKey string
+        +ModelsTimeoutMs int
+        +AnswerTimeoutMs int
     }
 
     class AiRequest {
         +Prompt string
         +ModelId string
         +Agent AiAgentProfile
-        +Title string
-        +Instruction string
+        +UseTools bool
     }
 
     class AiAnswer {
@@ -249,9 +228,28 @@ classDiagram
     }
 
     class AiAgentProfile {
-        +Id string
         +SystemPrompt string
         +Description string
+    }
+
+    class IAiToolExecutor {
+        <<interface>>
+        +Definitions AiToolDefinition[]
+        +ExecuteAsync(call, ct) Task~string~
+    }
+
+    class CompositeToolExecutor
+    class WebFetchTool
+    class WebSearchTool
+    IAiToolExecutor <|.. CompositeToolExecutor
+    IAiToolExecutor <|.. WebFetchTool
+    IAiToolExecutor <|.. WebSearchTool
+
+    class ChatStreamState {
+        <<internal>>
+        +FinishReason string
+        +ErrorMessage string
+        +ToolCalls AiToolCall[]
     }
 
     class LogErrorScanner {
@@ -261,193 +259,121 @@ classDiagram
 
     class LogScanOptions {
         +ErrorMarkers list
+        +WarnMarkers list
         +NoiseHints list
         +MaxBytes int
     }
 
     class LogScanResult {
-        +Blocks list
-        +TotalLines int
+        +Blocks LogBlock[]
         +ErrorLineCount int
+        +WarningLineCount int
         +Truncated bool
+    }
+
+    class LogBlock {
+        +Text string
+        +Kind LogErrorKind
+        +StartLine int
+    }
+
+    class ErrorGrouper {
+        +Group(blocks)$ ErrorGroup[]
+        -Normalize(line)$ string
     }
 
     class PromptComposer {
         +Render(template, values)$ string
     }
 
-    class RunEventParser {
-        +ParseAnswer(stdout)$ AiAnswer
-        +TryFormat(line)$ (string?, bool)
-        -ParseEvent(trimmed) RunEvent
-    }
-
-    class ProcessRunner {
-        +RunCapturedAsync(file, args, cwd, timeoutMs, onLine, ct, stdin, env)$ tuple
-    }
-
-    class CommandLine {
-        +Quote(value)$ string
-        +Join(tokens)$ string
-    }
-
     class AnsiStripper {
         +Strip(line)$ string
     }
 
-    class OpenCodeLocator {
-        +Find()$ string?
-    }
-
-    class AgentWorkspace {
-        <<internal>>
-        +Root string
-        +ConfigPath string
-        +Create(profile)$ AgentWorkspace
-        +BuildConfigJson(profile)$ string
-        +Dispose() void
-    }
-
-    class ModelListParser {
-        <<internal>>
-        +Parse(json)$ AiModel[]
-    }
-
-    %% 客户端对外契约
+    AiDiagnosticsClient ..> GatewayOptions : 连接参数
     AiDiagnosticsClient ..> AiRequest : 入参
     AiDiagnosticsClient ..> AiAnswer : 返回
     AiDiagnosticsClient ..> AiModel : 返回
-
-    %% 客户端内部协作
-    AiDiagnosticsClient ..> AgentWorkspace : 每次 Ask 创建/清理
-    AiDiagnosticsClient ..> ProcessRunner : 执行子进程
-    AiDiagnosticsClient ..> OpenCodeLocator : 定位 CLI
-    AiDiagnosticsClient ..> RunEventParser : 解析 NDJSON
-    AiDiagnosticsClient ..> ModelListParser : 解析 model.list
-
-    %% 领域模型
+    AiDiagnosticsClient ..> ChatStreamState : SSE 解析
+    AiDiagnosticsClient ..> IAiToolExecutor : 工具循环（≤2 轮）
     AiRequest --> AiAgentProfile : Agent
-    AgentWorkspace ..> AiAgentProfile : 序列化为 opencode.json（固定 mode/温度/权限）
 
-    %% 日志链路
     LogErrorScanner ..> LogScanOptions : 入参
     LogErrorScanner ..> LogScanResult : 返回
+    LogErrorScanner ..> LogBlock : 产出
     LogErrorScanner ..> AnsiStripper : 去色
+    ErrorGrouper ..> LogBlock : 入参
+    ErrorGrouper ..> ErrorGroup : 返回
 ```
 
 读图要点：
 
-- **对外只有一个门面**：`AiDiagnosticsClient`。其余 `public` 类型都是它的输入/输出或可独立使用的纯函数工具。
-- `AiRequest` **聚合** `AiAgentProfile`（`-->`）：没有 agent 画像就无法发起分析，人设跟请求一起传；权限与温度由库固定。
-- `AgentWorkspace` 是 `internal`：每次 `AskAsync` 建临时目录、写 `opencode.json`、结束后删除，宿主不需要也不应该感知它。
-- `LogErrorScanner` / `PromptComposer` / `RunEventParser` 是**与客户端解耦的纯函数**，可以单独用于「只做日志扫描」或「只解析事件流」的场景。
+- **对外只有一个门面**：`AiDiagnosticsClient`。HTTP 细节（SSE 帧解析、工具循环、降级）都收在它内部，`ChatStreamState` 是 internal。
+- `LogErrorScanner` / `ErrorGrouper` / `PromptComposer` 是**与客户端解耦的纯函数**，可以单独用于「只做日志扫描」的场景。
+- 工具能力是可选注入：不传执行器 + `UseTools=false` 即纯离线分析。
 
-### 5.2 调用时序（`AskAsync`）
+### 5.2 调用时序（`AskAsync` 工具循环）
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant H as 宿主
     participant C as AiDiagnosticsClient
-    participant W as AgentWorkspace
-    participant P as ProcessRunner
-    participant O as opencode CLI
+    participant G as 网关（SSE）
+    participant T as IAiToolExecutor
 
-    H->>C: AskAsync(AiRequest, onOutputLine, ct)
-    C->>C: ResolveExecutable()<br/>OpenCodeLocator.Find()
-    alt 未安装 opencode
-        C-->>H: throw InvalidOperationException
+    H->>C: AskAsync(AiRequest, onDelta, onStatus, ct)
+    C->>G: POST /v1/chat/completions（system+user, stream:true, tools?）
+    alt 上游不支持 tools（HTTP 400）
+        C->>G: 同请求去掉 tools 重发（降级为纯离线分析）
     end
-    C->>W: Create(request.Agent)
-    W-->>C: Root / ConfigPath（已写入 opencode.json）
-    C->>P: RunCapturedAsync("run --standalone --format json ...", stdin = Prompt,<br/>env: OPENCODE_CONFIG / PWD)
-    P->>O: 启动进程 → 写 stdin → 关闭 stdin
-    loop 每读到一行 NDJSON
-        O-->>P: 事件行
-        P-->>C: onOutputLine(line)
-        C-->>H: onOutputLine(line)（宿主用 RunEventParser.TryFormat 转显示文本）
+    loop 每帧 SSE
+        G-->>C: data: {...}（delta.content / reasoning_content / tool_calls / error）
+        C-->>H: onDelta(增量) / onStatus(思考或工具提示)
     end
-    O-->>P: 退出
-    P-->>C: (exitCode, stdout, stderr)
-    C->>C: RunEventParser.ParseAnswer(stdout)
+    alt finish_reason = tool_calls（轮次 < 2）
+        C->>T: ExecuteAsync(每个 tool_call)
+        T-->>C: 结果文本（未知工具名 → "not available"）
+        C->>G: POST（messages += assistant.tool_calls + role:"tool"）
+        G-->>C: 续流直至 stop
+    end
     C-->>H: AiAnswer(Success, Text)
-    C->>W: Dispose()（删除临时目录）
 ```
 
-`ListModelsAsync` 的链路短得多：`ResolveExecutable` → `ProcessRunner("api model.list")` → `ModelListParser.Parse` → 空列表则重试一次。**它不走** `AgentWorkspace`，也不会启动独立服务（见 §6 第 1 条）。
+`ListModelsAsync` 的链路短得多：`GET /v1/models` → 解析 `data[].id`（复合 id 在首个 `/` 处拆 provider 展示，`ModelId` 保留原始 id）。
 
 ---
 
 ## 6. 行为约定（踩坑换来的，改动前请先读）
 
-1. **模型列举不能用 `--standalone`。**
-   `--standalone` 会为单次查询 spawn 一个全新的私有 `opencode serve`，其 provider 目录要等插件异步装载完才可见；CLI 在服务一报 ready（约 400ms）就发请求，冷启动窗口内 `model.list` 恒为 `data: []`。默认（常驻后台）服务才是已装载完成的热服务 —— 界面/ TUI 里能看到模型也是因为连的是它。
-
-2. **`run` 必须带 `--standalone`。**
-   `run` 的启动流程会等待 provider 就绪，不受上面的竞态影响；独立服务还能避免与用户交互会话互相干扰。
-
-3. **必须显式设置 `OPENCODE_CONFIG` 与 `PWD`。**
-   OpenCode v2 用 `process.env.PWD ?? process.cwd()` 解析项目根，父进程遗留的 `PWD` 会让 `WorkingDirectory` 失效，导致自定义 agent 找不到（报 `Agent not found`）。库已封装：每次分析建临时目录、写入生成的 `opencode.json`、注入这两个环境变量、结束后删除。
-
-4. **prompt 走 stdin，argv 只放短指令。**
-   opencode 在非 TTY 下读取 stdin 直到 EOF；stdin 写入、进程等待、输出冲刷共享同一个超时/取消窗口（否则子进程不读 stdin 时会永久阻塞，点取消也无效）。
-
-5. **失败判定顺序：先看退出码，再看 `error` 事件。**
-   `error` 事件优先于半截正文 —— 残缺回答 + 明确错误原因比只有半截正文更有诊断价值。
-
-6. **agent 配置字段是单数。** 顶层 `agent`、agent 内 `permission`（不是 `agents` / `permissions`）。
-
-7. **`--model` 值必须是 `provider/model`。** `AiModel.QualifiedId` 已拼好。
-
-8. **日志是不可信文本，权限矩阵拒绝 `read`。** 模型可能被日志内容诱导去读取本机文件；分析只需 stdin 里的材料，因此 `read` 固定为 `deny`，行为规则也只写在 agent 人设里，不在请求模板中重复。
+1. **`onDelta` 是原始增量，不要加分隔符。** 与旧版 NDJSON「段间空行拼接」不同，SSE 的 `delta.content` 就是正文的连续切片；宿主直接 `Append` 即可。
+2. **状态与正文分流。** `reasoning_content` 与工具活动只走 `onStatus`；写进回答区会覆盖已流式出现的正文，表现为永远卡「处理中」。
+3. **失败判定顺序：流内 `error` 帧 > `finish_reason` > 正文。** error 优先于半截正文——残缺回答 + 明确原因比只有半截正文更有诊断价值。
+4. **`: ` 注释帧是心跳不是数据。** 思考静默期网关会周期性发出，解析时跳过；不要把它们当正文或当断线。
+5. **工具轮次上限 2 是硬约束。** 「想了一分钟然后撞上配额墙」的场景靠轮次熔断止损；超出后去掉 tools 让模型基于已有结果作答。
+6. **未知工具名必须兜底。** 客户端在执行前核对执行器 `Definitions`，未声明的能力回填 "not available" 让回合正常收尾，不整轮失败。
+7. **日志与工具返回都是不可信文本。** 行为边界（不读文件、不跑命令、最多一轮联网、素材不当正文）只写在宿主的 system prompt 里，不在请求模板中重复。
+8. **`ModelId` 原样发送。** 网关广播的裸 id 与 `provider/model` 复合 id 都按 `/v1/models` 的 `id` 原值传给 `model` 字段；provider 拆分只用于展示。
 
 ---
 
-## 7. 事件流约定（`opencode run --format json`）
-
-每行一个 JSON 事件，库关心以下几类：
-
-| `type` | 处理 |
-| --- | --- |
-| `text` | `part.text` 拼接为正文（段间空行分隔） |
-| `error` | `error.message` / `error.type` 作为失败原因 |
-| `step_start` / `step_finish` | 转为进度文案（`opencode 已开始处理请求。` / `opencode 正在继续生成回答。`），`IsProgress = true` |
-| `tool_use` | 转为 `opencode 正在使用 <tool> 查证资料。`，`IsProgress = true` |
-| 其它 | `TryFormat` 返回 `(null, false)`（无展示价值） |
-
-非 JSON 行原样返回（`IsProgress = false`），便于宿主显示裸输出；以 `{` 开头但解析失败的截断行会被丢弃，避免 JSON 片段混进回答正文。
-
----
-
-## 8. 测试
+## 7. 测试
 
 ```bash
 dotnet test test/AiDiagnostics.Test/AiDiagnostics.Test.csproj
 ```
 
-覆盖：模型列表过滤、NDJSON 解析与 error 优先级、参数拼接、agent 配置生成、进度文案映射、本机定位。不依赖真实 opencode 账号。
-
-真实链路自测（会消耗额度）：
-
-```csharp
-var models = await client.ListModelsAsync();
-var answer = await client.AskAsync(new AiRequest
-{
-    Prompt = "请只回复 OK 两个字母。",
-    ModelId = models[0].QualifiedId,
-    Agent = agent,
-    Instruction = "完整内容已通过 stdin 附加，请直接作答。",
-});
-```
+覆盖：模型清单解析（裸 id / 复合 id / 401）、SSE 正文拼接、心跳与 reasoning 隔离、流内 error、工具回填与轮次熔断、400 降级、未知工具名、健康探活、webfetch 约束、三类扫描与预算优先级、指纹归并。全部走内存 HTTP 桩，不出网、不消耗额度。
 
 ---
 
-## 9. 在本仓库中的接入方式
+## 8. 在本仓库中的接入方式
 
 本仓库的宿主是 `ComfyUiRocmLauncher`：
 
-- `ComfyUiRocmLauncher.Core/Ai/ComfyUiDiagnosis.cs` —— 领域画像：agent 人设、ComfyUI/uvicorn 噪声词、`{context}`/`{log}` 提问模板
-- `ComfyUiRocmLauncher.Core/Ai/ComfyUiAiService.cs` —— 门面：把日志 → 提示词 → `AskAsync` 组装好，GUI 只依赖它
-- `ComfyUiRocmLauncher.GUI/Views/AiAnalysisDialog.xaml.cs` —— 界面：预览框、模型下拉、流式回答、复制
+- `ComfyUiRocmLauncher.Core/Services/AiGatewayService.cs` —— 网关安装/拉起/健康等待/forwardKey 自动回填与退出回收
+- `ComfyUiRocmLauncher.Core/Ai/ComfyUiDiagnosis.cs` —— 领域画像：agent 人设、ComfyUI/uvicorn 噪声词、三类分组提问组装
+- `ComfyUiRocmLauncher.Core/Ai/ComfyUiAiService.cs` —— 门面：把日志 → 分组 → 提示词 → `AskAsync` 组装好，GUI 只依赖它
+- `ComfyUiRocmLauncher.GUI/Views/AiAnalysisDialog.xaml.cs` —— 界面：分组卡片、模型下拉、流式回答、状态栏、复制
 
-新增宿主项目时，照此复制约 60 行领域画像即可，通用能力无需重复实现。
+新增宿主项目时，照此实现一份网关生命周期管理（或复用现成网关）+ 约 60 行领域画像即可，通用能力无需重复实现。

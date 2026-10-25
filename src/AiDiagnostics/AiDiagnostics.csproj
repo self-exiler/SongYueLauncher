@@ -7,7 +7,7 @@
     <RootNamespace>AiDiagnostics</RootNamespace>
     <AssemblyName>AiDiagnostics</AssemblyName>
     <IsPackable>true</IsPackable>
-    <Description>通过本机 opencode CLI 做日志/文本 AI 诊断的通用库：进程调用、事件解析、错误日志扫描与提示词组装，零 UI 依赖。</Description>
+    <Description>通过 OpenAI 兼容本地网关做日志/文本 AI 诊断的通用库：HTTP 客户端（SSE 流式 + 工具循环）、错误日志三类扫描与指纹归并、提示词组装，零 UI 依赖。</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

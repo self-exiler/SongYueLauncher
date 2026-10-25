@@ -24,13 +24,17 @@
             </TitleBar.IconSource>
         </TitleBar>
 
+        <!-- 导航跟随窗口宽度自适应（Windows 设置行为）：宽=展开、中=仅图标、窄=菜单按钮。
+             菜单按钮只在非展开态显示，展开态不占页头一行；返回按钮仅在二级页出现。 -->
         <NavigationView x:Name="NavView" Grid.Row="1"
                         IsBackButtonVisible="Collapsed"
-                        IsPaneToggleButtonVisible="False"
+                        IsPaneToggleButtonVisible="True"
                         IsSettingsVisible="False"
-                        PaneDisplayMode="Left"
+                        PaneDisplayMode="Auto"
                         OpenPaneLength="240"
-                        SelectionChanged="NavView_SelectionChanged">
+                        SelectionChanged="NavView_SelectionChanged"
+                        BackRequested="NavView_BackRequested"
+                        DisplayModeChanged="NavView_DisplayModeChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="主页" Tag="HomePage">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Home" /></NavigationViewItem.Icon>
@@ -38,8 +42,9 @@
                 <NavigationViewItem Content="环境与更新" Tag="EnvUpdatePage">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Download" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <!-- CommandPrompt 而非 Setting 齿轮：避免与「环境与更新」的系统设置语义混淆 -->
                 <NavigationViewItem Content="启动参数" Tag="ArgsPage">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE756;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="环境变量" Tag="EnvVarsPage">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="Manage" /></NavigationViewItem.Icon>
@@ -55,33 +60,43 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <!-- 设置应用风格页头：大标题居左，运行状态徽章居右，无工具条背景 -->
-                <Border Grid.Row="0" Padding="36,8,36,0">
-                    <Grid>
+                <!-- 设置应用风格页头：左侧标题/面包屑占满剩余宽度，右侧状态徽章固定一列；
+                     窄窗口先裁剪标题，不再出现标题与徽章互相压叠 -->
+                <Grid Grid.Row="0" Padding="{StaticResource SettingsHeaderPadding}" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Grid.Column="0">
                         <TextBlock x:Name="PageTitle" Text="主页" Style="{StaticResource TitleTextBlockStyle}"
-                                   VerticalAlignment="Center" />
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         <!-- 二级页时大标题变身面包屑（Win11 设置风格）：父级段可点击返回 -->
-                        <StackPanel x:Name="PageBreadcrumb" Orientation="Horizontal" Spacing="8"
-                                    Visibility="Collapsed" VerticalAlignment="Center">
+                        <Grid x:Name="PageBreadcrumb" ColumnSpacing="8" Visibility="Collapsed"
+                              VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
                             <Button x:Name="CrumbParent" Click="CrumbParent_Click" Padding="0" Margin="0"
                                     Background="Transparent" BorderThickness="0" VerticalAlignment="Center"
                                     FontSize="{ThemeResource TitleTextBlockFontSize}" FontWeight="SemiBold"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <FontIcon Glyph="&#xE76C;" FontSize="16" VerticalAlignment="Center"
+                            <FontIcon Grid.Column="1" Glyph="&#xE76C;" FontSize="16" VerticalAlignment="Center"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock x:Name="CrumbCurrent" Style="{StaticResource TitleTextBlockStyle}"
-                                       VerticalAlignment="Center" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
-                            <!-- 横向 StackPanel 会把子项垂直拉伸到整行高（行高由大标题撑起），
-                                 徽章必须显式居中，否则文字贴顶不居中 -->
-                            <Border x:Name="StateBadge" Padding="12,4" CornerRadius="8" VerticalAlignment="Center"
-                                    Background="{ThemeResource ControlFillColorSecondaryBrush}">
-                                <TextBlock x:Name="StateTextBlock" Text="已停止" FontSize="12" VerticalAlignment="Center" />
-                            </Border>
-                        </StackPanel>
+                            <TextBlock x:Name="CrumbCurrent" Grid.Column="2" Style="{StaticResource TitleTextBlockStyle}"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </Grid>
                     </Grid>
-                </Border>
+
+                    <Border x:Name="StateBadge" Grid.Column="1" Padding="12,4" CornerRadius="12"
+                            VerticalAlignment="Center" HorizontalAlignment="Right"
+                            Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                        <TextBlock x:Name="StateTextBlock" Text="已停止" FontSize="12"
+                                   VerticalAlignment="Center" TextWrapping="NoWrap" />
+                    </Border>
+                </Grid>
 
                 <Frame x:Name="RootFrame" Grid.Row="1" />
             </Grid>

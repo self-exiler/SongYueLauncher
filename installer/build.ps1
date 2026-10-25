@@ -2,12 +2,17 @@
     松月启动器唯一构建入口：本地与 GitHub Actions 云端共用本脚本。
 
     .\installer\build.ps1 -Version 0.1.0beta
-      → installer\output\SongYueLauncher-windows-x64-0.1.0beta.msi
+      → installer\output\SongYueLauncher-windows-x64-0.1.0beta.exe   （默认：瘦身 Bundle）
+      → installer\output\SongYueLauncher-windows-x64-0.1.0beta.msi   （-Full：旧版自包含 MSI）
 
     参数：
       -Version      版本号，可带非数字后缀（0.1.0beta）。文件名用完整串，
                     MSI 的 ProductVersion 只取前面的数字段（Windows Installer 限制）。
-      -SkipPublish  复用已有 installer\publish 产物，只重打 MSI（加速调试）。
+      -SkipPublish  复用已有 installer\publish 产物，只重打安装包（加速调试）。
+      -Full         构建旧版「自包含」MSI（.NET 与 Windows App SDK 运行时全部内嵌，包体 ~110MB）。
+                    默认瘦身 Bundle：应用框架依赖发布（发布产物 ~60MB → MSI 高压缩内嵌），
+                    .NET 桌面运行时安装时按检测按需下载、Windows App Runtime 始终幂等安装
+                    （检测锚点与兜底链路见 Bundle.wxs 注释）。两种形态启动行为一致。
 
     说明：WiX v4 没有内置目录收割（Files 元素是 v5 才有的），Heat 又要额外装扩展，
     所以这里自己扫描发布目录生成 harvest.wxs。组件 GUID 由相对路径派生，
@@ -16,7 +21,8 @@
 [CmdletBinding()]
 param(
     [string]$Version = '0.1.0beta',
-    [switch]$SkipPublish
+    [switch]$SkipPublish,
+    [switch]$Full
 )
 
 Set-StrictMode -Version Latest
@@ -40,12 +46,23 @@ if (-not ($Version -match '^(\d+(?:\.\d+){0,3})')) {
 }
 $msiVersion = $Matches[1]
 $msiPath = Join-Path $outputDir "$appName-windows-x64-$Version.msi"
+$bundlePath = Join-Path $outputDir "$appName-windows-x64-$Version.exe"
+# Bundle 自身升级码：与 MSI UpgradeCode 分离——旧版自包含 MSI 仍靠 MSI 内部 MajorUpgrade 被替换
+$bundleUpgradeCode = 'AA65422F-A713-4020-855C-6A502C7F4F73'
+# 外置运行时的下载源（构建期下载到 cache 并计算 SHA1/大小注入 Bundle；-Full 不需要）
+$dotNetVersion = '10.0.13'
+$dotNetUrl = "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/$dotNetVersion/windowsdesktop-runtime-$dotNetVersion-win-x64.exe"
+$warUrl = 'https://aka.ms/windowsappsdk/1.8/latest/windowsappruntimeinstall-x64.exe'
+$cacheDir = Join-Path $installerDir 'cache'
 
 Write-Output "== 松月启动器打包 =="
 Write-Output "   文件名版本 : $Version"
 Write-Output "   MSI 版本   : $msiVersion"
+Write-Output "   形态       : $(if ($Full) { '自包含 MSI（运行时内嵌）' } else { '瘦身 Bundle（运行时按需下载）' })"
 
-# ---------- 1. 发布自包含产物（免打包模式，Windows App SDK 运行时随程序输出） ----------
+# ---------- 1. 发布应用本体 ----------
+# 两种形态都必须显式写死发布参数（*.pubxml 被 .gitignore 忽略，隐式形态会漂移成坏包）：
+# 自包含（-Full）：运行时全部内嵌；瘦身（默认）：.NET 与 Windows App SDK 运行时外置给 Bundle。
 if ($SkipPublish) {
     if (-not (Test-Path (Join-Path $publishDir 'ComfyUiRocmLauncher.GUI.exe'))) {
         throw "-SkipPublish 需要已存在的 $publishDir 产物，请先不带该参数运行一次"
@@ -54,17 +71,23 @@ if ($SkipPublish) {
 }
 else {
     if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
-    # 必须显式 --self-contained：本地开发靠 Properties\PublishProfiles\win-x64.pubxml 带上该设置，
-    # 但 *.pubxml 被 .gitignore 忽略，云端拿不到就会发布成框架依赖版，缺整个 .NET 运行时（坏包）
-    dotnet publish $project -c Release --self-contained true -o $publishDir --nologo -v minimal
+    if ($Full) {
+        dotnet publish $project -c Release --self-contained true -o $publishDir --nologo -v minimal
+    }
+    else {
+        dotnet publish $project -c Release --self-contained false -p:WindowsAppSDKSelfContained=false -o $publishDir --nologo -v minimal
+    }
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish 失败（退出码 $LASTEXITCODE）" }
     if (-not (Test-Path (Join-Path $publishDir 'ComfyUiRocmLauncher.GUI.exe'))) {
         throw "发布产物缺少 ComfyUiRocmLauncher.GUI.exe"
     }
-    # 自包含、XAML 资源索引与应用图标是三类静默坏包：缺了本机能跑，但会出现打不开 / 没图标
-    foreach ($required in @('coreclr.dll', 'ComfyUiRocmLauncher.GUI.pri', 'Assets\AppIcon.ico')) {
-        if (-not (Test-Path (Join-Path $publishDir $required))) {
-            throw "发布产物缺少 $required，产物不是可用的自包含包"
+    # XAML 资源索引与应用图标是两类静默坏包：缺了本机能跑，但会出现打不开 / 没图标。
+    # 形态哨兵：自包含必须有 coreclr.dll；瘦身必须有 Bootstrap 托管包装（同时证明 WASDK 运行时已外置）。
+    $required = @('ComfyUiRocmLauncher.GUI.pri', 'Assets\AppIcon.ico')
+    if ($Full) { $required += 'coreclr.dll' } else { $required += 'Microsoft.WindowsAppRuntime.Bootstrap.Net.dll' }
+    foreach ($item in $required) {
+        if (-not (Test-Path (Join-Path $publishDir $item))) {
+            throw "发布产物缺少 $item，产物与目标形态不符"
         }
     }
 }
@@ -170,3 +193,61 @@ if ($LASTEXITCODE -ne 0) { throw "wix build 失败（退出码 $LASTEXITCODE）"
 
 $sizeMB = [math]::Round((Get-Item $msiPath).Length / 1MB, 1)
 Write-Output "== 完成：$msiPath （$sizeMB MB）=="
+
+if ($Full) { return }
+
+# ---------- 5. 构建瘦身 Bundle（默认形态）----------
+# 运行时依赖在构建期下载到 cache（重复打包复用），计算 SHA1/大小注入 RemotePayload——
+# Burn 在用户安装时按这些哈希校验下载。Windows App Runtime 走 aka.ms「latest」短链，
+# 上游更新 latest 后哈希会漂移，因此发版后应尽快发布；必要时把 cache 里的文件与注入哈希一起刷新。
+function Get-InstallerPayload([string]$url, [string]$fileName) {
+    New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+    $path = Join-Path $cacheDir $fileName
+    if (-not (Test-Path $path)) {
+        Write-Host "   下载依赖：$url"
+        Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
+    }
+    $hash = (Get-FileHash $path -Algorithm SHA1).Hash.ToLower()
+    $size = (Get-Item $path).Length
+    # 状态行必须走 Write-Host：Write-Output 会混进返回数组，把 [0]/[1] 的哈希/大小错位
+    Write-Host "   依赖就绪：$fileName（$([math]::Round($size / 1MB, 1)) MB，SHA1 $hash）"
+    return @($hash, $size)
+}
+
+Write-Output "== 准备外置运行时依赖 =="
+$dotNetPayload = Get-InstallerPayload $dotNetUrl "windowsdesktop-runtime-$dotNetVersion-win-x64.exe"
+$warPayload = Get-InstallerPayload $warUrl 'windowsappruntimeinstall-x64.exe'
+
+# Bundle 需要 util（检测搜索）与 bootstrapperApplications（标准引导界面）两个扩展（全局装一次，幂等）。
+# 必须钉住与 wix.exe 相同的大版本（不钉会解析到最新 7.x，与 WiX v5 不兼容）
+$extList = & $wix extension list -g 2>&1 | Out-String
+$wixVersion = (& $wix --version 2>&1 | Out-String).Trim()
+$wixMajor = ($wixVersion -split '\.')[0]
+foreach ($ext in 'WixToolset.Util.wixext', 'WixToolset.BootstrapperApplications.wixext') {
+    if ($extList -notmatch [regex]::Escape($ext)) {
+        & $wix extension add -g "$ext/$wixMajor.0.2"
+        if ($LASTEXITCODE -ne 0) { throw "wix extension add $ext 失败" }
+    }
+}
+
+& $wix build (Join-Path $installerDir 'Bundle.wxs') `
+    -arch x64 `
+    -o $bundlePath `
+    -ext WixToolset.Util.wixext `
+    -ext WixToolset.BootstrapperApplications.wixext `
+    -d ProductVersion=$msiVersion `
+    -d Manufacturer=$manufacturer `
+    -d BundleUpgradeCode=$bundleUpgradeCode `
+    -d IconPath=$icon `
+    -d MsiPath=$msiPath `
+    -d DotNetVersion=$dotNetVersion `
+    -d DotNetUrl=$dotNetUrl `
+    -d DotNetSha1=$($dotNetPayload[0]) `
+    -d DotNetSize=$($dotNetPayload[1]) `
+    -d WarUrl=$warUrl `
+    -d WarSha1=$($warPayload[0]) `
+    -d WarSize=$($warPayload[1])
+if ($LASTEXITCODE -ne 0) { throw "wix build Bundle 失败（退出码 $LASTEXITCODE）" }
+
+$bundleMB = [math]::Round((Get-Item $bundlePath).Length / 1MB, 1)
+Write-Output "== 完成：$bundlePath （$bundleMB MB；.NET 桌面运行时按需下载，Windows App Runtime 安装时下载）=="

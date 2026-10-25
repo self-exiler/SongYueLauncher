@@ -1,218 +1,317 @@
-using System.Text.Json;
+using System.Net;
+using System.Text;
 using AiDiagnostics;
 using AiDiagnostics.Agents;
-using AiDiagnostics.Parsing;
+using AiDiagnostics.Tools;
 
 namespace AiDiagnostics.Test;
 
-public class AiDiagnosticsClientTests
+/// <summary>
+/// 网关客户端契约测试（SRS v2.0 FR-5.8/5.9/5.12）：用内存桩模拟
+/// OpenAI 兼容网关的 /v1/models 与 /v1/chat/completions（SSE）。
+/// </summary>
+public class AiDiagnosticsClientTests : IDisposable
 {
-    private const string ModelListJson = """
-        {"location":{"directory":"C:\\\\Users\\\\me"},"data":[
-          {"id":"claude-haiku-5-5","modelID":"claude-haiku-5-5","providerID":"opencode","name":"Claude Haiku 5.5","enabled":true,"status":"active"},
-          {"id":"gpt-6-sol","modelID":"gpt-6-sol","providerID":"openai","name":"GPT-6 Sol","enabled":true},
-          {"id":"retired-model","modelID":"retired-model","providerID":"opencode","name":"Retired","enabled":false},
-          {"id":"no-name","modelID":"no-name","providerID":"opencode"}
-        ]}
-        """;
+    private readonly HttpStub _stub = new();
+
+    public void Dispose() => _stub.Dispose();
+
+    private AiDiagnosticsClient CreateClient(IAiToolExecutor? tools = null) =>
+        new(() => new GatewayOptions { BaseUrl = _stub.BaseUrl, ApiKey = "test-key" }, http: _stub.Http, tools: tools);
 
     private static AiAgentProfile Analyst => new()
     {
-        Id = "test-analyst",
         SystemPrompt = "只读分析日志。",
         Description = "Read-only log analyst.",
     };
 
-    [Fact]
-    public void ParseModels_SkipsDisabledAndKeepsQualifiedId()
+    private static AiRequest Request(string modelId = "deepseek-v4.1-flash-free", bool useTools = false) => new()
     {
-        var models = ModelListParser.Parse(ModelListJson);
+        Prompt = "分析这段日志。",
+        ModelId = modelId,
+        Agent = Analyst,
+        UseTools = useTools,
+    };
 
-        Assert.Equal(3, models.Count);
-        Assert.Equal("opencode/claude-haiku-5-5", models[0].QualifiedId);
-        Assert.Contains("Claude Haiku 5.5", models[0].DisplayName);
-        Assert.DoesNotContain(models, m => m.ModelId == "retired-model");
-        // 无 name 时回落为 id
-        Assert.Equal("no-name", models[2].DisplayName);
+    // ---------- /v1/models ----------
+
+    [Fact]
+    public async Task ListModels_ParsesOpenAiFormat()
+    {
+        _stub.Respond["/v1/models"] = _ => (200, "application/json",
+            """{"data":[{"id":"deepseek-v4.1-flash-free","object":"model","owned_by":"our-free-model"},{"id":"kilo-auto/free","object":"model"}]}""");
+
+        var models = await CreateClient().ListModelsAsync();
+
+        Assert.Equal(2, models.Count);
+        Assert.Equal("deepseek-v4.1-flash-free", models[0].QualifiedId);
+        Assert.Equal("our-free-model", models[0].ProviderId);
+        // 复合 id 在首个 / 处拆出 provider 展示用；ModelId 保留原始 id（发送给网关的原样取值）
+        Assert.Equal("kilo-auto", models[1].ProviderId);
+        Assert.Equal("kilo-auto/free", models[1].ModelId);
     }
 
     [Fact]
-    public void ParseModels_EmptyDataArray_ReturnsEmpty() =>
-        Assert.Empty(ModelListParser.Parse("""{"data":[]}"""));
+    public async Task ListModels_AuthError_ThrowsWithBodyMessage()
+    {
+        _stub.Respond["/v1/models"] = _ => (401, "application/json", """{"error":{"message":"Invalid API key"}}""");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => CreateClient().ListModelsAsync());
+
+        Assert.Contains("401", ex.Message);
+        Assert.Contains("Invalid API key", ex.Message);
+    }
+
+    // ---------- /v1/chat/completions（SSE） ----------
 
     [Fact]
-    public void ParseAnswer_TextEvents_AreJoinedInOrder()
+    public async Task AskAsync_DeltasAreJoinedInOrder()
     {
-        var stdout = string.Join('\n',
-            """{"type":"step_start","sessionID":"ses_1","part":{"type":"step-start"}}""",
-            """{"type":"text","sessionID":"ses_1","part":{"type":"text","text":"结论：显存不足"}}""",
-            """{"type":"text","sessionID":"ses_1","part":{"type":"text","text":"步骤：加 --lowvram"}}""");
+        _stub.Respond["/v1/chat/completions"] = _ => (200, "text/event-stream", Sse(
+            """{"choices":[{"delta":{"role":"assistant","content":"结论：显存不足"}}]}""",
+            """{"choices":[{"delta":{"content":"。步骤：加 --lowvram"}}]}""",
+            """{"choices":[{"delta":{},"finish_reason":"stop"}]}""",
+            "[DONE]"));
 
-        var answer = RunEventParser.ParseAnswer(stdout);
+        var deltas = new List<string>();
+        var answer = await CreateClient().AskAsync(Request(), onDelta: deltas.Add);
 
         Assert.True(answer.Success);
-        Assert.Equal("结论：显存不足\n\n步骤：加 --lowvram", answer.Text);
+        Assert.Equal("结论：显存不足。步骤：加 --lowvram", answer.Text);
+        Assert.Equal(new[] { "结论：显存不足", "。步骤：加 --lowvram" }, deltas);
     }
 
     [Fact]
-    public void ParseAnswer_ErrorEvent_IsReportedAsFailure()
+    public async Task AskAsync_CommentHeartbeatAndReasoning_AreNotContent()
     {
-        var stdout = """{"type":"error","sessionID":"ses_2","error":{"type":"provider.no-route","message":"Model unavailable: bad/id"}}""";
+        _stub.Respond["/v1/chat/completions"] = _ => (200, "text/event-stream", Sse(
+            ": keep-alive",
+            """{"choices":[{"delta":{"reasoning_content":"思考中"}}]}""",
+            """{"choices":[{"delta":{"content":"正文"}}]}""",
+            """{"choices":[{"delta":{},"finish_reason":"stop"}]}""",
+            "[DONE]"));
 
-        var answer = RunEventParser.ParseAnswer(stdout);
-
-        Assert.False(answer.Success);
-        Assert.Equal("Model unavailable: bad/id", answer.Text);
-    }
-
-    [Fact]
-    public void ParseAnswer_NonJsonLines_AreIgnored()
-    {
-        var answer = RunEventParser.ParseAnswer("Loading...\nnot json at all\n\n");
-
-        Assert.False(answer.Success);
-        Assert.Contains("没有返回可解析的回答", answer.Text);
-    }
-
-    [Fact]
-    public void ParseAnswer_TruncatedJsonLine_IsSkippedInsteadOfAppendedAsText()
-    {
-        var stdout = string.Join('\n',
-            """{"type":"text","sessionID":"ses_4","part":{"type":"text","text":"残缺""",
-            """{"type":"text","sessionID":"ses_4","part":{"type":"text","text":"完整回答"}}""");
-
-        var answer = RunEventParser.ParseAnswer(stdout);
+        var statuses = new List<string>();
+        var answer = await CreateClient().AskAsync(Request(), onStatus: statuses.Add);
 
         Assert.True(answer.Success);
-        Assert.Equal("完整回答", answer.Text);
+        Assert.Equal("正文", answer.Text);
+        Assert.Equal(new[] { "模型思考中…", "正在生成回答…" }, statuses);
     }
 
     [Fact]
-    public void ParseAnswer_ErrorEvent_TakesPrecedenceOverPartialText()
+    public async Task AskAsync_InStreamError_IsReportedAsFailure()
     {
-        var stdout = string.Join('\n',
-            """{"type":"text","sessionID":"ses_3","part":{"type":"text","text":"部分回答"}}""",
-            """{"type":"error","sessionID":"ses_3","error":{"type":"provider.transport","message":"provider timeout"}}""");
+        _stub.Respond["/v1/chat/completions"] = _ => (200, "text/event-stream", Sse(
+            """{"choices":[{"delta":{"content":"部分"}}]}""",
+            """{"error":{"message":"Model is unavailable"}}"""));
 
-        var answer = RunEventParser.ParseAnswer(stdout);
+        var answer = await CreateClient().AskAsync(Request());
 
         Assert.False(answer.Success);
-        Assert.Contains("provider timeout", answer.Text);
-        Assert.Contains("部分回答", answer.Text);
+        Assert.Contains("Model is unavailable", answer.Text);
+        Assert.Contains("部分", answer.Text);
     }
 
     [Fact]
-    public void BuildAskArguments_UsesStandaloneAndQuotedCustomAgent()
+    public async Task AskAsync_EmptyStream_Fails()
     {
-        var args = AiDiagnosticsClient.BuildAskArguments(new AiRequest
+        _stub.Respond["/v1/chat/completions"] = _ => (200, "text/event-stream", Sse(
+            """{"choices":[{"delta":{},"finish_reason":"stop"}]}""", "[DONE]"));
+
+        var answer = await CreateClient().AskAsync(Request());
+
+        Assert.False(answer.Success);
+        Assert.Contains("没有返回", answer.Text);
+    }
+
+    [Fact]
+    public async Task AskAsync_NoModelSelected_FailsFast() =>
+        Assert.False((await CreateClient().AskAsync(Request(""))).Success);
+
+    // ---------- 工具循环（FR-5.12） ----------
+
+    [Fact]
+    public async Task AskAsync_ToolCallsAreExecutedAndFedBack()
+    {
+        _stub.Respond["/v1/chat/completions"] = _ =>
         {
-            Prompt = "ignored",
-            ModelId = "openai/gpt-6-sol",
-            Agent = Analyst,
-            Title = "日志分析",
-            Instruction = "完整内容已通过 stdin 附加。",
-        });
+            if (_stub.Bodies.Count == 1)
+            {
+                return (200, "text/event-stream", Sse(
+                    """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"websearch","arguments":"{\"query\":\"HIP\"}"}}]}}]}""",
+                    """{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}""",
+                    "[DONE]"));
+            }
+            return (200, "text/event-stream", Sse(
+                """{"choices":[{"delta":{"content":"结合检索结果的结论"}}]}""",
+                """{"choices":[{"delta":{},"finish_reason":"stop"}]}""",
+                "[DONE]"));
+        };
 
-        Assert.StartsWith("run --standalone --format json --agent ", args);
-        Assert.Contains("--agent \"test-analyst\"", args);
-        Assert.Contains("--model \"openai/gpt-6-sol\"", args);
-        Assert.Contains("--title \"日志分析\"", args);
-        Assert.Contains("stdin 附加", args);
+        var answer = await CreateClient(tools: new RecordingTools()).AskAsync(Request(useTools: true));
+
+        Assert.True(answer.Success);
+        Assert.Equal("结合检索结果的结论", answer.Text);
+        // 第二次请求必须携带 assistant 工具调用与 role:"tool" 结果
+        var second = _stub.Bodies[1];
+        Assert.Contains("websearch", second);
+        Assert.Contains("call_1", second);
+        Assert.Contains("\"role\":\"tool\"", second);
+        Assert.Contains("SEARCH RESULT", second);
     }
 
     [Fact]
-    public void BuildAskArguments_HonoursCustomInstruction()
+    public async Task AskAsync_ToolRoundLimit_ThenAnswerWithoutTools()
     {
-        var args = AiDiagnosticsClient.BuildAskArguments(new AiRequest
+        _stub.Respond["/v1/chat/completions"] = _ => (200, "text/event-stream", Sse(
+            """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_loop","type":"function","function":{"name":"websearch","arguments":"{}"}}]}}]}""",
+            """{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}""",
+            "[DONE]"));
+
+        var answer = await CreateClient(tools: new RecordingTools()).AskAsync(Request(useTools: true));
+
+        // 达到轮次上限后去掉 tools 再发一次；桩恒返回 tool_calls 且无正文，最后一轮按正常结束判失败
+        Assert.False(answer.Success);
+        Assert.Equal(3, _stub.Bodies.Count); // 2 轮工具 + 1 次无 tools 请求
+        Assert.DoesNotContain("\"tools\"", _stub.Bodies[^1]);
+    }
+
+    [Fact]
+    public async Task AskAsync_ToolsRejected400_DegradesToPlainRequest()
+    {
+        _stub.Respond["/v1/chat/completions"] = _ =>
+            _stub.Bodies.Count == 1 && _stub.Bodies[0].Contains("\"tools\"")
+                ? (400, "application/json", """{"error":{"message":"tools not supported"}}""")
+                : (200, "text/event-stream", Sse(
+                    """{"choices":[{"delta":{"content":"离线结论"}}]}""",
+                    """{"choices":[{"delta":{},"finish_reason":"stop"}]}""",
+                    "[DONE]"));
+
+        var answer = await CreateClient(tools: new RecordingTools()).AskAsync(Request(useTools: true));
+
+        Assert.True(answer.Success);
+        Assert.Equal("离线结论", answer.Text);
+        Assert.Equal(2, _stub.Bodies.Count);
+        Assert.DoesNotContain("\"tools\"", _stub.Bodies[1]);
+    }
+
+    [Fact]
+    public async Task AskAsync_UnknownToolName_ResultsInToolNotAvailableText()
+    {
+        _stub.Respond["/v1/chat/completions"] = _ =>
         {
-            Prompt = "ignored",
-            ModelId = "opencode/x",
-            Agent = Analyst,
-            Instruction = "自定义短指令",
-        });
+            if (_stub.Bodies.Count == 1)
+            {
+                return (200, "text/event-stream", Sse(
+                    """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_x","type":"function","function":{"name":"bash","arguments":"{}"}}]}}]}""",
+                    """{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}""",
+                    "[DONE]"));
+            }
+            return (200, "text/event-stream", Sse(
+                """{"choices":[{"delta":{"content":"done"}}]}""",
+                """{"choices":[{"delta":{},"finish_reason":"stop"}]}""",
+                "[DONE]"));
+        };
 
-        Assert.EndsWith("\"自定义短指令\"", args);
+        var answer = await CreateClient(tools: new RecordingTools()).AskAsync(Request(useTools: true));
+
+        Assert.True(answer.Success);
+        Assert.Contains("not available", _stub.Bodies[1]);
+    }
+
+    // ---------- 健康探测 ----------
+
+    [Fact]
+    public async Task IsHealthy_TrueOn200()
+    {
+        _stub.Respond["/health"] = _ => (200, "application/json", """{"status":"ok"}""");
+        Assert.True(await CreateClient().IsHealthyAsync());
     }
 
     [Fact]
-    public void TryFormat_ConvertsUsefulEvents()
+    public async Task IsHealthy_FalseOnRefused()
     {
-        Assert.Equal(("结论：显存不足", false), RunEventParser.TryFormat(
-            """{"type":"text","part":{"type":"text","text":"结论：显存不足"}}"""));
-        Assert.Equal(("opencode 已开始处理请求。", true), RunEventParser.TryFormat(
-            """{"type":"step_start","part":{"type":"step-start"}}"""));
-        Assert.Equal(("Model unavailable: bad/id", false), RunEventParser.TryFormat(
-            """{"type":"error","error":{"type":"provider.no-route","message":"Model unavailable: bad/id"}}"""));
-        Assert.Equal(((string?)null, false), RunEventParser.TryFormat(
-            """{"type":"unknown","part":{"type":"unknown"}}"""));
+        var dead = new AiDiagnosticsClient(() => new GatewayOptions { BaseUrl = "http://127.0.0.1:1" });
+        Assert.False(await dead.IsHealthyAsync());
+    }
+
+    // ---------- 工具实现 ----------
+
+    [Fact]
+    public async Task WebFetch_RejectsNonHttp()
+    {
+        var tool = new WebFetchTool();
+        var result = await tool.ExecuteAsync(new AiToolCall("c1", "webfetch", """{"url":"file:///C:/x"}"""), default);
+        Assert.Contains("Rejected", result);
     }
 
     [Fact]
-    public void TryFormat_NonJsonLine_PassesThroughAsPlainText()
+    public async Task CompositeExecutor_UnknownTool_ReturnsNotAvailable()
     {
-        Assert.Equal(("plain progress line", false), RunEventParser.TryFormat("  plain progress line  "));
-        Assert.Equal(((string?)null, false), RunEventParser.TryFormat("   "));
+        var executor = new CompositeToolExecutor(new RecordingTools());
+        var result = await executor.ExecuteAsync(new AiToolCall("c1", "bash", "{}"), default);
+        Assert.Contains("'bash' is not available", result);
     }
 
-    [Fact]
-    public void TryFormat_TruncatedJsonLine_ProducesNoDisplayText()
+    // ---------- 辅助 ----------
+
+    private static string Sse(params string[] frames) =>
+        string.Join("\n\n", frames.Select(f => f.StartsWith(':') ? f : "data: " + f)) + "\n\n";
+
+    /// <summary>桩执行器：声明 websearch/webfetch，调用返回固定文本。</summary>
+    private sealed class RecordingTools : IAiToolExecutor
     {
-        Assert.Equal(((string?)null, false), RunEventParser.TryFormat(
-            """{"type":"text","part":{"type":"text","text":"残缺"""));
+        public IReadOnlyList<AiToolDefinition> Definitions { get; } =
+        [
+            new("websearch", "search", """{"type":"object"}"""),
+            new("webfetch", "fetch", """{"type":"object"}"""),
+        ];
+
+        public Task<string> ExecuteAsync(AiToolCall call, CancellationToken cancellationToken) =>
+            Task.FromResult($"[SEARCH RESULT for {call.Name}]");
     }
 
-    [Fact]
-    public void TryFormat_ToolUse_ReportsToolNameAndMarksProgress()
+    /// <summary>内存 HTTP 桩：按路径路由，记录请求体。</summary>
+    private sealed class HttpStub : IDisposable
     {
-        var (text, isProgress) = RunEventParser.TryFormat(
-            """{"type":"tool_use","part":{"type":"tool","tool":"websearch"}}""");
+        public readonly Dictionary<string, Func<HttpRequestMessage, (int Status, string ContentType, string Body)>> Respond = new();
+        public readonly List<string> Bodies = new();
 
-        Assert.Equal("opencode 正在使用 websearch 查证资料。", text);
-        Assert.True(isProgress);
-    }
-
-    [Fact]
-    public void AgentConfig_IsGeneratedFromProfile()
-    {
-        var json = AgentWorkspace.BuildConfigJson(Analyst);
-
-        using var doc = JsonDocument.Parse(json);
-        var agent = doc.RootElement.GetProperty("agent").GetProperty("test-analyst");
-        var permission = agent.GetProperty("permission");
-
-        Assert.Equal("https://opencode.ai/config.json", doc.RootElement.GetProperty("$schema").GetString());
-        Assert.Equal("primary", agent.GetProperty("mode").GetString());
-        Assert.Equal("只读分析日志。", agent.GetProperty("system").GetString());
-        Assert.Equal("deny", permission.GetProperty("*").GetString());
-        Assert.Equal("deny", permission.GetProperty("read").GetString());
-        Assert.Equal("allow", permission.GetProperty("webfetch").GetString());
-        Assert.Equal("allow", permission.GetProperty("websearch").GetString());
-    }
-
-    [Fact]
-    public void AgentConfig_EncodesFixedModeTemperatureAndPermissions()
-    {
-        // 运行方式（primary / 0.1 / 只读+联网）是库内常量，不随画像变化——这里钉住契约。
-        using var doc = JsonDocument.Parse(AgentWorkspace.BuildConfigJson(Analyst));
-        var agent = doc.RootElement.GetProperty("agent").GetProperty("test-analyst");
-
-        Assert.Equal("primary", agent.GetProperty("mode").GetString());
-        Assert.Equal(0.1, agent.GetProperty("temperature").GetDouble());
-    }
-
-    [Fact]
-    public void Locate_FindsInstalledOpenCodeOrNull()
-    {
-        // 纯本机探测：有则应为已存在的 exe，无则 null（不抛异常即符合契约）
-        var path = AiDiagnosticsClient.Locate();
-        if (path is not null)
+        public HttpStub()
         {
-            Assert.True(File.Exists(path));
-            Assert.Contains("opencode", Path.GetFileName(path), StringComparison.OrdinalIgnoreCase);
+            Http = new HttpClient(new StubHandler(this));
+            using var socket = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+            socket.Start();
+            var port = ((IPEndPoint)socket.LocalEndpoint).Port;
+            BaseUrl = $"http://127.0.0.1:{port}";
         }
-        else
+
+        public HttpClient Http { get; }
+
+        public string BaseUrl { get; }
+
+        public void Dispose() => Http.Dispose();
+
+        private sealed class StubHandler(HttpStub owner) : DelegatingHandler(new HttpClientHandler())
         {
-            Assert.Null(AiDiagnosticsClient.Locate());
+            protected override async Task<HttpResponseMessage> SendAsync(
+                HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                var body = request.Content is null
+                    ? string.Empty
+                    : await request.Content.ReadAsStringAsync(cancellationToken);
+                lock (owner.Bodies) owner.Bodies.Add(body);
+
+                var responder = owner.Respond.TryGetValue(request.RequestUri?.AbsolutePath ?? "/", out var r) ? r : null;
+                var (status, contentType, content) = responder is not null
+                    ? responder(request)
+                    : (404, "application/json", """{"error":{"message":"not found"}}""");
+                return new HttpResponseMessage((HttpStatusCode)status)
+                {
+                    Content = new StringContent(content, Encoding.UTF8, contentType),
+                };
+            }
         }
     }
 }

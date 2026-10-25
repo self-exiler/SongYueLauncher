@@ -30,9 +30,9 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: 安装 WiX v4 命令行
+      - name: 安装 WiX v5 命令行（Bundle 需要的 util/bootstrapperApplications 扩展由 build.ps1 自动补装）
         shell: pwsh
-        run: dotnet tool install --global wix --version 4.0.5
+        run: dotnet tool install --global wix --version 5.0.2
 
       - name: 确定版本号（tag 优先去 v 前缀，手动触发用输入值）
         id: ver
@@ -43,7 +43,7 @@ jobs:
           "version=$v" >> $env:GITHUB_OUTPUT
           Write-Output "版本号：$v"
 
-      - name: 构建 MSI
+      - name: 构建（默认瘦身 Bundle + 内嵌 MSI；加 -Full 出旧版自包含 MSI）
         shell: pwsh
         run: ./installer/build.ps1 -Version '${{ steps.ver.outputs.version }}'
 
@@ -51,13 +51,17 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: SongYueLauncher-windows-x64-${{ steps.ver.outputs.version }}
-          path: installer/output/*.msi
+          path: |
+            installer/output/*.exe
+            installer/output/*.msi
           if-no-files-found: error
 
       - name: 创建 GitHub Release 并附安装包
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
-          files: installer/output/*.msi
+          files: |
+            installer/output/*.exe
+            installer/output/*.msi
           generate_release_notes: true
           fail_on_unmatched_files: true

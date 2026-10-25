@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "updated": "2026-10-11",
-  "comment": "作者专用轮子清单（SRS FR-8.6）。仅随软件发版更新。archRules 命中顺序：先匹配具体 arch，'*' 为兜底。ghRepo 项走 releases/latest 动态解析，属 GitHub release → 适用 GitHub 镜像。spec 项直接交给 uv pip（PyPI，适用 PyPI 镜像）。",
+  "version": 3,
+  "updated": "2026-10-25",
+  "comment": "作者专用轮子清单（SRS FR-8.6）。仅随软件发版更新。来源权威：整合包 install.bat 的安装段。archRules 命中顺序：先匹配具体 arch，'*' 为兜底。ghRepo 项默认走 releases/latest 动态解析，属 GitHub release → 适用 GitHub 镜像；tag 字段钉死 release（上游 latest 未必可用）。spec 项直接交给 uv pip（PyPI，适用 PyPI 镜像）。v3（2026-10-25，对齐 install.bat）：① bitsandbytes 权威源为 0xDELUXA/bitsandbytes_win_rocm（latest 即作者钉的 0.50.2.dev0，轮名 _all = 全架构通用，install.bat 对所有支持架构无条件安装），替换上一版误引的 sunxfancy 仓库与架构限制；② FlashAttention 回归：权威源 0xDELUXA/flash-attention 钉 tag v2.8.4_win-rocm（该仓库 latest 是 v3.0.0 无 aiter，作者未用；flash_attn 为 py3 通用纯轮，aiter triton 后端），可选组件失败跳过；③ amd_aiter 回归：同一 release 内的 Windows 轮（amd_aiter-0.0.0），为 flash-attn 的 triton 后端依赖，可选；④ 其余条目与 install.bat 一致。",
   "wheels": [
     {
       "key": "sageattention",
@@ -24,23 +24,23 @@
       "displayName": "bitsandbytes (win-rocm)",
       "optional": false,
       "archRules": [
-        { "arch": "*", "ghRepo": "0xDELUXE/bitsandbytes", "assetMatch": "cp312", "useGhMirror": true }
+        { "arch": "*", "ghRepo": "0xDELUXA/bitsandbytes_win_rocm", "assetMatch": "win_amd64", "useGhMirror": true }
       ]
     },
     {
       "key": "flash-attn",
-      "displayName": "FlashAttention（可选）",
+      "displayName": "FlashAttention（可选，aiter triton 后端）",
       "optional": true,
       "archRules": [
-        { "arch": "*", "ghRepo": "patientx/flash-attention-rocm", "assetMatch": "cp312", "useGhMirror": true }
+        { "arch": "*", "ghRepo": "0xDELUXA/flash-attention", "tag": "v2.8.4_win-rocm", "assetMatch": "flash_attn-2.8.4", "useGhMirror": true }
       ]
     },
     {
       "key": "amd_aiter",
-      "displayName": "AMD AIter（可选）",
+      "displayName": "AMD AIter（可选，flash-attn 后端依赖）",
       "optional": true,
       "archRules": [
-        { "arch": "*", "ghRepo": "ROCm/aiter", "assetMatch": "cp312", "useGhMirror": true }
+        { "arch": "*", "ghRepo": "0xDELUXA/flash-attention", "tag": "v2.8.4_win-rocm", "assetMatch": "amd_aiter", "useGhMirror": true }
       ]
     }
   ]

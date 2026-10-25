@@ -63,6 +63,19 @@ public static class ToolLocator
             Path.Combine(local, "Programs", "Git", "cmd", "git.exe"));
     }
 
+    /// <summary>node.exe（AI 网关运行时，SRS v2.0 FR-5.6）：PATH → Program Files\nodejs → WinGet 链接目录。</summary>
+    public static string? FindNode()
+    {
+        var found = FindInPath("node.exe");
+        if (found is not null) return found;
+
+        var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return FindFirst(
+            Path.Combine(pf, "nodejs", "node.exe"),
+            Path.Combine(local, "Microsoft", "WinGet", "Links", "node.exe"));
+    }
+
     /// <summary>winget.exe：PATH → WindowsApps 别名目录。</summary>
     public static string? FindWinget()
     {

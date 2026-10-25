@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
 
     <!-- 内容铺满可用宽度（左右只留页面边距）。若将来要加上限，必须用「单星号列 + MaxWidth」实现，
@@ -15,27 +16,38 @@
 
                 <!-- ===== 固定注入层（只读） ===== -->
                 <TextBlock Text="固定注入层（只读）" Style="{StaticResource SettingsSectionHeaderFirstStyle}" />
-                <Border Style="{StaticResource CardBorderStyle}">
-                    <Grid Style="{StaticResource SettingsRowStyle}" ColumnSpacing="12" RowSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
-                        </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="PYTHONUTF8" FontFamily="{StaticResource MonoFontFamily}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Row="0" Grid.Column="1" Text="1" Style="{StaticResource SecondaryTextStyle}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="PYTHONNOUSERSITE" FontFamily="{StaticResource MonoFontFamily}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="1" Style="{StaticResource SecondaryTextStyle}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="PATH" FontFamily="{StaticResource MonoFontFamily}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="venv 与 Scripts 前置" Style="{StaticResource SecondaryTextStyle}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="HIP_PATH" FontFamily="{StaticResource MonoFontFamily}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="启动时执行 rocm-sdk path --root 的输出" Style="{StaticResource SecondaryTextStyle}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="ROCM_PATH" FontFamily="{StaticResource MonoFontFamily}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Row="4" Grid.Column="1" Text="同上" Style="{StaticResource SecondaryTextStyle}" VerticalAlignment="Center" />
-                    </Grid>
-                </Border>
+                <StackPanel Spacing="{StaticResource SettingsCardSpacing}">
+                    <settings:SettingsCard>
+                        <settings:SettingsCard.Header>
+                            <TextBlock Text="PYTHONUTF8" FontFamily="{StaticResource MonoFontFamily}" />
+                        </settings:SettingsCard.Header>
+                        <TextBlock Text="1" Style="{StaticResource SecondaryTextStyle}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard>
+                        <settings:SettingsCard.Header>
+                            <TextBlock Text="PYTHONNOUSERSITE" FontFamily="{StaticResource MonoFontFamily}" />
+                        </settings:SettingsCard.Header>
+                        <TextBlock Text="1" Style="{StaticResource SecondaryTextStyle}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard>
+                        <settings:SettingsCard.Header>
+                            <TextBlock Text="PATH" FontFamily="{StaticResource MonoFontFamily}" />
+                        </settings:SettingsCard.Header>
+                        <TextBlock Text="venv 与 Scripts 前置" Style="{StaticResource SecondaryTextStyle}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard>
+                        <settings:SettingsCard.Header>
+                            <TextBlock Text="HIP_PATH" FontFamily="{StaticResource MonoFontFamily}" />
+                        </settings:SettingsCard.Header>
+                        <TextBlock Text="启动时执行 rocm-sdk path --root 的输出" Style="{StaticResource SecondaryTextStyle}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard>
+                        <settings:SettingsCard.Header>
+                            <TextBlock Text="ROCM_PATH" FontFamily="{StaticResource MonoFontFamily}" />
+                        </settings:SettingsCard.Header>
+                        <TextBlock Text="同上" Style="{StaticResource SecondaryTextStyle}" />
+                    </settings:SettingsCard>
+                </StackPanel>
 
                 <!-- ===== 自定义层 ===== -->
                 <TextBlock Text="自定义层" Style="{StaticResource SettingsSectionHeaderStyle}" />

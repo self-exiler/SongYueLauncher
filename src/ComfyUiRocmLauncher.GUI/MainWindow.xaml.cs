@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Windowing;
@@ -20,6 +21,9 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
+        // 窗口最小尺寸与状态记忆的 640×480 下限保持一致（此前只有记忆侧过滤，窗口本身仍可缩得更小）
+        WindowMinSize.Apply(this, 640, 480);
+
         // 免打包运行时需显式设置窗口图标（标题栏 + 任务栏 + Alt-Tab；exe 内嵌的 ApplicationIcon 只覆盖
         // 资源管理器里的文件图标）。图标随程序发布（csproj 的 CopyToPublishDirectory），缺失时记日志而非静默。
         var appIcon = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
@@ -36,6 +40,9 @@ public sealed partial class MainWindow : Window
 
         RestoreWindowState();
         NavView.SelectedItem = FindNavItem(App.Services.Settings.LastPage) ?? NavView.MenuItems[0];
+        // 除显示模式事件外，尺寸变化也同步一次：最大化/还原这类路径下更稳，保证回到展开态一定重新打开面板
+        NavView.SizeChanged += (_, _) => SyncPaneToggleVisibility();
+        SyncPaneToggleVisibility();
         RefreshHeader();
 
         AppWindow.Closing += OnAppWindowClosing;
@@ -115,6 +122,7 @@ public sealed partial class MainWindow : Window
         // 无论最终是否关闭，先立即落盘窗口状态与待写配置
         CaptureWindowState();
         App.Services.FlushSave();
+        App.Services.Gateway.Shutdown();
         if (_closeAfterKill) return;
 
         var leftovers = FindLeftoverPython();
@@ -212,22 +220,25 @@ public sealed partial class MainWindow : Window
     private void RefreshHeader()
     {
         var state = App.Services.State;
-        StateTextBlock.Text = LaunchStates.Text(state);
+        var text = LaunchStates.Text(state);
+        StateTextBlock.Text = text;
 
-        // 状态徽章配色：运行=成功绿 / 启动=提示黄 / 停止=危险红 / 环境任务=强调蓝（浅色底 + 同色文字）
+        // 状态徽章配色：运行=成功绿 / 启动=提示黄 / 停止=危险红 / 环境任务=强调蓝。
+        // 底色为状态色淡底，文字恒为「主题正文色」——此前用同状态色作前景，黄/绿在浅色下对比度不可控。
         var key = ThemeHelper.StateAccentKey(state);
         StateBadge.Background = key is null
             ? ThemeHelper.Brush("ControlFillColorSecondaryBrush")
             : ThemeHelper.Tint(key, 0.25);
-        StateTextBlock.Foreground = key is null
-            ? ThemeHelper.Brush("TextFillColorPrimaryBrush")
-            : ThemeHelper.Brush(key);
+        StateTextBlock.Foreground = ThemeHelper.Brush("TextFillColorPrimaryBrush");
+
+        // 徽章对读屏只是「已停止」这样的裸文本，补上语义前缀
+        AutomationProperties.SetName(StateBadge, "运行状态：" + text);
     }
 
     // ---------- 页头面包屑（二级页导航，Win11 设置风格） ----------
     private Action? _crumbBack;
 
-    /// <summary>大标题切换为「父级 › 当前页」面包屑，点父级段执行 onBack。</summary>
+    /// <summary>大标题切换为「父级 › 当前页」面包屑，点父级段执行 onBack；同时显示并启用导航返回按钮。</summary>
     public void ShowBreadcrumb(string parent, string current, Action onBack)
     {
         _crumbBack = onBack;
@@ -235,6 +246,9 @@ public sealed partial class MainWindow : Window
         CrumbCurrent.Text = current;
         PageTitle.Visibility = Visibility.Collapsed;
         PageBreadcrumb.Visibility = Visibility.Visible;
+        NavView.IsBackButtonVisible = NavigationViewBackButtonVisible.Visible;
+        // 只设 Visible 不够：IsBackEnabled 默认为 false，返回按钮会是「可见但禁用」
+        NavView.IsBackEnabled = true;
     }
 
     public void HideBreadcrumb()
@@ -243,7 +257,38 @@ public sealed partial class MainWindow : Window
         _crumbBack = null;
         PageBreadcrumb.Visibility = Visibility.Collapsed;
         PageTitle.Visibility = Visibility.Visible;
+        NavView.IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed;
+        NavView.IsBackEnabled = false;
     }
 
-    private void CrumbParent_Click(object sender, RoutedEventArgs e) => _crumbBack?.Invoke();
+    private void CrumbParent_Click(object sender, RoutedEventArgs e) => TryGoBack();
+
+    /// <summary>返回按钮与面包屑共用同一条回退路径（二级页没有真实 Frame 历史）。</summary>
+    private void TryGoBack()
+    {
+        if (_crumbBack is null) return;
+        var back = _crumbBack;
+        _crumbBack = null;
+        back();
+    }
+
+    private void NavView_BackRequested(NavigationView sender, NavigationViewBackRequestedEventArgs args) => TryGoBack();
+
+    private void NavView_DisplayModeChanged(NavigationView sender, NavigationViewDisplayModeChangedEventArgs args) =>
+        ApplyDisplayMode(args.DisplayMode);
+
+    /// <summary>启动时先按当前显示模式归位一次，避免窗口本来就窄却拿不到菜单按钮。</summary>
+    private void SyncPaneToggleVisibility() => ApplyDisplayMode(NavView.DisplayMode);
+
+    /// <summary>
+    /// 按显示模式统一处理「菜单按钮可见性 + 面板开合」：
+    /// 折叠态显示菜单按钮；展开态隐藏菜单按钮，并且必须把面板重新打开——
+    /// 否则窄窗口收起过一次后，IsPaneOpen 会保持 false，最大化回到展开态时导航再也恢复不了。
+    /// </summary>
+    private void ApplyDisplayMode(NavigationViewDisplayMode mode)
+    {
+        var expanded = mode == NavigationViewDisplayMode.Expanded;
+        NavView.IsPaneToggleButtonVisible = !expanded;
+        if (expanded) NavView.IsPaneOpen = true;
+    }
 }

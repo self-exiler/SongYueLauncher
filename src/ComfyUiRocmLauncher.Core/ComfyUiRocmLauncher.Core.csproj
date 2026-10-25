@@ -28,6 +28,10 @@
     <EmbeddedResource Include="Resources\cli-args.json" />
     <EmbeddedResource Include="Resources\gpu-templates.json" />
     <EmbeddedResource Include="Resources\wheel-catalog.json" />
+    <!-- 轮子清单同时以外部文件形式随输出/发布（exe 同目录可替换，更新清单无需重新发版）；
+         内嵌副本仅作外部文件缺失/损坏时的回落。 -->
+    <Content Include="Resources\wheel-catalog.json" Link="wheel-catalog.json"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <EmbeddedResource Include="Resources\gpu-arch-map.json" />
   </ItemGroup>
 

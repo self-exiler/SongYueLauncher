@@ -62,3 +62,5 @@ Generated\ Files/
 installer/publish/
 installer/output/
 installer/harvest.wxs
+# 瘦身 Bundle 构建期下载的运行时缓存（约 160MB，build.ps1 下载复用）
+installer/cache/

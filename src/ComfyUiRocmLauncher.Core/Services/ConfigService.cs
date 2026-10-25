@@ -33,6 +33,9 @@ public sealed class ConfigService
 
     private string ConfigPath { get; }
 
+    /// <summary>配置根目录（AI 网关数据目录等派生目录的基准）。</summary>
+    public string RootDirectoryPath => RootDirectory;
+
     public string LogDirectory { get; }
 
     public AppConfig Load()

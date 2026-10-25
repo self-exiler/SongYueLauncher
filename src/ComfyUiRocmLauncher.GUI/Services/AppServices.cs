@@ -1,4 +1,5 @@
 using Microsoft.UI.Dispatching;
+using ComfyUiRocmLauncher.Core.Ai;
 using ComfyUiRocmLauncher.Core.Models;
 using ComfyUiRocmLauncher.Core.Services;
 
@@ -28,6 +29,22 @@ public sealed class AppServices
         Tasks = new TaskRunner();
         Tasks.BusyChanged += Machine.ReportEnvBusy;
 
+        // AI 智能分析：网关安装/生命周期（SRS v2.0 FR-5.6）+ 诊断门面
+        Gateway = new AiGatewayService(
+            Log,
+            Path.Combine(ConfigService.RootDirectoryPath, "our-free-model"),
+            () => Settings.AiGatewayPort,
+            key =>
+            {
+                Settings.AiGatewayApiKey = key;
+                Save();
+            });
+        Ai = new ComfyUiAiService(() => new AiDiagnostics.GatewayOptions
+        {
+            BaseUrl = $"http://127.0.0.1:{Settings.AiGatewayPort}",
+            ApiKey = Settings.AiGatewayApiKey,
+        });
+
         _saveTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _saveTimer.Interval = TimeSpan.FromMilliseconds(400);
         _saveTimer.IsRepeating = false;
@@ -42,6 +59,12 @@ public sealed class AppServices
 
     /// <summary>环境任务调度器（全局单任务互斥，供环境与更新页使用）。</summary>
     public TaskRunner Tasks { get; }
+
+    /// <summary>AI 网关服务（dsh-our-free-model 独立服务）的安装与生命周期（SRS v2.0 FR-5.6）。</summary>
+    public AiGatewayService Gateway { get; }
+
+    /// <summary>AI 智能分析门面（SRS v2.0 FR-5.6~5.9）。</summary>
+    public ComfyUiAiService Ai { get; }
 
     public AppConfig Settings { get; }
 

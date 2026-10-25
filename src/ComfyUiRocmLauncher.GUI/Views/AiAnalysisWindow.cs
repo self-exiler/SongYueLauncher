@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using ComfyUiRocmLauncher.GUI.Helpers;
 
 namespace ComfyUiRocmLauncher.GUI.Views;
 
@@ -37,6 +38,8 @@ public sealed class AiAnalysisWindow : Window
 
         AppWindow.Resize(new Windows.Graphics.SizeInt32(980, 720));
         if (File.Exists(appIcon)) AppWindow.SetIcon(appIcon);
+        // 两栏布局与竖排按钮列在过窄窗口下不可用，给出与内容匹配的最小尺寸
+        WindowMinSize.Apply(this, 760, 560);
 
         // 主窗口关闭后独立窗口不会自动退出，进程会悬着；随主窗口一起关（顺带触发 Unloaded 取消分析）。
         App.Window.Closed += OnMainWindowClosed;

@@ -17,6 +17,9 @@
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 只保留中文框架资源：WindowsAppSDK 会铺 90+ 个语言文件夹（.mui，框架自身字符串的多语言副本），
+         应用为纯中文界面，其余语言纯冗余（省 ~180 个文件）。注意这不是应用界面语言设置。 -->
+    <SatelliteResourceLanguages>zh-CN</SatelliteResourceLanguages>
     <Nullable>enable</Nullable>
     <!-- 发行形态只有一种：免打包（unpackaged）自包含 + MSI。
          不带 MSIX 身份，WindowsAppSDK 运行时随程序输出，因此无需开启系统"开发人员模式"。 -->
@@ -37,6 +40,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
     <!-- AI 分析对话框：Markdown 渲染回答（SRS FR-5.9） -->
@@ -58,9 +62,27 @@
   <!-- 免打包形态下 XAML 资源索引 .pri 不会进 publish 清单，缺它应用启动即静默退出，故显式补入 -->
   <Target Name="IncludeUnpackagedPriInPublish" AfterTargets="ComputeFilesToPublish">
     <ItemGroup>
-      <ResolvedFileToPublish Include="$(OutDir)$(AssemblyName).pri"
-                             RelativePath="$(AssemblyName).pri"
-                             Condition="Exists('$(OutDir)$(AssemblyName).pri')" />
+      <ResolvedFileToPublish Include="$(OutDir)$(AssemblyName).pri" RelativePath="$(AssemblyName).pri" Condition="Exists('$(OutDir)$(AssemblyName).pri')" />
     </ItemGroup>
+  </Target>
+
+  <!-- 裁剪 WindowsAppSDK 铺进输出目录的框架多语言目录（每个只有 2 个 .mui，是 WinUI 框架自身字符串的
+       语言副本；SatelliteResourceLanguages 对这批运行时载荷不生效）。应用为纯中文界面，只保留 zh-CN 与
+       en-us（MRT 回退链需要英文兜底），其余 locale 目录在每次 Build/Publish 末尾删除。
+       注意：① 过滤必须放在任务级 Condition（%(Filename) 批处理）——ItemGroup Condition 拿不到条目元数据；
+       ② publish 的输出目录是 PublishDir 而非 OutDir，两处都要扫（-Full 自包含 MSI 的收割目录就是 PublishDir）；
+       ③ 只按「目录名是 locale 形态」匹配，Assets/Views/tools/Microsoft.UI.Xaml 等带点或大写开头的目录不会命中。 -->
+  <Target Name="TrimWinAppSdkMuiLanguages" AfterTargets="Build;Publish">
+    <ItemGroup>
+      <_MuiTrimRoots Include="$(OutDir)" />
+      <_MuiTrimRoots Include="$(PublishDir)" Condition="'$(PublishDir)' != '' And '$(PublishDir)' != '$(OutDir)'" />
+    </ItemGroup>
+    <ItemGroup>
+      <_MuiLangDirs Include="$([System.IO.Directory]::GetDirectories('%(_MuiTrimRoots.Identity)', '*', System.IO.SearchOption.TopDirectoryOnly))"
+                    Condition="$([System.IO.Directory]::Exists('%(_MuiTrimRoots.Identity)'))" />
+    </ItemGroup>
+    <RemoveDir Directories="%(_MuiLangDirs.Identity)"
+               Condition="'%(Filename)' != 'zh-CN' And '%(Filename)' != 'en-us' And
+                          $([System.Text.RegularExpressions.Regex]::IsMatch('%(Filename)', '^[a-z]{2,3}(-[A-Za-z0-9]+)+$'))" />
   </Target>
 </Project>

@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
 
     <!-- 页面边距统一交给最外层 Grid：上/左/右/底与其余页同一令牌，
@@ -18,13 +19,15 @@
 
         <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}">
             <StackPanel Style="{StaticResource SettingsCardStackStyle}" Orientation="Horizontal">
-                <TextBox x:Name="SearchBox" Width="240" PlaceholderText="按参数名搜索…" TextChanged="SearchBox_TextChanged" />
+                <TextBox x:Name="SearchBox"
+                         MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="{StaticResource SettingsFieldMaxWidth}"
+                         PlaceholderText="按参数名搜索…" TextChanged="SearchBox_TextChanged" />
                 <TextBlock x:Name="ArgCountText" VerticalAlignment="Center" Style="{StaticResource SecondaryTextStyle}" />
             </StackPanel>
         </Border>
 
         <ScrollViewer Grid.Row="1">
-            <StackPanel x:Name="GroupsHost" Spacing="8" HorizontalAlignment="Stretch" />
+            <StackPanel x:Name="GroupsHost" Spacing="{StaticResource SettingsCardSpacing}" HorizontalAlignment="Stretch" />
         </ScrollViewer>
 
         <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}">

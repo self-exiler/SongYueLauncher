@@ -89,14 +89,17 @@ public static class WheelService
         $"pip install {CommandLine.Join(specs)} {pythonArg} --index-url {(arch is null ? RocmNightlyIndexUrl : TorchIndexUrl(arch))}";
 
     /// <summary>从 release 资产列表挑选 whl 下载 URL（先匹配 assetMatch，再退回首个 .whl）。</summary>
+    /// <summary>
+    /// 从 release 资产中选 whl：assetMatch 命中优先。
+    /// 指定了 assetMatch 却没有命中时**必须返回 null**——release 里常混有 Linux 轮
+    /// （如 ROCm/aiter 只发 manylinux），退回任意轮会把必然装失败的 Linux 包丢给 uv。
+    /// assetMatch 为 null 时才允许取第一个 whl（清单作者确认该仓库全资产可用）。
+    /// </summary>
     public static string? SelectReleaseAsset(IEnumerable<(string Name, string Url)> assets, string? assetMatch)
     {
         var whls = assets.Where(a => a.Name.EndsWith(".whl", StringComparison.OrdinalIgnoreCase)).ToList();
         if (assetMatch is not null)
-        {
-            var hit = whls.FirstOrDefault(a => a.Name.Contains(assetMatch, StringComparison.OrdinalIgnoreCase));
-            if (hit.Url is not null) return hit.Url;
-        }
+            return whls.FirstOrDefault(a => a.Name.Contains(assetMatch, StringComparison.OrdinalIgnoreCase)).Url;
         return whls.FirstOrDefault().Url;
     }
 
@@ -118,11 +121,15 @@ public static class WheelService
         return list;
     }
 
-    /// <summary>查询仓库 latest release 的 whl 直链；API 直连，镜像前缀由调用方作用于资产 URL。</summary>
-    public static async Task<string?> FetchLatestWheelUrlAsync(string ghRepo, string? assetMatch, CancellationToken ct)
+    /// <summary>
+    /// 查询仓库 release 的 whl 直链；API 直连，镜像前缀由调用方作用于资产 URL。
+    /// tag 为空走 releases/latest，钉死 tag 时走 releases/tags/{tag}（上游 latest 未必可用，见清单注释）。
+    /// </summary>
+    public static async Task<string?> FetchLatestWheelUrlAsync(string ghRepo, string? assetMatch, CancellationToken ct, string? tag = null)
     {
+        var endpoint = string.IsNullOrEmpty(tag) ? "releases/latest" : $"releases/tags/{tag}";
         using var resp = await Http
-            .GetAsync($"https://api.github.com/repos/{ghRepo}/releases/latest", ct)
+            .GetAsync($"https://api.github.com/repos/{ghRepo}/{endpoint}", ct)
             .ConfigureAwait(false);
         resp.EnsureSuccessStatusCode();
         var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -310,12 +317,19 @@ public static class WheelService
                 string? url;
                 try
                 {
-                    url = await FetchLatestWheelUrlAsync(rule.GhRepo, rule.AssetMatch, runner.Token)
+                    url = await FetchLatestWheelUrlAsync(rule.GhRepo, rule.AssetMatch, runner.Token, rule.Tag)
                         .ConfigureAwait(false);
                     if (url is null)
-                        onOutput?.Invoke($"      [跳过] {rule.GhRepo} 最新 release 未找到可用 .whl");
+                        onOutput?.Invoke($"      [跳过] {entry.DisplayName}：{rule.GhRepo} 最新 release 未找到可用 .whl");
                 }
                 catch (OperationCanceledException) { throw; }
+                catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    // 404 = 仓库已删除或从未发布 release：这是清单过期/上游弃坑，不是网络故障，
+                    // 按「跳过」提示而不是甩原始异常文本
+                    url = null;
+                    onOutput?.Invoke($"      [跳过] {entry.DisplayName}：上游仓库 {rule.GhRepo} 无可用 release（可能已下架），已跳过");
+                }
                 catch (Exception ex)
                 {
                     url = null;
@@ -324,6 +338,12 @@ public static class WheelService
                 if (url is null) continue;
                 target = rule.UseGhMirror ? MirrorPolicy.Github(url, config.EnvUpdate.GithubMirror) : url;
                 onOutput?.Invoke($"      {entry.DisplayName}：{target}");
+            }
+            else if (entry.Spec is null)
+            {
+                // 有清单条目但当前架构没有任何 gh 规则命中：上游本就没有该架构的构建
+                onOutput?.Invoke($"      [跳过] {entry.DisplayName}：当前架构（{arch.Arch ?? "未识别"}）无可用构建，已跳过");
+                continue;
             }
             else { continue; }
 

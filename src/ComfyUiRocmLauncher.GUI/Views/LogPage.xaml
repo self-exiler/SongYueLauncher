@@ -8,7 +8,7 @@
     mc:Ignorable="d">
 
     <!-- 页面边距统一交给最外层 Grid（与其余页同一令牌），行间距 8 取代两条手写 Margin -->
-    <Grid Padding="{StaticResource SettingsPagePadding}" RowSpacing="8">
+    <Grid x:Name="LogRoot" Padding="{StaticResource SettingsPagePadding}" RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -22,12 +22,16 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock x:Name="RetentionText" VerticalAlignment="Center" Style="{StaticResource SecondaryTextStyle}" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <StackPanel VerticalAlignment="Center" Spacing="4">
+                <TextBlock x:Name="RetentionText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                <!-- 轻量操作的结果反馈：复制全部成功后短时显示，不弹窗打断 -->
+                <TextBlock x:Name="CopyStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel x:Name="AutoScrollPanel" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <TextBlock Text="自动滚动" VerticalAlignment="Center" />
                 <ToggleSwitch x:Name="AutoScrollToggle" IsOn="True" OnContent="" OffContent="" />
             </StackPanel>
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+            <StackPanel x:Name="LogButtonsPanel" Grid.Column="2" Orientation="Horizontal" Spacing="8">
                 <Button x:Name="AiAnalyzeButton" Content="AI 智能分析" Click="AiAnalyze_Click" />
                 <Button Content="清空" Click="Clear_Click" />
                 <Button Content="复制全部" Click="CopyAll_Click" />

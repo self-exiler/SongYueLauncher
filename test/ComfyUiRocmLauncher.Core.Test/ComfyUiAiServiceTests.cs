@@ -3,13 +3,13 @@ using ComfyUiRocmLauncher.Core.Ai;
 namespace ComfyUiRocmLauncher.Core.Test;
 
 /// <summary>
-/// 错误日志抓取与提问组装（SRS FR-5.7）。全部经 <see cref="ComfyUiAiService"/> 门面断言——
+/// 错误日志抓取、三类归并与提问组装（SRS v2.0 FR-5.7/5.11）。全部经 <see cref="ComfyUiAiService"/> 门面断言——
 /// 界面层看到的就是这些契约，Core.Test 不需要（也不应该）引用 AiDiagnostics。
 /// </summary>
 public class ComfyUiAiServiceTests
 {
     [Fact]
-    public void ExtractErrors_ErrorLineAndTracebackBlock_AreGrouped()
+    public void ExtractErrors_ErrorLineAndTraceback_AreDistinctGroups()
     {
         var lines = new[]
         {
@@ -25,14 +25,34 @@ public class ComfyUiAiServiceTests
         var result = ComfyUiAiService.ExtractErrors(lines);
 
         Assert.False(result.Truncated);
-        Assert.Single(result.Blocks);
-        var block = result.Blocks[0];
-        Assert.Contains("[ERROR] HIP error: invalid device", block);
-        Assert.Contains("Traceback (most recent call last):", block);
-        Assert.Contains("RuntimeError: HIP out of memory", block);
-        Assert.DoesNotContain("normal output continues", block);
-        // ANSI 码必须被剥离（保留原始 ESC 与去色后的文本两种写法都判掉）
-        Assert.DoesNotContain("\u001b[31m", block);
+        Assert.Equal(2, result.Groups.Count);
+        // 分组顺序 = 扫描器优先序：解释器 → error → warning
+        Assert.Equal(ErrorGroupKind.PythonInterpreter, result.Groups[0].Kind);
+        Assert.Equal(ErrorGroupKind.Error, result.Groups[1].Kind);
+        Assert.Contains("RuntimeError: HIP out of memory", result.Groups[0].RepresentativeText);
+        Assert.DoesNotContain("normal output continues", result.Groups[0].RepresentativeText);
+        // ANSI 码必须被剥离
+        Assert.DoesNotContain("\u001b[31m", result.Groups[1].RepresentativeText);
+        Assert.Equal(5, result.ErrorLineCount); // 1 error 行 + 4 行 Traceback 块
+    }
+
+    [Fact]
+    public void ExtractErrors_WarningsAreClassifiedSeparately()
+    {
+        var lines = new[]
+        {
+            "WARNING: error sending statistics",
+            "[ERROR] real failure",
+        };
+
+        var result = ComfyUiAiService.ExtractErrors(lines);
+
+        Assert.Equal(2, result.Groups.Count);
+        // 分组顺序 = 扫描器优先序：error 在 warning 前
+        Assert.Equal(ErrorGroupKind.Error, result.Groups[0].Kind);
+        Assert.Equal(ErrorGroupKind.Warning, result.Groups[1].Kind);
+        Assert.Equal(1, result.WarningLineCount);
+        Assert.Equal(1, result.ErrorLineCount);
     }
 
     [Fact]
@@ -42,25 +62,26 @@ public class ComfyUiAiServiceTests
 
         var result = ComfyUiAiService.ExtractErrors(lines);
 
-        Assert.Empty(result.Blocks);
+        Assert.Empty(result.Groups);
         Assert.Equal(0, result.ErrorLineCount);
-        Assert.StartsWith("未在当前日志缓冲区", result.ToPreviewText());
+        Assert.Contains("未识别到错误材料", result.ToSummaryText());
     }
 
     [Fact]
-    public void ExtractErrors_SeparateErrors_BecomeDistinctBlocks()
+    public void ExtractErrors_RepeatedErrors_MergeIntoOneGroup()
     {
-        var lines = new[]
+        var lines = new List<string>();
+        for (var i = 0; i < 10; i++)
         {
-            "[ERROR] first failure",
-            "[INFO] unrelated heartbeat",
-            "ValueError: second failure",
-        };
+            lines.Add($"[ERROR] HIP error: invalid device function at node {i}");
+            lines.Add("[INFO] unrelated heartbeat");
+        }
 
         var result = ComfyUiAiService.ExtractErrors(lines);
 
-        Assert.Equal(2, result.Blocks.Count);
-        Assert.Equal(2, result.ErrorLineCount);
+        var group = Assert.Single(result.Groups);
+        Assert.Equal(10, group.Count);
+        Assert.Equal(0, group.FirstLine);
     }
 
     [Fact]
@@ -77,8 +98,9 @@ public class ComfyUiAiServiceTests
         var result = ComfyUiAiService.ExtractErrors(lines, maxBytes: 2_000);
 
         Assert.True(result.Truncated);
-        Assert.NotEmpty(result.Blocks);
-        Assert.True(string.Join("\n", result.Blocks).Length < 400 * 75);
+        Assert.NotEmpty(result.Groups);
+        Assert.True(result.DroppedBlockCount > 0);
+        Assert.True(result.Groups.Sum(g => g.RepresentativeText.Length) < 400 * 75);
     }
 
     [Theory]
@@ -86,26 +108,38 @@ public class ComfyUiAiServiceTests
     [InlineData("Traceback (most recent call last):", true)]
     [InlineData("torch.OutOfMemoryError: CUDA out of memory", true)]
     [InlineData("Fatal Python error: Segmentation fault", true)]
-    // 精简 ErrorMarkers 后仍需命中的项（由 "ERROR" 大小写不敏感匹配覆盖）
     [InlineData("ModuleNotFoundError: No module named 'torch'", true)]
     [InlineData("ImportError: cannot import name 'x' from 'y'", true)]
     [InlineData("[CRITICAL] out of memory", true)]
-    // StopIteration 是唯一不含 error/exception 的保留关键字
     [InlineData("StopIteration", true)]
+    // v2.0：显式 warning 前缀也算错误材料（warning 级）
+    [InlineData("WARNING: something looks off", true)]
     [InlineData("To see the GUI go to: http://127.0.0.1:8188", false)]
     [InlineData("[INFO] Loaded 12 nodes", false)]
     public void LooksLikeError_ClassifiesMarkers(string line, bool expected) =>
         Assert.Equal(expected, ComfyUiAiService.LooksLikeError(line));
 
     [Fact]
-    public void BuildPrompt_ContainsContextAndStructure()
+    public void BuildPrompt_SectionsByKindAndContainsContext()
     {
-        var prompt = ComfyUiDiagnosis.BuildPrompt(
-            "RuntimeError: HIP out of memory", @"C:\pack", @"C:\pack\.venv\Scripts\python.exe");
+        var extraction = ComfyUiAiService.ExtractErrors(new[]
+        {
+            "WARNING: benign signal 1",
+            "[ERROR] HIP error: invalid device",
+            "Traceback (most recent call last):",
+            "RuntimeError: HIP out of memory",
+        });
+
+        var prompt = ComfyUiDiagnosis.BuildPrompt(extraction, @"C:\pack", @"C:\pack\.venv\Scripts\python.exe");
 
         Assert.Contains("ROCm", prompt);
         Assert.Contains(@"C:\pack", prompt);
-        Assert.Contains("RuntimeError: HIP out of memory", prompt);
+        Assert.Contains("HIP out of memory", prompt);
+        Assert.Contains("HIP error: invalid device", prompt);
+        // 分节结构（SRS v2.0 FR-5.7）：解释器 / error / warning 摘要
+        Assert.Contains("## Python 解释器报错", prompt);
+        Assert.Contains("## error 级日志", prompt);
+        Assert.Contains("## warning 级日志摘要", prompt);
         Assert.Contains("```log", prompt);
         Assert.Contains("解决步骤", prompt);
     }
