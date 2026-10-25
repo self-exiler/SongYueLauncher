@@ -87,11 +87,12 @@ public class ComfyUiAiServiceTests
     [Fact]
     public void ExtractErrors_ExceedsByteBudget_MarksTruncated()
     {
-        // 每个错误行之间插入普通行，使其成为独立块，才能触发按块预算截断
+        // 互不同型的 error（归一后指纹各异），才能撑满预算触发按组丢弃
         var lines = new List<string>();
         for (var i = 0; i < 400; i++)
         {
-            lines.Add($"[ERROR] line {i} " + new string('x', 60));
+            var tag = $"{(char)('a' + i / 26)}{(char)('a' + i % 26)}";
+            lines.Add($"[ERROR] line {tag} " + new string('x', 60));
             lines.Add("[INFO] heartbeat ok");
         }
 
@@ -102,22 +103,6 @@ public class ComfyUiAiServiceTests
         Assert.True(result.DroppedBlockCount > 0);
         Assert.True(result.Groups.Sum(g => g.RepresentativeText.Length) < 400 * 75);
     }
-
-    [Theory]
-    [InlineData("[ERROR] boom", true)]
-    [InlineData("Traceback (most recent call last):", true)]
-    [InlineData("torch.OutOfMemoryError: CUDA out of memory", true)]
-    [InlineData("Fatal Python error: Segmentation fault", true)]
-    [InlineData("ModuleNotFoundError: No module named 'torch'", true)]
-    [InlineData("ImportError: cannot import name 'x' from 'y'", true)]
-    [InlineData("[CRITICAL] out of memory", true)]
-    [InlineData("StopIteration", true)]
-    // v2.0：显式 warning 前缀也算错误材料（warning 级）
-    [InlineData("WARNING: something looks off", true)]
-    [InlineData("To see the GUI go to: http://127.0.0.1:8188", false)]
-    [InlineData("[INFO] Loaded 12 nodes", false)]
-    public void LooksLikeError_ClassifiesMarkers(string line, bool expected) =>
-        Assert.Equal(expected, ComfyUiAiService.LooksLikeError(line));
 
     [Fact]
     public void BuildPrompt_SectionsByKindAndContainsContext()

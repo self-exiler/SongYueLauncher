@@ -41,18 +41,22 @@ $appName = 'SongYueLauncher'
 $manufacturer = 'self-exiler'
 $upgradeCode = '2EF83F16-F613-4995-80EC-F62AFC7B9A49'
 
-if (-not ($Version -match '^(\d+(?:\.\d+){0,3})')) {
-    throw "版本号 '$Version' 无法解析出数字主版本（形如 0.1.0 或 0.1.0beta）"
+if (-not ($Version -match '^(\d+(?:\.\d+){0,2})')) {
+    throw "版本号 '$Version' 无法解析出数字主版本（形如 0.1.0 或 0.1.0beta；MSI ProductVersion 只有 major.minor.build 三段）"
 }
 $msiVersion = $Matches[1]
 $msiPath = Join-Path $outputDir "$appName-windows-x64-$Version.msi"
 $bundlePath = Join-Path $outputDir "$appName-windows-x64-$Version.exe"
 # Bundle 自身升级码：与 MSI UpgradeCode 分离——旧版自包含 MSI 仍靠 MSI 内部 MajorUpgrade 被替换
 $bundleUpgradeCode = 'AA65422F-A713-4020-855C-6A502C7F4F73'
-# 外置运行时的下载源（构建期下载到 cache 并计算 SHA1/大小注入 Bundle；-Full 不需要）
+# 外置运行时的下载源（构建期下载到 cache 并计算 SHA1/大小注入 Bundle；-Full 不需要）。
+# 两个源都必须钉死不可变 URL：WAR 若用 aka.ms「latest」短链，微软轮换后存量 Bundle 的哈希校验
+# 必然失败——所有已发布安装包同时变坏且无法远程修复（审查 #10）。版本与 GUI csproj 的
+# WindowsAppSDK 包版本保持一致（升级 SDK 时同步改这里）。
 $dotNetVersion = '10.0.13'
 $dotNetUrl = "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/$dotNetVersion/windowsdesktop-runtime-$dotNetVersion-win-x64.exe"
-$warUrl = 'https://aka.ms/windowsappsdk/1.8/latest/windowsappruntimeinstall-x64.exe'
+$warVersion = '1.8.260317003'
+$warUrl = "https://aka.ms/windowsappsdk/1.8/$warVersion/windowsappruntimeinstall-x64.exe"
 $cacheDir = Join-Path $installerDir 'cache'
 
 Write-Output "== 松月启动器打包 =="
@@ -81,14 +85,16 @@ else {
     if (-not (Test-Path (Join-Path $publishDir 'ComfyUiRocmLauncher.GUI.exe'))) {
         throw "发布产物缺少 ComfyUiRocmLauncher.GUI.exe"
     }
-    # XAML 资源索引与应用图标是两类静默坏包：缺了本机能跑，但会出现打不开 / 没图标。
-    # 形态哨兵：自包含必须有 coreclr.dll；瘦身必须有 Bootstrap 托管包装（同时证明 WASDK 运行时已外置）。
-    $required = @('ComfyUiRocmLauncher.GUI.pri', 'Assets\AppIcon.ico')
-    if ($Full) { $required += 'coreclr.dll' } else { $required += 'Microsoft.WindowsAppRuntime.Bootstrap.Net.dll' }
-    foreach ($item in $required) {
-        if (-not (Test-Path (Join-Path $publishDir $item))) {
-            throw "发布产物缺少 $item，产物与目标形态不符"
-        }
+}
+
+# XAML 资源索引与应用图标是两类静默坏包：缺了本机能跑，但会出现打不开 / 没图标。
+# 形态哨兵：自包含必须有 coreclr.dll；瘦身必须有 Bootstrap 托管包装（同时证明 WASDK 运行时已外置）。
+# 必须对 -SkipPublish 也无条件校验（按本次 -Full 取值）：复用不同形态的旧产物重打 = 静默坏包（审查 #19）
+$required = @('ComfyUiRocmLauncher.GUI.pri', 'Assets\AppIcon.ico')
+if ($Full) { $required += 'coreclr.dll' } else { $required += 'Microsoft.WindowsAppRuntime.Bootstrap.Net.dll' }
+foreach ($item in $required) {
+    if (-not (Test-Path (Join-Path $publishDir $item))) {
+        throw "发布产物缺少 $item，产物与目标形态（$(if ($Full) { '自包含' } else { '瘦身' })）不符"
     }
 }
 
@@ -102,7 +108,7 @@ foreach ($candidate in @(
     if ($candidate -and (Test-Path $candidate)) { $wix = $candidate; break }
 }
 if (-not $wix) {
-    throw "未找到 WiX v4 命令行工具，请先执行：dotnet tool install --global wix --version 4.0.5"
+    throw "未找到 WiX 命令行工具，请先执行：dotnet tool install --global wix --version 5.0.2（Bundle.wxs 已用 v5 语法，装 v4 会构建失败）"
 }
 Write-Output "== 使用 WiX：$wix =="
 
@@ -184,7 +190,6 @@ if (Test-Path $msiPath) { Remove-Item $msiPath -Force }
 & $wix build (Join-Path $installerDir 'Product.wxs') $harvestWxs `
     -arch x64 `
     -o $msiPath `
-    -d PublishDir=$publishDir `
     -d ProductVersion=$msiVersion `
     -d Manufacturer=$manufacturer `
     -d UpgradeCode=$upgradeCode `
@@ -198,14 +203,22 @@ if ($Full) { return }
 
 # ---------- 5. 构建瘦身 Bundle（默认形态）----------
 # 运行时依赖在构建期下载到 cache（重复打包复用），计算 SHA1/大小注入 RemotePayload——
-# Burn 在用户安装时按这些哈希校验下载。Windows App Runtime 走 aka.ms「latest」短链，
-# 上游更新 latest 后哈希会漂移，因此发版后应尽快发布；必要时把 cache 里的文件与注入哈希一起刷新。
+# Burn 在用户安装时按这些哈希校验下载。两个源都钉死不可变 URL（见文件头部的 $warUrl 注释）。
 function Get-InstallerPayload([string]$url, [string]$fileName) {
     New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
     $path = Join-Path $cacheDir $fileName
     if (-not (Test-Path $path)) {
-        Write-Host "   下载依赖：$url"
-        Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
+        # 先下到 .tmp 再原子改名：下载中断（网络抖动/Ctrl+C）留下的半截文件若被当成完整缓存，
+        # 其哈希会被注入 Bundle——构建成功但所有用户安装时校验必失败（审查 #19）
+        $tmp = "$path.tmp"
+        try {
+            Write-Host "   下载依赖：$url"
+            Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
+            Move-Item -Force $tmp $path
+        }
+        finally {
+            if (Test-Path $tmp) { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+        }
     }
     $hash = (Get-FileHash $path -Algorithm SHA1).Hash.ToLower()
     $size = (Get-Item $path).Length

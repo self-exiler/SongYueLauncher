@@ -256,8 +256,6 @@ public sealed partial class HomePage : Page
             DirLinkOpText.Text = warning is null
                 ? $"√ 「{name}」已外置到 {target}"
                 : $"√ 「{name}」已外置到 {target}（{warning}）";
-            Settings.ExternalDirLinks[name] = target;
-            App.Services.Save();
         });
     }
 
@@ -292,8 +290,6 @@ public sealed partial class HomePage : Page
             DirLinkOpText.Text = warning is null
                 ? $"√ 「{name}」已还原为整合包内普通目录"
                 : $"√ 「{name}」已还原（{warning}）";
-            Settings.ExternalDirLinks.Remove(name);
-            App.Services.Save();
         });
     }
 
@@ -450,7 +446,7 @@ public sealed partial class HomePage : Page
         var picker = new Windows.Storage.Pickers.FileSavePicker
         {
             SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
-            SuggestedFileName = "comfyui-launch",
+            SuggestedFileName = Ps1ScriptBuilder.SuggestedFileName,
         };
         picker.FileTypeChoices.Add("PowerShell 脚本", new List<string> { ".ps1" });
         WinRT.Interop.InitializeWithWindow.Initialize(picker, App.WindowHandle);

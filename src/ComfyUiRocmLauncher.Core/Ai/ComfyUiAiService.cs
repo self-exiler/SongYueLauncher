@@ -61,10 +61,9 @@ public sealed class ComfyUiAiService
         if (maxBytes != options.MaxBytes) options = options with { MaxBytes = maxBytes };
 
         var result = LogErrorScanner.Scan(lines, options);
-        var groups = ErrorGrouper.Group(result.Blocks);
         return new ErrorLogExtraction(
-            groups.Select(g => new ErrorGroupView(
-                g.Title, (ErrorGroupKind)(int)g.Kind, g.Count, g.FirstLine, g.LastLine, g.Representative.Text)).ToList(),
+            result.Groups.Select(g => new ErrorGroupView(
+                g.Title, MapKind(g.Kind), g.Count, g.FirstLine, g.LastLine, g.Representative.Text)).ToList(),
             result.TotalLines,
             result.Truncated)
         {
@@ -74,7 +73,11 @@ public sealed class ComfyUiAiService
         };
     }
 
-    /// <summary>单行是否像错误行（ComfyUI/uvicorn 的正常心跳已被排除）。</summary>
-    public static bool LooksLikeError(string plainLine) =>
-        LogErrorScanner.LooksLikeError(plainLine, ComfyUiDiagnosis.ScanOptions);
+    /// <summary>显式映射取代数值强转：两个枚举只靠书写顺序同步，任何一边重排都会静默错分类（审查候选 7 的雷点）。</summary>
+    private static ErrorGroupKind MapKind(LogErrorKind kind) => kind switch
+    {
+        LogErrorKind.PythonInterpreter => ErrorGroupKind.PythonInterpreter,
+        LogErrorKind.Error => ErrorGroupKind.Error,
+        _ => ErrorGroupKind.Warning,
+    };
 }

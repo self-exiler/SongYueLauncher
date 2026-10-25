@@ -126,6 +126,16 @@ public sealed partial class LogPage : Page
 
             OpenAnalysisWindow();
         }
+        catch (OperationCanceledException)
+        {
+            // 用户取消准备流程：与 EnsureWithProgressAsync 一致，静默返回
+        }
+        catch (Exception ex)
+        {
+            // async void 没有 catch 就是崩溃（审查 A1：安装目录不可写等意外必须折算成弹窗）
+            App.Services.Log.Append($"[AI网关] 准备失败：{ex.Message}");
+            await ShowGatewayProblemAsync($"准备 AI 分析服务时出错：{ex.Message}");
+        }
         finally
         {
             AiAnalyzeButton.IsEnabled = true;

@@ -9,7 +9,4 @@ public sealed record AiAgentProfile
 {
     /// <summary>system prompt：角色设定、工作方式与回答结构。</summary>
     public required string SystemPrompt { get; init; }
-
-    /// <summary>在人选列表里的简要说明。</summary>
-    public string Description { get; init; } = string.Empty;
 }

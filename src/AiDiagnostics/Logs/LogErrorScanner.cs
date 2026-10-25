@@ -12,22 +12,10 @@ public static class LogErrorScanner
     /// <summary>Traceback 头（Python 解释器报错块起点）。不开放配置：所有 Python 版本的输出一致。</summary>
     private const string TracebackHeader = "Traceback (most recent call last):";
 
-    /// <summary>单行是否像错误行（先排除噪声特征，再匹配关键字 / Traceback 头）。</summary>
-    public static bool LooksLikeError(string plainLine, LogScanOptions? options = null)
-    {
-        if (string.IsNullOrWhiteSpace(plainLine)) return false;
-        var o = options ?? new LogScanOptions();
-
-        foreach (var hint in o.NoiseHints)
-        {
-            if (plainLine.Contains(hint, StringComparison.OrdinalIgnoreCase)) return false;
-        }
-        return IsTracebackHeader(plainLine) || IsWarningLine(plainLine, o) || ContainsMarker(plainLine, o);
-    }
-
     /// <summary>
-    /// 扫描全部行并分类归块；随后按「解释器 → error → warning」优先级装填字节预算——
-    /// 一类刷屏（如良性警告）不再挤掉另一类（如 Traceback）。
+    /// 扫描全部行并分类，随后**先指纹归并、再按「解释器 → error → warning」优先级装填字节预算**：
+    /// 同一错误刷屏只占一份预算（A5），一类刷屏不再挤掉另一类（如 Traceback）；
+    /// 超过整个预算的解释器块截断保留而非整块丢弃（#13）——最高优先级材料不能失明。
     /// </summary>
     public static LogScanResult Scan(IEnumerable<string> rawLines, LogScanOptions? options = null)
     {
@@ -69,33 +57,68 @@ public static class LogErrorScanner
             }
         }
 
-        var ordered = all
-            .OrderBy(b => ErrorGrouper.Priority(b.Kind))
-            .ThenBy(b => b.StartLine)
+        var ordered = ErrorGrouper.Group(all)
+            .OrderBy(g => ErrorGrouper.Priority(g.Kind))
+            .ThenBy(g => g.FirstLine)
             .ToList();
 
-        var included = new List<LogBlock>(ordered.Count);
+        var included = new List<ErrorGroup>(ordered.Count);
         var totalChars = 0;
         var dropped = 0;
-        foreach (var block in ordered)
+        foreach (var group in ordered)
         {
-            var size = block.Text.Length + 2;
+            var representative = group.Representative;
+            var text = representative.Text;
+            if (group.Kind == LogErrorKind.PythonInterpreter && text.Length + 2 > o.MaxBytes)
+            {
+                text = TruncateInterpreter(text, Math.Max(200, o.MaxBytes - 2));
+                representative = representative with { Text = text };
+            }
+            var size = text.Length + 2;
             if (totalChars + size > o.MaxBytes)
             {
                 dropped++;
                 continue;
             }
             totalChars += size;
-            included.Add(block);
+            included.Add(group with { Representative = representative });
         }
 
-        return new LogScanResult(included, lines.Count, dropped > 0)
+        return new LogScanResult(included.Select(g => g.Representative).ToList(), lines.Count, dropped > 0)
         {
+            Groups = included,
             ErrorLineCount = errorLineCount,
             WarningLineCount = warningLineCount,
-            TotalBlockCount = all.Count,
             DroppedBlockCount = dropped,
         };
+    }
+
+    /// <summary>
+    /// 超长解释器块（Traceback 链）截断保留：优先保住尾部 30 行（异常末行是定位根因的关键），
+    /// 再用剩余预算从头部尽量多装（最多 20 行），中间以省略标记分隔。
+    /// </summary>
+    private static string TruncateInterpreter(string text, int maxChars)
+    {
+        const int Head = 20, Tail = 30;
+        var lines = text.Split('\n');
+        if (lines.Length <= Head + Tail) return text.Length <= maxChars ? text : text[..maxChars];
+
+        var tailText = string.Join('\n', lines[^Tail..]);
+        var marker = $"…[截断 {lines.Length - Head - Tail} 行]";
+        var remaining = maxChars - tailText.Length - marker.Length - 2;
+        var headCount = 0;
+        var headUsed = 0;
+        for (var i = 0; i < Head && headUsed + lines[i].Length + 1 <= remaining; i++)
+        {
+            headUsed += lines[i].Length + 1;
+            headCount++;
+        }
+        if (headCount == 0)
+        {
+            // 尾部就占满了预算（极端）：直接裁尾部文本
+            return tailText.Length <= maxChars ? marker + "\n" + tailText : tailText[..maxChars];
+        }
+        return string.Join('\n', lines.Take(headCount)) + "\n" + marker + "\n" + tailText;
     }
 
     /// <summary>行首显式 warning 前缀（命中且后随 <c>:</c> 或空格才算，避免误伤 "WARNING" 出现在句中的错误行）。</summary>

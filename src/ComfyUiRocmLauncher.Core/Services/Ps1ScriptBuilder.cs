@@ -15,7 +15,8 @@ namespace ComfyUiRocmLauncher.Core.Services;
 public static class Ps1ScriptBuilder
 {
     /// <summary>导出文件名建议值（不含目录）。</summary>
-    public static string SuggestedFileName => "comfyui-launch.ps1";
+    /// <summary>导出脚本的建议文件名主干（不含扩展名，由文件选择器的 FileTypeChoices 补全）。</summary>
+    public static string SuggestedFileName => "comfyui-launch";
 
     /// <summary>生成脚本正文。args 为空时自动按当前配置解析（ArgsBuilder + 内置参数清单）。</summary>
     public static string Build(AppConfig config, DateTime generatedAt, IReadOnlyList<string>? args = null)

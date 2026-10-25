@@ -44,6 +44,43 @@ public class ArgsBuilderTests
     }
 
     [Fact]
+    public void FloatList_TextValueIsSplitIntoTokens()
+    {
+        // 审查 #4 回归：UI 文本框写 Values（"4 8"），Builder 此前只读 Multi、值被静默丢弃
+        var args = new StructuredArgs();
+        args.Enable("cache-ram", true);
+        args.SetValue("cache-ram", "4 8");
+        Assert.Equal(new[] { "--cache-ram", "4", "8" }, ArgsBuilder.Build(args, Catalog));
+    }
+
+    [Fact]
+    public void StringList_EmptyValue_OmitsFlagEntirely()
+    {
+        // 审查 #4 回归：nargs='+' 参数裸传会让 ComfyUI 启动即被 argparse 拒绝，必须整体不输出
+        var args = new StructuredArgs();
+        args.Enable("whitelist-custom-nodes", true);
+        Assert.Empty(ArgsBuilder.Build(args, Catalog));
+    }
+
+    [Fact]
+    public void StringList_TextValueIsUsed()
+    {
+        var args = new StructuredArgs();
+        args.Enable("whitelist-custom-nodes", true);
+        args.SetValue("whitelist-custom-nodes", "node_a node_b");
+        Assert.Equal(new[] { "--whitelist-custom-nodes", "node_a", "node_b" }, ArgsBuilder.Build(args, Catalog));
+    }
+
+    [Fact]
+    public void ResolvePort_OutOfRangeFallsBackToDefault()
+    {
+        var args = new StructuredArgs();
+        args.Enable("port", true);
+        args.SetValue("port", "70000");
+        Assert.Equal(8188, ArgsBuilder.ResolvePort(args));
+    }
+
+    [Fact]
     public void RepeatableList_RepeatsFlagPerLine()
     {
         var args = new StructuredArgs();

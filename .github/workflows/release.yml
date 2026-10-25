@@ -34,18 +34,28 @@ jobs:
         shell: pwsh
         run: dotnet tool install --global wix --version 5.0.2
 
+      # 版本号一律经 env 传给脚本：tag 名允许单引号/$/;等字符，直接内插进 run: 块构成脚本注入
+      # （该 job 持 contents:write 令牌，审查 #11）
       - name: 确定版本号（tag 优先去 v 前缀，手动触发用输入值）
         id: ver
         shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          $v = '${{ inputs.version }}'
+          $v = $env:INPUT_VERSION
           if (-not $v) { $v = ($env:GITHUB_REF_NAME -replace '^v', '') }
           "version=$v" >> $env:GITHUB_OUTPUT
           Write-Output "版本号：$v"
 
+      - name: 运行单元测试（Core + AiDiagnostics）
+        shell: pwsh
+        run: dotnet test ComfyUiRocmLauncher.sln -c Release --nologo
+
       - name: 构建（默认瘦身 Bundle + 内嵌 MSI；加 -Full 出旧版自包含 MSI）
         shell: pwsh
-        run: ./installer/build.ps1 -Version '${{ steps.ver.outputs.version }}'
+        env:
+          BUILD_VERSION: ${{ steps.ver.outputs.version }}
+        run: ./installer/build.ps1 -Version $env:BUILD_VERSION
 
       - name: 上传构建产物（Actions 页面可下载）
         uses: actions/upload-artifact@v7

@@ -54,6 +54,7 @@ public sealed class ProcessService
 
         try { process.Kill(entireProcessTree: true); }
         catch (InvalidOperationException) { }
+        catch (System.ComponentModel.Win32Exception) { }
 
         try
         {
@@ -72,6 +73,8 @@ public sealed class ProcessService
     /// <summary>
     /// 查找由该 venv 拉起的 Python 进程（含 ComfyUI 派生的子进程）：
     /// 进程可执行文件位于 venv 根目录内且名为 python/python3/pythonw（.exe 可能带版本号）。
+    /// 返回的进程归调用方所有（用完 Dispose；<see cref="KillProcessesAsync"/> 会负责）；
+    /// 未入选的进程在这里就地释放。
     /// </summary>
     public static Process[] FindPythonProcesses(string venvRoot)
     {
@@ -79,26 +82,29 @@ public sealed class ProcessService
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
             + Path.DirectorySeparatorChar;
 
-        return Process.GetProcesses().Where(p =>
+        var matches = new List<Process>();
+        foreach (var p in Process.GetProcesses())
         {
+            var matched = false;
             try
             {
                 var name = p.ProcessName;
-                if (name.Length is < 6 or > 10) return false; // python ~ python3.13
-                if (!name.StartsWith("python", StringComparison.OrdinalIgnoreCase)) return false;
-                return Path.GetFullPath(p.MainModule!.FileName!)
-                    .StartsWith(normalized, StringComparison.OrdinalIgnoreCase);
+                matched = name.Length is >= 6 and <= 10 // python ~ python3.13
+                    && name.StartsWith("python", StringComparison.OrdinalIgnoreCase)
+                    && Path.GetFullPath(p.MainModule!.FileName!)
+                        .StartsWith(normalized, StringComparison.OrdinalIgnoreCase);
+                if (matched) matches.Add(p);
             }
             catch
             {
                 // 无权限或已退出：视为无关进程
-                return false;
             }
             finally
             {
-                p.Dispose();
+                if (!matched) p.Dispose();
             }
-        }).ToArray();
+        }
+        return matches.ToArray();
     }
 
     /// <summary>强杀指定 Python 进程（含进程树），等待最多 3 秒。</summary>

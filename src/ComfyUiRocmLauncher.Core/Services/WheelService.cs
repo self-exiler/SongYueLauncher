@@ -49,13 +49,35 @@ public static class WheelService
         return client;
     }
 
-    /// <summary>torch 更新卸载清单：固定 rocm/torch 名单 + freeze 中匹配前缀的包。</summary>
+    /// <summary>
+    /// torch 系包判定——卸载与回滚**必须共用**这一处（审查 #7）：
+    /// 命中固定名单，或以 rocm / amd-torch / amd-torchvision 为前缀且边界正确
+    /// （前缀后是结尾或非字母数字字符）。无边界的前缀匹配会把 torchmetrics 这类无关包
+    /// 拖进回滚命令——它不在 AMD 索引上，uv 会整单解析失败，把本可装回的 torch 也一起葬送。
+    /// </summary>
+    public static bool IsTorchFamily(string nameOrSpec)
+    {
+        var name = nameOrSpec.Trim();
+        var cut = name.IndexOfAny(['=', '[', ' ', '<', '>', ';', '!', '<', '>']);
+        var pkg = (cut < 0 ? name : name[..cut]).Trim();
+        if (TorchFixed.Contains(pkg, StringComparer.OrdinalIgnoreCase)) return true;
+        if (RocmFixed.Contains(pkg, StringComparer.OrdinalIgnoreCase)) return true;
+        return TorchFreezePrefixes.Any(p => HasPrefixBoundary(pkg, p));
+    }
+
+    private static bool HasPrefixBoundary(string pkg, string prefix)
+    {
+        if (!pkg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+        var rest = pkg[prefix.Length..];
+        return rest.Length == 0 || !char.IsAsciiLetterOrDigit(rest[0]);
+    }
+
+    /// <summary>torch 更新卸载清单：固定 rocm/torch 名单（无论 freeze 中是否存在）+ freeze 中的 torch 系包。</summary>
     public static IReadOnlyList<string> BuildTorchUninstallList(IEnumerable<string> freezeNames)
     {
         var set = new HashSet<string>(RocmFixed.Concat(TorchFixed), StringComparer.OrdinalIgnoreCase);
         foreach (var name in freezeNames)
-            if (TorchFreezePrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
-                set.Add(name);
+            if (IsTorchFamily(name)) set.Add(name);
         return set.ToList();
     }
 
@@ -88,7 +110,6 @@ public static class WheelService
     public static string BuildRollbackArgs(IEnumerable<string> specs, string? arch, string pythonArg) =>
         $"pip install {CommandLine.Join(specs)} {pythonArg} --index-url {(arch is null ? RocmNightlyIndexUrl : TorchIndexUrl(arch))}";
 
-    /// <summary>从 release 资产列表挑选 whl 下载 URL（先匹配 assetMatch，再退回首个 .whl）。</summary>
     /// <summary>
     /// 从 release 资产中选 whl：assetMatch 命中优先。
     /// 指定了 assetMatch 却没有命中时**必须返回 null**——release 里常混有 Linux 轮
@@ -217,15 +238,11 @@ public static class WheelService
         // 非 pip 的两步（rocm-sdk init、import 验证）直接在本目录执行
         var dir = PathHelpers.ExistingDirOrCurrent(config.ComfyUiDir);
 
-        // ① 快照
+        // ① 快照（只取内存值；落盘推迟到验证门之后——门失败时环境未动，旧快照必须保留。
+        // 否则更新失败后重试会用「损坏状态」覆盖最后一次完好快照，回滚能力被一次重试焚毁，审查 #8）
         onOutput?.Invoke("[1/6] 生成版本快照 …");
         var before = await FreezeAsync(runner, config).ConfigureAwait(false);
         var snapshot = SnapshotPath(config);
-        try
-        {
-            File.WriteAllLines(snapshot, before.Select(kv => $"{kv.Key}=={kv.Value}"));
-        }
-        catch (IOException ex) { onOutput?.Invoke($"      警告：快照写入失败：{ex.Message}"); }
 
         // ② 解析验证门：索引可达 + 目标 arch 有对应版本才继续（不下载、不落盘）
         onOutput?.Invoke("[2/6] 解析验证门（uv pip install --dry-run）…");
@@ -235,6 +252,13 @@ public static class WheelService
             onOutput?.Invoke("[错误] 解析失败——旧环境未改动，可稍后重试或检查网络 / 架构");
             return false;
         }
+
+        // 验证门通过、环境即将被改动，此刻的快照才是「最后一次完好状态」
+        try
+        {
+            File.WriteAllLines(snapshot, before.Select(kv => $"{kv.Key}=={kv.Value}"));
+        }
+        catch (IOException ex) { onOutput?.Invoke($"      警告：快照写入失败：{ex.Message}"); }
 
         // ③ 卸载旧包
         onOutput?.Invoke("[3/6] 卸载旧 rocm/torch 系 …");
@@ -256,15 +280,23 @@ public static class WheelService
         onOutput?.Invoke("[5/6] rocm-sdk init …");
         var sdk = LaunchEnvBuilder.RocmSdkExeFrom(config.PythonExe);
         if (File.Exists(sdk))
-            await runner.Run(sdk, "init", dir, onOutput).ConfigureAwait(false);
+        {
+            var initCode = await runner.Run(sdk, "init", dir, onOutput).ConfigureAwait(false);
+            if (initCode != 0) onOutput?.Invoke("      警告：rocm-sdk init 返回非零（不阻断更新）");
+        }
         else
             onOutput?.Invoke("      警告：未找到 rocm-sdk.exe，跳过 init");
 
-        // ⑥ 验证
+        // ⑥ 验证：import 失败 = 安装产物不完整，必须报失败并让回滚入口可用（审查 #16）
         onOutput?.Invoke("[6/6] 验证 import torch …");
-        await runner.Run(config.PythonExe,
+        var verify = await runner.Run(config.PythonExe,
             "-c \"import torch;print('torch',torch.__version__);print('rocm',torch.cuda.is_available());print('hip',getattr(torch.version,'hip',None));print('device',torch.cuda.get_device_name(0))\"",
             dir, onOutput).ConfigureAwait(false);
+        if (verify != 0)
+        {
+            onOutput?.Invoke($"[错误] import torch 验证失败（退出码 {verify}），快照已保留，可点击「回滚」恢复更新前版本");
+            return false;
+        }
 
         onOutput?.Invoke("√ ROCm / PyTorch 更新完成");
         return true;
@@ -284,7 +316,7 @@ public static class WheelService
             return;
         }
         var specs = File.ReadAllLines(snapshotPath)
-            .Where(l => Regex.IsMatch(l, @"^(torch|torchvision|torchaudio|rocm)"))
+            .Where(IsTorchFamily)
             .ToArray();
         if (specs.Length == 0) { onOutput?.Invoke("      快照中无 torch/rocm 项"); return; }
 
@@ -373,7 +405,8 @@ public static class WheelService
         foreach (var req in files)
         {
             var name = Path.GetFileName(req);
-            var filtered = RequirementsFilter.WriteFilteredFile(req, config.ComfyUiDir);
+            // 过滤产物写到系统临时目录：写进 ComfyUI 检出目录会污染 git status 且逐次累积（A9）
+            var filtered = RequirementsFilter.WriteFilteredFile(req, Path.GetTempPath());
             onOutput?.Invoke($"安装项目通用依赖：{name}（已过滤 torch 系）…");
             var code = await RunUvAsync(runner, config, $"pip install -r {CommandLine.Quote(filtered)} {PypiIndex(config)}{PythonArg(config)}", onOutput)
                 .ConfigureAwait(false);

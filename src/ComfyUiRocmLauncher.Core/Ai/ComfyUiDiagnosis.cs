@@ -9,13 +9,9 @@ namespace ComfyUiRocmLauncher.Core.Ai;
 /// </summary>
 public static class ComfyUiDiagnosis
 {
-    /// <summary>会话标题，便于在网关侧识别本次调用。</summary>
-    public const string AnalysisTitle = "ComfyUI 错误日志分析";
-
     /// <summary>只读 + 联网查证的诊断 agent：不写文件、不执行命令，但允许搜索与抓取官方文档/Issue。</summary>
     public static AiAgentProfile Agent { get; } = new()
     {
-        Description = "Read-only ComfyUI on AMD ROCm error-log analyst.",
         SystemPrompt =
             "你是 ComfyUI + AMD ROCm（Windows）环境的只读故障排查助手。\n\n"
             + "你的任务只有一个：分析用户提供的启动器 error 级日志，判断根因并给出可执行的解决建议。\n\n"

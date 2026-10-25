@@ -28,9 +28,21 @@ public static class ToolchainService
         };
     }
 
-    /// <summary>GPU arch 解析（复用 WMI 名称 + 内置映射，不依赖项目文件 / venv）。</summary>
-    public static ArchInfo DetectArch() =>
-        GpuArchService.Instance.Map(GpuInfoService.GetAmdGpuName());
+    /// <summary>
+    /// GPU arch 解析（复用 WMI 名称 + 内置映射，不依赖项目文件 / venv）。
+    /// 多个 AMD 适配器（APU + 独显）时取第一个能映射到已知架构的名字——iGPU 名
+    /// 不匹配任何规则，此前取第一个 AMD 名会让识别整体失效（审查 #18）。
+    /// </summary>
+    public static ArchInfo DetectArch()
+    {
+        var names = GpuInfoService.GetAmdGpuNames();
+        foreach (var name in names)
+        {
+            var arch = GpuArchService.Instance.Map(name);
+            if (arch.Known) return arch;
+        }
+        return GpuArchService.Instance.Map(names.FirstOrDefault() ?? "未知");
+    }
 
     private static async Task<string?> QueryVersionAsync(string? exe, string args, CancellationToken ct)
     {
@@ -41,6 +53,10 @@ public static class ToolchainService
             await ProcessService.RunCommandAsync(exe, args, Environment.CurrentDirectory,
                 line => { if (lines.Count == 0) lines.Add(line); }, ct).ConfigureAwait(false);
             return lines.FirstOrDefault()?.Trim();
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // 取消不是「版本读取失败」，吞掉会让取消的任务以正常文案收尾
         }
         catch
         {

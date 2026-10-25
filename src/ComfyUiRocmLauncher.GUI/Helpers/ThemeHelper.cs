@@ -13,7 +13,8 @@ public static class ThemeHelper
     public static Brush Brush(string key) =>
         Application.Current.Resources[key] as Brush ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
-    public static Windows.UI.Color Color(string key) =>
+    /// <summary>按 key 取主题色（仅 Tint 内部使用，无外部调用方）。主题资源存的是 SolidColorBrush，取其 Color。</summary>
+    private static Windows.UI.Color Color(string key) =>
         (Application.Current.Resources[key] as SolidColorBrush)?.Color ?? Microsoft.UI.Colors.Transparent;
 
     /// <summary>按主题色生成半透明底刷（用于徽章底色）。</summary>

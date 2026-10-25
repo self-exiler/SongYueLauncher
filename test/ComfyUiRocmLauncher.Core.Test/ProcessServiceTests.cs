@@ -64,4 +64,44 @@ public class ProcessServiceTests
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(8),
             $"孙进程持有管道导致等待过久：{sw.Elapsed}（应只等 ≤3 秒输出冲刷）");
     }
+
+    /// <summary>
+    /// 回归（审查 #1）：FindPythonProcesses 曾把要返回的进程也 Dispose 掉，
+    /// 导致关窗「结束 Python 并关闭」实际一个进程都杀不掉。这里用假 venv（cmd 复制为 python.exe）
+    /// 断言返回的进程是活的、可读、且能被 KillProcessesAsync 真正终止。
+    /// </summary>
+    [Fact]
+    public async Task FindPythonProcesses_ReturnsLiveProcessesAndKillActuallyKills()
+    {
+        var venvRoot = Path.Combine(Path.GetTempPath(), "fake-venv", Guid.NewGuid().ToString("N"));
+        var scripts = Path.Combine(venvRoot, "Scripts");
+        Directory.CreateDirectory(scripts);
+        var fakePython = Path.Combine(scripts, "python.exe");
+        File.Copy(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"), fakePython);
+
+        try
+        {
+            var proc = Process.Start(new ProcessStartInfo(fakePython, "/c ping -n 30 127.0.0.1 >nul")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            Assert.NotNull(proc);
+
+            var found = ProcessService.FindPythonProcesses(venvRoot);
+            Assert.Contains(found, p => p.Id == proc!.Id);
+
+            // 返回项必须未被释放：读 HasExited 不抛 ObjectDisposedException
+            var mine = found.First(p => p.Id == proc!.Id);
+            Assert.False(mine.HasExited);
+
+            await ProcessService.KillProcessesAsync(found);
+            Assert.True(proc.WaitForExit(5000), "KillProcessesAsync 未能在 5 秒内终止假 python 进程");
+        }
+        finally
+        {
+            try { Directory.Delete(venvRoot, recursive: true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
 }

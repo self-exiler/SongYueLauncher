@@ -70,6 +70,8 @@ public static class DirLinkService
             return $"「{name}」已外置到 {target}，无需重复操作。";
 
         string? warning = null;
+        // 记录“数据是靠同盘改名迁走的”：mklink 失败时只有这条路能原子移回（B1 事务化）
+        var migratedByRename = false;
         // 先建外部目标（含数据根目录链）：目录本不存在时也能外置，且联接不会悬空
         Directory.CreateDirectory(target);
         if (state.IsLink)
@@ -87,6 +89,7 @@ public static class DirLinkService
                 // 同盘且外部目录为空：整目录改名，无论多大都是瞬时完成
                 Directory.Delete(target, recursive: false);
                 Directory.Move(linkPath, target);
+                migratedByRename = true;
             }
             else
             {
@@ -111,7 +114,23 @@ public static class DirLinkService
             "cmd.exe", $"/c mklink /J {CommandLine.Quote(linkPath)} {CommandLine.Quote(TrimSeparators(target))}",
             comfyUiDir).ConfigureAwait(false);
         if (code != 0)
-            throw new InvalidOperationException($"建立目录联接失败（退出码 {code}）。");
+        {
+            // mklink 失败时数据已被迁走：同盘改名的场景尝试原子移回，恢复操作前状态（A4/B1）。
+            // 移不回（跨盘 robocopy / 文件被占用）时明确告知数据位置——直接重试本操作也能恢复
+            if (migratedByRename && !Directory.Exists(linkPath))
+            {
+                try
+                {
+                    Directory.Move(target, linkPath);
+                    throw new InvalidOperationException(
+                        $"建立目录联接失败（退出码 {code}），数据已移回原位置，环境未改变，可稍后重试。");
+                }
+                catch (InvalidOperationException) { throw; }
+                catch (Exception) { /* 移回失败：落到下方的数据位置提示 */ }
+            }
+            throw new InvalidOperationException(
+                $"建立目录联接失败（退出码 {code}）。数据已迁移到 {target}（原位置暂缺）；直接重试本操作即可恢复。");
+        }
 
         var verify = Inspect(comfyUiDir, name);
         if (!verify.IsLink || !PathsEqual(verify.TargetPath, target))
@@ -136,24 +155,45 @@ public static class DirLinkService
             throw new InvalidOperationException($"「{name}」目前不是目录链接。");
 
         onProgress?.Invoke("移除链接（外部目录中的数据不受影响）…");
-        Directory.Delete(linkPath);
 
         string? warning = null;
-        if (state.TargetExists)
+        if (state.TargetExists && SameVolume(linkPath, state.TargetPath))
         {
-            onProgress?.Invoke("把内容搬回整合包目录（同盘瞬时完成，跨盘耗时与体积成正比）…");
-            if (SameVolume(linkPath, state.TargetPath))
+            // 同盘事务化还原（A4/B1）：先把联接点改名让位，再原子搬回；
+            // 搬回失败则把联接点改回原名，环境回到操作前状态——不再出现「没链接也没目录」
+            var junctionAside = linkPath + "._link_aside";
+            Directory.Move(linkPath, junctionAside);
+            try
             {
-                // 同盘：外部目录整体改名为原位置，瞬时完成
                 Directory.Move(state.TargetPath, linkPath);
+                // 数据已就位：删除让位的联接点（只删重解析点本身，不影响任何数据）
+                Directory.Delete(junctionAside, recursive: false);
             }
-            else
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                Directory.CreateDirectory(linkPath);
-                await MoveTreeAsync(runner, state.TargetPath, linkPath).ConfigureAwait(false);
-                if (Directory.Exists(state.TargetPath))
-                    warning = $"部分文件未能搬回（可能被占用），仍保留在 {state.TargetPath}。";
+                Directory.Move(junctionAside, linkPath);
+                throw new InvalidOperationException(
+                    $"还原失败（外部目录搬回被拒绝，可能被占用：{ex.Message}），已恢复原链接，数据未受影响，可稍后重试。");
             }
+        }
+        else
+        {
+            Directory.Delete(linkPath);
+            if (state.TargetExists)
+            {
+                onProgress?.Invoke("把内容搬回整合包目录（跨盘耗时与体积成正比）…");
+                try
+                {
+                    await MoveTreeAsync(runner, state.TargetPath, linkPath).ConfigureAwait(false);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // 跨盘部分搬回：保留已搬回的，告知剩余位置——抛出会让「还原」无法再重试（已不是链接）
+                    warning = $"{ex.Message} 未搬回的仍保留在 {state.TargetPath}，可手动复制。";
+                }
+            }
+            if (Directory.Exists(state.TargetPath) && warning is null)
+                warning = $"部分文件未能搬回（可能被占用），仍保留在 {state.TargetPath}。";
         }
 
         if (!Directory.Exists(linkPath)) Directory.CreateDirectory(linkPath);

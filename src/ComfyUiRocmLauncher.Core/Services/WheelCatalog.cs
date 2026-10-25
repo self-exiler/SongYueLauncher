@@ -26,7 +26,7 @@ public sealed class WheelCatalog
 
     public IReadOnlyList<WheelCatalogEntry> Wheels { get; }
 
-    /// <summary>清单版本标识（随软件发版更新，FR-8.6）。</summary>
+    /// <summary>清单版本标识（内嵌清单随软件发版更新，FR-8.6；外部文件替换时以此比对新旧）。</summary>
     public string Updated { get; }
 
     public int Version { get; }

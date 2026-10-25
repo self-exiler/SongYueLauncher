@@ -558,9 +558,11 @@ public sealed partial class ArgsPage : Page
         _syncing = true;
         try
         {
-            foreach (var name in Settings.Args.Enabled.ToList())
-                if (_rows.TryGetValue(name, out var row) && row.Toggle.IsOn)
-                    row.Toggle.IsOn = false; // 事件被抑制，Enabled 稍后整体覆盖
+            // 先全量熄灭再按配置点亮：模板应用（全量替换）后，「之前启用、新配置里没有」的参数
+            // 不在 Enabled 里——只遍历 Enabled 会漏掉它们，开关残留 ON 而预览没有它，
+            // 用户再碰一下就把被模板禁掉的参数悄悄重新启用（审查 GUI-2）
+            foreach (var row in _rows.Values)
+                if (row.Toggle.IsOn) row.Toggle.IsOn = false; // 事件被抑制，Enabled 稍后整体覆盖
             foreach (var name in Settings.Args.Enabled)
                 if (_rows.TryGetValue(name, out var row) && !row.Toggle.IsOn)
                     row.Toggle.IsOn = true;

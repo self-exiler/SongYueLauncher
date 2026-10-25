@@ -21,8 +21,13 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
-        // 窗口最小尺寸与状态记忆的 640×480 下限保持一致（此前只有记忆侧过滤，窗口本身仍可缩得更小）
-        WindowMinSize.Apply(this, 640, 480);
+        // 窗口最小尺寸与状态记忆的 640×480 下限保持一致（此前只有记忆侧过滤，窗口本身仍可缩得更小）。
+        // WinAppSDK 1.7+ 内建最小尺寸属性，取代 75 行 P/Invoke 子类化的 WindowMinSize（审查 A9）
+        if (AppWindow.Presenter is OverlappedPresenter windowPresenter)
+        {
+            windowPresenter.PreferredMinimumWidth = 640;
+            windowPresenter.PreferredMinimumHeight = 480;
+        }
 
         // 免打包运行时需显式设置窗口图标（标题栏 + 任务栏 + Alt-Tab；exe 内嵌的 ApplicationIcon 只覆盖
         // 资源管理器里的文件图标）。图标随程序发布（csproj 的 CopyToPublishDirectory），缺失时记日志而非静默。
@@ -119,20 +124,32 @@ public sealed partial class MainWindow : Window
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        // 无论最终是否关闭，先立即落盘窗口状态与待写配置
+        // 无论最终是否关闭，先立即落盘窗口状态与待写配置。
+        // 注意：网关停机必须放在「确定放行关闭」之后——用户可能点「取消关闭」继续用 AI 分析
         CaptureWindowState();
         App.Services.FlushSave();
-        App.Services.Gateway.Shutdown();
-        if (_closeAfterKill) return;
+        if (_closeAfterKill)
+        {
+            App.Services.Gateway.Shutdown();
+            return;
+        }
 
         var leftovers = FindLeftoverPython();
+        if (leftovers.Length == 0 && App.Services.State == LaunchState.Idle)
+        {
+            App.Services.Gateway.Shutdown();
+            return;
+        }
 
-        if (leftovers.Length == 0 && App.Services.State == LaunchState.Idle) return;
+        var xamlRoot = (Content as FrameworkElement)?.XamlRoot;
+        if (xamlRoot is null)
+        {
+            // 拿不到 XamlRoot（理论上不发生）就无法弹窗：按直接关闭处理，不再拦截
+            App.Services.Gateway.Shutdown();
+            return;
+        }
 
         args.Cancel = true;
-        var xamlRoot = (Content as FrameworkElement)?.XamlRoot;
-        if (xamlRoot is null) return;
-
         _ = ShowCloseWarningAsync(xamlRoot, leftovers);
     }
 
@@ -146,22 +163,29 @@ public sealed partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(pythonExe)) return [];
 
         var venvRoot = LaunchEnvBuilder.VenvDirFrom(pythonExe);
-        return string.IsNullOrEmpty(venvRoot) ? [] : ProcessService.FindPythonProcesses(venvRoot);
+        // venv 布局守卫：解释器不在 <root>\Scripts\python.exe 时两级父目录不是 venv 根
+        // （系统 Python 会推出盘根），按前缀匹配会误杀整个盘符下的 python 进程
+        if (!File.Exists(Path.Combine(venvRoot, "Scripts", "python.exe"))) return [];
+        return ProcessService.FindPythonProcesses(venvRoot);
     }
 
     private async Task ShowCloseWarningAsync(Microsoft.UI.Xaml.XamlRoot xamlRoot, System.Diagnostics.Process[] leftovers)
     {
-        var running = App.Services.State != LaunchState.Idle;
+        // BusyEnv 期间 LaunchState == Idle：文案必须区分「ComfyUI 运行中」与「环境任务进行中」
+        var busyEnv = App.Services.State == LaunchState.BusyEnv;
+        var running = App.Services.State is LaunchState.Starting or LaunchState.Running;
         var message = running
             ? $"ComfyUI 仍在运行，且检测到 {leftovers.Length} 个 Python 进程。直接关闭启动器无法终止它们。"
-            : $"启动器未跟踪到运行中的 ComfyUI，但仍检测到 {leftovers.Length} 个由该环境拉起的 Python 进程。";
+            : busyEnv
+                ? "环境任务（安装/更新）仍在进行，直接关闭会中断任务并可能留下半完成的环境。"
+                : $"启动器未跟踪到运行中的 ComfyUI，但仍检测到 {leftovers.Length} 个由该环境拉起的 Python 进程。";
 
         var dialog = new ContentDialog
         {
             XamlRoot = xamlRoot,
             Title = "关闭启动器",
             Content = message,
-            PrimaryButtonText = "结束 Python 并关闭",
+            PrimaryButtonText = "结束并关闭",
             CloseButtonText = "取消关闭",
             DefaultButton = ContentDialogButton.Close,
         };
@@ -169,15 +193,22 @@ public sealed partial class MainWindow : Window
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
 
         _closeAfterKill = true;
+        if (busyEnv)
+        {
+            // 取消环境任务：TaskRunner 的令牌会终止其 uv/git 等子进程树（它们不叫 python，残留扫描扫不到）
+            App.Services.Tasks.Cancel();
+            App.Services.Log.Append("[启动器] 关闭前取消进行中的环境任务");
+        }
         if (running)
             await App.Services.Launch.StopAsync();
-        else
+        else if (!busyEnv)
             await ProcessService.KillProcessesAsync(leftovers);
 
         // StopAsync 依赖状态机，可能因状态与进程实际状态不一致而空转：兜底再扫一次并强杀
         await ProcessService.KillProcessesAsync(FindLeftoverPython());
 
         App.Services.Log.Append("[启动器] 关闭前结束残留 Python 进程");
+        App.Services.Gateway.Shutdown();
         Close();
     }
 

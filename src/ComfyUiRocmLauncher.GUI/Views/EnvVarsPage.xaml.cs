@@ -73,10 +73,26 @@ public sealed partial class EnvVarsPage : Page
                 return;
             }
 
-            Settings.CustomEnvVars.Remove(key);
-            Settings.CustomEnvVars[newKey] = valueBox.Text;
-            key = newKey;
-            AutomationProperties.SetName(delete, $"删除环境变量 {key}");
+            // 与另一条自定义变量重名时阻止保存：索引器赋值会静默覆盖对方的值（审查 GUI-5）
+            if (!string.Equals(newKey, key, StringComparison.OrdinalIgnoreCase)
+                && Settings.CustomEnvVars.ContainsKey(newKey))
+            {
+                ShowConflict($"已阻止保存：{newKey} 与另一条自定义变量重名");
+                return;
+            }
+
+            if (string.Equals(newKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                // key 未变：就地更新，避免 Remove+重加把该键挪到字典末尾（行序跳动）
+                Settings.CustomEnvVars[newKey] = valueBox.Text;
+            }
+            else
+            {
+                Settings.CustomEnvVars.Remove(key);
+                Settings.CustomEnvVars[newKey] = valueBox.Text;
+                key = newKey;
+                AutomationProperties.SetName(delete, $"删除环境变量 {key}");
+            }
             App.Services.Save();
             CheckConflicts();
         }

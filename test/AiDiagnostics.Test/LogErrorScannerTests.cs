@@ -66,15 +66,17 @@ public class LogErrorScannerTests
         Assert.Empty(Scan("To see the GUI go to: http://127.0.0.1:8188"));
     }
 
-    // ---------- 优先级预算 ----------
+    // ---------- 优先级预算（先指纹归并、再按预算装填） ----------
 
     [Fact]
     public void Scan_Budget_WarningsDoNotEvictTraceback()
     {
+        // 互不同型的 warning（归一后指纹各异），才能撑满预算触发丢弃
         var lines = new List<string>();
         for (var i = 0; i < 200; i++)
         {
-            lines.Add($"WARNING: benign noise {i} " + new string('w', 60));
+            var tag = $"{(char)('a' + i / 26)}{(char)('a' + i % 26)}";
+            lines.Add($"WARNING: benign {tag} " + new string('w', 60));
         }
         lines.Add("Traceback (most recent call last):");
         lines.Add("RuntimeError: HIP out of memory");
@@ -86,6 +88,44 @@ public class LogErrorScannerTests
         Assert.Contains("HIP out of memory", first.Text);
         Assert.True(result.WarningLineCount == 200);
         Assert.True(result.DroppedBlockCount > 0);
+    }
+
+    [Fact]
+    public void Scan_Budget_IdenticalFloodMergesBeforeBudget()
+    {
+        // A5 回归：同一错误刷屏先归并、只占一份预算——别的类型不能被重复项挤掉
+        var lines = new List<string>();
+        for (var i = 0; i < 1_000; i++)
+        {
+            lines.Add($"WARNING: same noise over and over {i}");
+        }
+        lines.Add("[ERROR] the only real error");
+
+        var result = LogErrorScanner.Scan(lines, new LogScanOptions { MaxBytes = 2_000 });
+
+        Assert.Contains(result.Blocks, b => b.Kind == LogErrorKind.Error);
+        var warningGroup = Assert.Single(result.Groups, g => g.Kind == LogErrorKind.Warning);
+        Assert.Equal(1_000, warningGroup.Count);
+    }
+
+    [Fact]
+    public void Scan_Budget_OversizedTracebackIsTruncatedNotDropped()
+    {
+        // #13 回归：超过整个预算的 Traceback 截断保留（头 20 + 尾 30 行），不再整块丢弃
+        var lines = new List<string> { "Traceback (most recent call last):" };
+        for (var i = 0; i < 300; i++)
+        {
+            lines.Add($"  File \"module_{i}.py\", line {i}, in func_{i} " + new string('f', 60));
+        }
+        lines.Add("RuntimeError: HIP out of memory");
+
+        var result = LogErrorScanner.Scan(lines, new LogScanOptions { MaxBytes = 4_000 });
+
+        var interpreter = Assert.Single(result.Groups, g => g.Kind == LogErrorKind.PythonInterpreter);
+        Assert.Contains("截断", interpreter.Representative.Text);
+        Assert.Contains("RuntimeError: HIP out of memory", interpreter.Representative.Text);
+        Assert.Contains("Traceback", interpreter.Representative.Text); // 头部保留
+        Assert.True(interpreter.Representative.Text.Length <= 4_000);
     }
 
     [Fact]
@@ -104,18 +144,19 @@ public class LogErrorScannerTests
             result.Blocks.Select(b => b.Kind).ToArray());
     }
 
-    // ---------- 指纹归并 ----------
+    // ---------- 指纹归并（Scan 已内置归并，直接断言结果分组） ----------
 
     [Fact]
     public void Group_SameShapeMergesWithCount()
     {
-        var blocks = Scan(
+        var result = LogErrorScanner.Scan(new[]
+        {
             "[ERROR] HIP error: invalid device function at node 1",
             "[INFO] heartbeat",
-            "[ERROR] HIP error: invalid device function at node 42");
+            "[ERROR] HIP error: invalid device function at node 42",
+        });
 
-        var groups = ErrorGrouper.Group(blocks);
-        var group = Assert.Single(groups);
+        var group = Assert.Single(result.Groups);
         Assert.Equal(LogErrorKind.Error, group.Kind);
         Assert.Equal(2, group.Count);
         Assert.Equal(0, group.FirstLine);
@@ -128,13 +169,15 @@ public class LogErrorScannerTests
     [Fact]
     public void Group_TracebackTitleUsesExceptionTail()
     {
-        var blocks = Scan(
+        var result = LogErrorScanner.Scan(new[]
+        {
             "Traceback (most recent call last):",
             "RuntimeError: HIP out of memory",
             "Traceback (most recent call last):",
-            "RuntimeError: HIP out of memory");
+            "RuntimeError: HIP out of memory",
+        });
 
-        var group = Assert.Single(ErrorGrouper.Group(blocks));
+        var group = Assert.Single(result.Groups);
         Assert.Equal(2, group.Count);
         Assert.Contains("HIP out of memory", group.Title);
         Assert.DoesNotContain("Traceback", group.Title);
@@ -143,8 +186,8 @@ public class LogErrorScannerTests
     [Fact]
     public void Group_DifferentKindsDoNotMerge()
     {
-        var blocks = Scan("[ERROR] x failure 1", "WARNING: x failure 1");
-        Assert.Equal(2, ErrorGrouper.Group(blocks).Count);
+        var result = LogErrorScanner.Scan(new[] { "[ERROR] x failure 1", "WARNING: x failure 1" });
+        Assert.Equal(2, result.Groups.Count);
     }
 
     [Theory]

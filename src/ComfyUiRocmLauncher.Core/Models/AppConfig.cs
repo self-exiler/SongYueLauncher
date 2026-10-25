@@ -17,14 +17,6 @@ public sealed class AppConfig
     public int LogRetainCount { get; set; } = 30;
     public int LogRetainTotalMB { get; set; } = 200;
 
-    // ---------- 目录外置链接（SRS v2.6 FR-1.5） ----------
-
-    /// <summary>
-    /// 已外置的目录链接：相对目录名（models / output）→ 外部数据目录绝对路径（junction 目标）。
-    /// 文件系统才是链接现状的真相，这里只记录用户选择，用于回显与还原。
-    /// </summary>
-    public Dictionary<string, string> ExternalDirLinks { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-
     // ---------- AI 智能分析（SRS v2.0 FR-5.6~5.9） ----------
 
     /// <summary>AI 网关（dsh-our-free-model 独立服务）监听端口，由启动器拉起时经 --port 传入。</summary>

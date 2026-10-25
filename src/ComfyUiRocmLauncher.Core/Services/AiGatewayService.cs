@@ -54,10 +54,16 @@ public sealed class AiGatewayService
         _dataDir = dataDir;
         _port = port;
         _persistApiKey = persistApiKey;
+        // 安装目录放在用户配置目录下：安装版的程序目录位于 Program Files，普通用户不可写，
+        // 引导流程的 CreateDirectory/解压会抛 UnauthorizedAccessException 并穿出 async void 崩溃（审查 A1）
+        InstallRoot = Path.Combine(
+            Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(dataDir)))
+                ?? Path.GetFullPath(dataDir),
+            "tools", "our-free-model");
     }
 
-    /// <summary>安装根目录（启动器软件目录下）。</summary>
-    public string InstallRoot { get; } = Path.Combine(AppContext.BaseDirectory, "tools", "our-free-model");
+    /// <summary>安装根目录（用户配置目录下的 tools\our-free-model，普通用户可写）。</summary>
+    public string InstallRoot { get; }
 
     /// <summary>当前状态（供 GUI 决定走引导流程还是直接开窗）。</summary>
     public AiGatewayState Current
@@ -168,13 +174,22 @@ public sealed class AiGatewayService
             return new AiGatewayReady(false, "服务已启动但未在时限内就绪（/health 无响应）。", BaseUrl, string.Empty);
         }
 
-        var key = ReadForwardKey();
+        // 首启竞态：/health 可能先于 settings.json 落盘——轮询几秒再判失败（审查 #12c）
+        progress?.Report("正在读取 API Key…");
+        string? key = null;
+        for (var i = 0; i < 5 && string.IsNullOrEmpty(key); i++)
+        {
+            key = ReadForwardKey();
+            if (string.IsNullOrEmpty(key)) await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+        }
+
         if (key is { Length: > 0 })
         {
             _persistApiKey(key);
             return new AiGatewayReady(true, "就绪。", BaseUrl, key);
         }
-        return new AiGatewayReady(true,
+        // 无 Key 时必须 Ok=false：Ok=true 的告警消息会被 GUI 丢弃，用户只能看到下游 401 的症状（审查 #12c）
+        return new AiGatewayReady(false,
             "服务已就绪，但尚未读到 API Key（数据目录 settings.json 的 forwardKey）。\n请稍后重试，或在网关管理页手工复制。", BaseUrl, string.Empty);
     }
 

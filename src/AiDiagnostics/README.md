@@ -102,22 +102,11 @@ var scan = LogErrorScanner.Scan(logLines, new LogScanOptions
     MaxBytes     = 12_000,
 });
 
-// 2) 指纹归并：数字/路径/UUID/IP/十六进制归一后同型错误合并计数
-var groups = ErrorGrouper.Group(scan.Blocks);
-foreach (var g in groups)
+// 2) Scan 已内置「指纹归并 + 预算装填」：结果 Groups 直接是分组视图（数字/路径/UUID/IP 已归一）
+foreach (var g in scan.Groups)
 {
     Console.WriteLine($"[{g.Kind}] {g.Title} ×{g.Count}（第 {g.FirstLine}~{g.LastLine} 行）");
 }
-
-// 3) 渲染自家提示词模板（未知占位符原样保留，模板里可安全写含花括号的代码块）
-var prompt = PromptComposer.Render(
-    """
-    你在排查应用故障。运行环境：{context}
-    材料已分组：{material}
-
-    请给出：根因 / 证据 / 解决步骤。
-    """,
-    new Dictionary<string, string> { ["context"] = "…", ["material"] = "…" });
 ```
 
 ---
@@ -129,7 +118,6 @@ var prompt = PromptComposer.Render(
 | 成员 | 说明 |
 | --- | --- |
 | `AiDiagnosticsClient(Func<GatewayOptions>?, HttpClient?, IAiToolExecutor?)` | 选项工厂每次调用时取最新值（Key 可能晚于服务启动生成）；HttpClient 与工具执行器可注入（测试桩） |
-| `Task<bool> IsHealthyAsync(CancellationToken)` | `GET /health` 免 Key 探活，3 秒超时 |
 | `Task<IReadOnlyList<AiModel>> ListModelsAsync(CancellationToken)` | `GET /v1/models`；非 2xx 抛 `InvalidOperationException`（含 HTTP 码与 error.message） |
 | `Task<AiAnswer> AskAsync(AiRequest, Action<string>? onDelta, Action<string>? onStatus, CancellationToken)` | SSE 流式分析；`onDelta` 收**正文增量原样拼接**（不要额外加分隔），`onStatus` 收「模型思考中… / 正在调用 …」类提示 |
 
@@ -170,12 +158,10 @@ var prompt = PromptComposer.Render(
 
 | 成员 | 说明 |
 | --- | --- |
-| `LogErrorScanner.Scan(lines, LogScanOptions?)` | 返回 `LogScanResult`（`Blocks` 按「解释器 → error → warning」优先序、`ErrorLineCount`/`WarningLineCount`、`TotalBlockCount`/`DroppedBlockCount`、`Truncated`） |
-| `LogErrorScanner.LooksLikeError(line, options?)` | 单行判定，便于自行过滤 |
+| `LogErrorScanner.Scan(lines, LogScanOptions?)` | 返回 `LogScanResult`：**先指纹归并、再按「解释器 → error → warning」优先级装填预算**（同一错误刷屏只占一份预算；超预算的解释器块截断保留），`Groups` 为入选分组、`Blocks` 为各组代表块，附 `ErrorLineCount`/`WarningLineCount`/`DroppedBlockCount`/`Truncated` |
 | `LogBlock` / `LogErrorKind` | 带类别与起始行号的块；`PythonInterpreter` / `Error` / `Warning` |
 | `ErrorGrouper.Group(blocks)` | 指纹归并 → `ErrorGroup`（归一化标题、`Count`、首末行号、代表块） |
 | `LogScanOptions` | `ErrorMarkers` / `WarnMarkers` / `NoiseHints` / `MaxBytes`（record，可 `with`） |
-| `PromptComposer.Render(template, values)` | `{name}` 占位符替换；未知键保持不变 |
 
 ### 底层设施（一般无需直接用）
 
@@ -195,7 +181,6 @@ classDiagram
 
     class AiDiagnosticsClient {
         +AiDiagnosticsClient(optionsFactory, http, tools)
-        +IsHealthyAsync(ct) Task~bool~
         +ListModelsAsync(ct) Task~AiModel[]~
         +AskAsync(request, onDelta, onStatus, ct) Task~AiAnswer~
         -ReadChatStreamAsync(body, ...)$ Task~ChatStreamState~
@@ -282,10 +267,6 @@ classDiagram
         -Normalize(line)$ string
     }
 
-    class PromptComposer {
-        +Render(template, values)$ string
-    }
-
     class AnsiStripper {
         +Strip(line)$ string
     }
@@ -309,7 +290,7 @@ classDiagram
 读图要点：
 
 - **对外只有一个门面**：`AiDiagnosticsClient`。HTTP 细节（SSE 帧解析、工具循环、降级）都收在它内部，`ChatStreamState` 是 internal。
-- `LogErrorScanner` / `ErrorGrouper` / `PromptComposer` 是**与客户端解耦的纯函数**，可以单独用于「只做日志扫描」的场景。
+- `LogErrorScanner` / `ErrorGrouper` 是**与客户端解耦的纯函数**，可以单独用于「只做日志扫描」的场景。
 - 工具能力是可选注入：不传执行器 + `UseTools=false` 即纯离线分析。
 
 ### 5.2 调用时序（`AskAsync` 工具循环）

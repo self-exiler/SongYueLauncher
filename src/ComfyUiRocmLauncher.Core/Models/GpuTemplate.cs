@@ -26,10 +26,6 @@ public sealed class GpuTemplate
     /// <summary>是否为自定义模板（含环境变量快照）。</summary>
     [JsonIgnore]
     public bool IsCustom => EnvSnapshot is not null;
-
-    /// <summary>模板启动参数项数。</summary>
-    [JsonIgnore]
-    public int ArgCount => ArgsSnapshot?.Enabled.Count ?? Args.Count;
 }
 
 public sealed class GpuTemplateFile

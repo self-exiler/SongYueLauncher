@@ -60,7 +60,7 @@ public sealed partial class AiAnalysisDialog : UserControl
         }
         if (extraction.Truncated)
         {
-            GroupHintText.Text = $"部分低优先级材料因长度预算被丢弃（{extraction.DroppedBlockCount} 块），同类重复已归并计数。";
+            GroupHintText.Text = $"部分分组因长度预算被丢弃（{extraction.DroppedBlockCount} 组）；超长 Traceback 已截断保留，同类重复已归并计数。";
             GroupHintText.Visibility = Visibility.Visible;
         }
 
@@ -156,8 +156,7 @@ public sealed partial class AiAnalysisDialog : UserControl
 
             if (cancellationToken.IsCancellationRequested)
             {
-                SetAnswerText("已取消本次分析。");
-                SetStatus("已取消。", StatusKind.Err);
+                ShowCancelledWithPartial();
             }
             else if (answer.Success)
             {
@@ -173,8 +172,7 @@ public sealed partial class AiAnalysisDialog : UserControl
         }
         catch (OperationCanceledException)
         {
-            SetAnswerText("已取消本次分析。");
-            SetStatus("已取消。", StatusKind.Err);
+            ShowCancelledWithPartial();
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException)
         {
@@ -189,6 +187,14 @@ public sealed partial class AiAnalysisDialog : UserControl
     }
 
     private void SetAnswerText(string text) => AnswerMarkdown.Text = text;
+
+    /// <summary>取消时保留已流式显示的半截回答，只追加取消标记（tmp#16），不再整段覆盖。</summary>
+    private void ShowCancelledWithPartial()
+    {
+        var partial = _answerChunks.ToString();
+        SetAnswerText(partial.Length > 0 ? partial + "\n\n（已取消本次分析）" : "已取消本次分析。");
+        SetStatus("已取消。", StatusKind.Err);
+    }
 
     private void Copy_Click(object sender, RoutedEventArgs e)
     {
@@ -268,11 +274,15 @@ public sealed partial class AiAnalysisDialog : UserControl
                 SetStatus($"共读取到 {_models.Count} 个模型。", StatusKind.Ok);
             }
         }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException
+            or HttpRequestException or TaskCanceledException)
         {
             _models.Clear();
             ModelCombo.PlaceholderText = "模型读取失败";
-            SetStatus($"模型读取失败：{ex.Message}", StatusKind.Err);
+            // 网关进程死掉抛 HttpRequestException、超时抛 TaskCanceledException——此前都不在过滤器里，
+            // 被 `_ =` 火后不管吞掉，状态栏永久停在「正在读取网关模型…」（审查 #12d）
+            var reason = ex is TaskCanceledException ? "读取模型超时（网关无响应）" : ex.Message;
+            SetStatus($"模型读取失败：{reason}", StatusKind.Err);
         }
         finally
         {

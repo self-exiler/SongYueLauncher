@@ -206,6 +206,19 @@ public class EnvCatalogTests
         Assert.DoesNotContain("einops", list);
     }
 
+    /// <summary>审查 #7 回归：无边界前缀匹配曾把 torchmetrics 拖进回滚命令，在 AMD 索引上整单解析失败。</summary>
+    [Theory]
+    [InlineData("torchmetrics==1.2.3", false)]      // 前缀撞车但非 torch 系
+    [InlineData("torchcodec==0.1", false)]
+    [InlineData("torch==2.4.0", true)]
+    [InlineData("amd-torch-device-gfx1100==6.2.41136", true)] // 卸载名单会卸掉它，回滚也必须装得回
+    [InlineData("amd-torchvision-device-gfx1100==0.19", true)]
+    [InlineData("rocm-sdk-core==6.2.41136", true)]
+    [InlineData("torchaudio==2.4.0", true)]
+    [InlineData("einops==0.8.0", false)]
+    public void IsTorchFamily_PrefixBoundary_ExcludesUnrelatedPackages(string spec, bool expected) =>
+        Assert.Equal(expected, WheelService.IsTorchFamily(spec));
+
     [Fact]
     public void BuildTorchInstallArgs_CommonArchUsesNightlyDirect()
     {

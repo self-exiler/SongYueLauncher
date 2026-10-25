@@ -5,11 +5,11 @@
       "id": "network",
       "title": "网络",
       "args": [
-        { "name": "listen", "type": "optionalString", "default": "127.0.0.1", "const": "0.0.0.0,::", "metavar": "IP", "description": "监听地址，逗号分隔多地址；启用但不填值时监听所有 IPv4/IPv6" },
+        { "name": "listen", "type": "optionalString", "default": "127.0.0.1", "const": "0.0.0.0,::", "description": "监听地址，逗号分隔多地址；启用但不填值时监听所有 IPv4/IPv6" },
         { "name": "port", "type": "int", "default": 8188, "description": "监听端口" },
         { "name": "tls-keyfile", "type": "string", "description": "TLS 私钥文件路径（需配合 tls-certfile）" },
         { "name": "tls-certfile", "type": "string", "description": "TLS 证书文件路径（需配合 tls-keyfile）" },
-        { "name": "enable-cors-header", "type": "optionalString", "const": "*", "metavar": "ORIGIN", "description": "开启 CORS；启用但不填值时允许所有来源（*）" },
+        { "name": "enable-cors-header", "type": "optionalString", "const": "*", "description": "开启 CORS；启用但不填值时允许所有来源（*）" },
         { "name": "max-upload-size", "type": "float", "default": 100, "description": "上传大小上限（MB）" }
       ]
     },
@@ -18,24 +18,24 @@
       "title": "目录",
       "args": [
         { "name": "base-directory", "type": "string", "description": "覆盖 models/custom_nodes/input/output/temp/user 的基目录" },
-        { "name": "extra-model-paths-config", "type": "repeatableStringList", "metavar": "PATH", "description": "加载 extra_model_paths.yaml，可指定多个（每行一个，每个路径单独传递一次该参数）" },
+        { "name": "extra-model-paths-config", "type": "repeatableStringList", "description": "加载 extra_model_paths.yaml，可指定多个（每行一个，每个路径单独传递一次该参数）" },
         { "name": "output-directory", "type": "string", "description": "覆盖输出目录（优先于 base-directory）" },
         { "name": "temp-directory", "type": "string", "description": "覆盖临时目录（优先于 base-directory）" },
         { "name": "input-directory", "type": "string", "description": "覆盖输入目录（优先于 base-directory）" },
-        { "name": "user-directory", "type": "string", "mustExist": true, "description": "覆盖 user 目录（须为已存在的绝对路径）" },
-        { "name": "models-directory", "type": "string", "mustExist": true, "description": "覆盖 models 目录（须为已存在的绝对路径）" }
+        { "name": "user-directory", "type": "string", "description": "覆盖 user 目录（须为已存在的绝对路径）" },
+        { "name": "models-directory", "type": "string", "description": "覆盖 models 目录（须为已存在的绝对路径）" }
       ]
     },
     {
       "id": "device",
       "title": "设备与后端",
       "args": [
-        { "name": "cuda-device", "type": "string", "metavar": "DEVICE_ID", "description": "可见设备 id 列表（如 0 或 0,1），或 all 保持全部可见" },
-        { "name": "default-device", "type": "int", "metavar": "DEFAULT_DEVICE_ID", "description": "默认设备 id，其余设备保持可见" },
+        { "name": "cuda-device", "type": "string", "description": "可见设备 id 列表（如 0 或 0,1），或 all 保持全部可见" },
+        { "name": "default-device", "type": "int", "description": "默认设备 id，其余设备保持可见" },
         { "name": "cuda-malloc", "type": "flag", "mutex": 1, "description": "启用 cudaMallocAsync（torch 2.0+ 默认启用）" },
         { "name": "disable-cuda-malloc", "type": "flag", "mutex": 1, "description": "禁用 cudaMallocAsync" },
-        { "name": "directml", "type": "optionalInt", "const": -1, "metavar": "DIRECTML_DEVICE", "description": "使用 torch-directml（本项目不用，仅枚举）" },
-        { "name": "oneapi-device-selector", "type": "string", "metavar": "SELECTOR_STRING", "description": "oneAPI 设备选择（本项目不用，仅枚举）" },
+        { "name": "directml", "type": "optionalInt", "const": -1, "description": "使用 torch-directml（本项目不用，仅枚举）" },
+        { "name": "oneapi-device-selector", "type": "string", "description": "oneAPI 设备选择（本项目不用，仅枚举）" },
         { "name": "supports-fp8-compute", "type": "flag", "description": "声称设备支持 fp8 计算" },
         { "name": "enable-triton-backend", "type": "flag", "description": "启用 comfy-kitchen Triton 后端（默认启动时禁用）" },
         { "name": "disable-triton-backend", "type": "flag", "description": "强制禁用 comfy-kitchen Triton 后端（覆盖 enable-triton-backend）" }
@@ -71,7 +71,7 @@
       "id": "cache",
       "title": "缓存与内存",
       "args": [
-        { "name": "cache-ram", "type": "floatList", "maxValues": 2, "metavar": "GB", "mutex": 6, "description": "RAM 压力缓存（默认模式）。第 1 个值为活跃缓存阈值 GB，可选第 2 个值为非活跃/固定阈值；不填值用自动默认" },
+        { "name": "cache-ram", "type": "floatList", "mutex": 6, "description": "RAM 压力缓存（默认模式）。第 1 个值为活跃缓存阈值 GB，可选第 2 个值为非活跃/固定阈值；不填值用自动默认" },
         { "name": "cache-classic", "type": "flag", "mutex": 6, "description": "旧式（激进）缓存" },
         { "name": "cache-lru", "type": "int", "default": 0, "mutex": 6, "description": "LRU 缓存 N 条节点结果（占更多 RAM/VRAM）" },
         { "name": "cache-none", "type": "flag", "mutex": 6, "description": "不缓存，每次执行全部节点（省内存）" },
@@ -94,7 +94,7 @@
         { "name": "cpu", "type": "flag", "mutex": 7, "description": "全部用 CPU（很慢）" },
         { "name": "enable-dynamic-vram", "type": "flag", "description": "启用动态显存（在默认未启用的系统上）" },
         { "name": "disable-dynamic-vram", "type": "flag", "description": "禁用动态显存，改用估算式模型加载" },
-        { "name": "async-offload", "type": "optionalInt", "const": 2, "metavar": "NUM_STREAMS", "description": "异步权重卸载，可选值为卸载流数量（默认 2）" },
+        { "name": "async-offload", "type": "optionalInt", "const": 2, "description": "异步权重卸载，可选值为卸载流数量（默认 2）" },
         { "name": "disable-async-offload", "type": "flag", "description": "禁用异步权重卸载" },
         { "name": "fast-disk", "type": "flag", "description": "强制磁盘后备动态加载（NVME 快盘可更快）" },
         { "name": "disable-fast-disk", "type": "flag", "description": "禁用磁盘后备动态加载（覆盖 fast-disk）" }
@@ -158,13 +158,13 @@
         { "name": "disable-metadata", "type": "flag", "description": "文件中不保存 prompt 元数据" },
         { "name": "multi-user", "type": "flag", "description": "启用多用户独立存储" },
         { "name": "front-end-version", "type": "string", "default": "comfyanonymous/ComfyUI@latest", "description": "前端版本，格式 repoOwner/repoName@version（latest 或版本号）" },
-        { "name": "front-end-root", "type": "string", "mustExist": true, "description": "本地前端目录（须已存在，优先于 front-end-version）" },
+        { "name": "front-end-root", "type": "string", "description": "本地前端目录（须已存在，优先于 front-end-version）" },
         { "name": "enable-compress-response-body", "type": "flag", "description": "压缩响应体" },
         { "name": "comfy-api-base", "type": "string", "default": "https://api.comfy.org", "description": "ComfyUI API base URL" },
         { "name": "database-url", "type": "string", "description": "数据库 URL（如 sqlite:///:memory:）" },
         { "name": "enable-assets", "type": "flag", "description": "启用资产系统（API 路由、数据库同步、后台扫描）" },
         { "name": "enable-asset-hashing", "type": "flag", "description": "扫描资产时计算 blake3 哈希（有启动成本）" },
-        { "name": "feature-flag", "type": "repeatableKeyValue", "metavar": "KEY[=VALUE]", "description": "服务器特性开关，每行一个 KEY 或 KEY=VALUE，可多次" },
+        { "name": "feature-flag", "type": "repeatableKeyValue", "description": "服务器特性开关，每行一个 KEY 或 KEY=VALUE，可多次" },
         { "name": "list-feature-flags", "type": "flag", "description": "打印已知特性开关 JSON 并退出" },
         { "name": "default-hashing-function", "type": "enum", "choices": ["md5", "sha1", "sha256", "sha512"], "default": "sha256", "description": "文件哈希算法（重名/内容比对）" },
         { "name": "preview-method", "type": "enum", "choices": ["none", "auto", "latent2rgb", "taesd"], "default": "none", "description": "采样器节点预览方式" },

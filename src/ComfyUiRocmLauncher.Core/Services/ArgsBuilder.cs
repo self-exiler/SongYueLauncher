@@ -50,12 +50,29 @@ public static class ArgsBuilder
             }
 
             case ArgType.MultiEnum:
-            case ArgType.FloatList:
-            case ArgType.StringList:
             {
                 var pick = args.MultiOf(def.Name).Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
                 return pick.Count == 0
                     ? new[] { flag }
+                    : new[] { flag }.Concat(pick).ToArray();
+            }
+
+            case ArgType.FloatList:
+            case ArgType.StringList:
+            {
+                // 值有两个来源：多值勾选 UI 写 Multi，单行文本 UI 写 Value——两处都取（文本按空白拆分，
+                // 如 "4 8"）。此前只读 Multi，文本框输入被静默丢弃（审查 #4）。
+                var pick = args.MultiOf(def.Name).Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+                if (pick.Count == 0 && !string.IsNullOrWhiteSpace(args.Value(def.Name)))
+                {
+                    pick = args.Value(def.Name)
+                        .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                        .ToList();
+                }
+                // StringList 上游是 nargs='+'（至少一值）：取不到值必须整体不输出，
+                // 裸传裸 flag 会让 argparse 报 "expected at least one argument" 直接退出；FloatList 是 nargs='*' 可裸传
+                return pick.Count == 0
+                    ? (def.Type == ArgType.FloatList ? new[] { flag } : Array.Empty<string>())
                     : new[] { flag }.Concat(pick).ToArray();
             }
 
@@ -72,7 +89,8 @@ public static class ArgsBuilder
 
             case ArgType.RepeatableVerbose:
             {
-                var level = args.Value(def.Name);
+                // 上游 argparse 的级别名区分大小写（LOG_LEVELS），手改 config.json 写小写会启动即报错——统一大写
+                var level = args.Value(def.Name)?.Trim().ToUpperInvariant();
                 var file = args.Value(def.Name + ":file");
                 if (string.IsNullOrWhiteSpace(level) && string.IsNullOrWhiteSpace(file))
                     return new[] { flag };
@@ -111,9 +129,9 @@ public static class ArgsBuilder
         return result;
     }
 
-    /// <summary>解析生效端口：启用 --port 且为正整数时取其值，否则回落默认 8188（预览 / 就绪检测共用）。</summary>
+    /// <summary>解析生效端口：启用 --port 且为合法端口（1~65535）时取其值，否则回落默认 8188（预览 / 就绪检测共用）。</summary>
     public static int ResolvePort(StructuredArgs args) =>
-        args.IsEnabled("port") && int.TryParse(args.Value("port"), out var port) && port > 0 ? port : 8188;
+        args.IsEnabled("port") && int.TryParse(args.Value("port"), out var port) && port is > 0 and <= 65535 ? port : 8188;
 
     /// <summary>
     /// 浏览器地址推导（FR-4.3）：解析 --port / --listen / --tls-* ，--listen 为通配地址时用 127.0.0.1。

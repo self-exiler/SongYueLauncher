@@ -19,6 +19,9 @@ public sealed class AiDiagnosticsClient
     /// <summary>工具循环的物理轮数上限：每次工具往返算一轮，超出后去掉 tools 让模型直接作答。</summary>
     private const int MaxToolRounds = 2;
 
+    /// <summary>单次分析的工具调用总次数上限：轮数只限往返，单轮内模型可并行发起多个 tool_calls（A10）。</summary>
+    private const int MaxToolCalls = 6;
+
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     private readonly Func<GatewayOptions> _optionsFactory;
@@ -34,22 +37,6 @@ public sealed class AiDiagnosticsClient
             AutomaticDecompression = System.Net.DecompressionMethods.All,
         });
         _tools = tools;
-    }
-
-    /// <summary>网关存活探测（<c>/health</c> 免 Key）。宿主在打开分析窗口前调用。</summary>
-    public async Task<bool> IsHealthyAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, _optionsFactory().BaseUrl.TrimEnd('/') + "/health");
-            using var timeout = Timeout(cancellationToken, 3_000);
-            using var response = await _http.SendAsync(request, timeout.Token).ConfigureAwait(false);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
-        {
-            return false;
-        }
     }
 
     /// <summary>列出网关当前可用的模型（<c>GET /v1/models</c>，OpenAI 格式）。</summary>
@@ -78,13 +65,12 @@ public sealed class AiDiagnosticsClient
                 ? i.GetString()
                 : null;
             if (string.IsNullOrEmpty(id)) continue;
-            var owner = m.TryGetProperty("owned_by", out var o) && o.ValueKind == JsonValueKind.String ? o.GetString() : null;
 
-            // 网关广播 `provider/model` 复合 id（聚合渠道、链路）与裸 id（免费车道）两种形态
+            // 网关广播 `provider/model` 复合 id（聚合渠道、链路）与裸 id（免费车道）两种形态；
+            // 展示名取 / 后段，发送仍用原始 id（QualifiedId）
             var slash = id.IndexOf('/');
-            var provider = slash > 0 ? id[..slash] : owner ?? "gateway";
             var name = slash > 0 ? id[(slash + 1)..] : id;
-            result.Add(new AiModel(provider, id, name));
+            result.Add(new AiModel(id, name));
         }
         return result;
     }
@@ -111,6 +97,7 @@ public sealed class AiDiagnosticsClient
         var offerTools = request.UseTools && _tools is not null;
         var toolsDropped = false;
         var toolRounds = 0;
+        var toolCallsExecuted = 0;
         var contentBuilder = new StringBuilder();
 
         for (var round = 0; ; round++)
@@ -138,42 +125,70 @@ public sealed class AiDiagnosticsClient
                 continue;
             }
 
+            // 非 2xx（401 Key 失效 / 429 限流 / 5xx 上游故障）不是 SSE 流：读 body 报可诊断的错误，
+            // 不能落到底下「无可解析内容」的空流分支（审查 #12a）
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+                return new AiAnswer(false, PartialOr(DescribeHttpFailure("分析", (int)response.StatusCode, body), contentBuilder));
+            }
+
             using (response)
             {
-                var body = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
-                var state = await ReadChatStreamAsync(body, contentBuilder, onDelta, onStatus, timeout.Token).ConfigureAwait(false);
-
-                if (state is { FinishReason: "tool_calls" } && useTools && state.ToolCalls.Count > 0)
+                try
                 {
-                    messages.Add(AssistantToolCalls(state));
-                    toolRounds++;
-                    // 轮次熔断：后续请求不再提供工具，模型只能基于已有结果作答
-                    if (toolRounds >= MaxToolRounds) toolsDropped = true;
-                    foreach (var call in state.ToolCalls)
+                    var body = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
+                    var state = await ReadChatStreamAsync(body, contentBuilder, onDelta, onStatus, timeout.Token).ConfigureAwait(false);
+
+                    if (state is { FinishReason: "tool_calls" } && useTools && state.ToolCalls.Count > 0)
                     {
-                        onStatus?.Invoke($"正在调用 {call.Name} …");
-                        // 未知工具名兜底（FR-5.12 安全边界）：无论执行器是否自带守卫，未声明的能力一律拒绝
-                        var tools = _tools!;
-                        var executor = tools.Definitions.Any(d => d.Name == call.Name) ? tools : null;
-                        var result = executor is null
-                            ? $"Tool '{call.Name}' is not available."
-                            : await executor.ExecuteAsync(call, timeout.Token).ConfigureAwait(false);
-                        messages.Add(ToolResult(call.Id, result));
+                        messages.Add(AssistantToolCalls(state));
+                        toolRounds++;
+                        // 轮次熔断：后续请求不再提供工具，模型只能基于已有结果作答
+                        if (toolRounds >= MaxToolRounds) toolsDropped = true;
+                        foreach (var call in state.ToolCalls)
+                        {
+                            // 总次数兜底（A10）：轮数只限往返次数，单轮内模型可并行发起多个 tool_calls；
+                            // 超预算的调用直接以文案回填，保证每个 tool_call id 都有结果可应答
+                            if (toolCallsExecuted >= MaxToolCalls)
+                            {
+                                messages.Add(ToolResult(call.Id, "Tool call budget exceeded for this analysis."));
+                                continue;
+                            }
+                            toolCallsExecuted++;
+                            onStatus?.Invoke($"正在调用 {call.Name} …");
+                            // 未知工具名兜底（FR-5.12 安全边界）：无论执行器是否自带守卫，未声明的能力一律拒绝
+                            var tools = _tools!;
+                            var executor = tools.Definitions.Any(d => d.Name == call.Name) ? tools : null;
+                            var result = executor is null
+                                ? $"Tool '{call.Name}' is not available."
+                                : await executor.ExecuteAsync(call, timeout.Token).ConfigureAwait(false);
+                            messages.Add(ToolResult(call.Id, result));
+                        }
+                        continue;
                     }
-                    continue;
-                }
 
-                if (state.ErrorMessage is { Length: > 0 } error)
-                {
-                    return new AiAnswer(false, PartialOr(error, contentBuilder));
-                }
+                    if (state.ErrorMessage is { Length: > 0 } error)
+                    {
+                        return new AiAnswer(false, PartialOr(error, contentBuilder));
+                    }
 
-                var text = contentBuilder.ToString().Trim();
-                if (text.Length == 0)
-                {
-                    return new AiAnswer(false, "网关没有返回可解析的回答内容。");
+                    var text = contentBuilder.ToString().Trim();
+                    if (text.Length == 0)
+                    {
+                        return new AiAnswer(false, "网关没有返回可解析的回答内容。");
+                    }
+                    return new AiAnswer(true, text);
                 }
-                return new AiAnswer(true, text);
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // 流读取/工具执行段的超时（区别于用户取消）：保留已流出的半截正文（审查 #12b）
+                    return new AiAnswer(false, PartialOr("分析超时，请检查网关服务或更换模型后重试。", contentBuilder));
+                }
+                catch (OperationCanceledException)
+                {
+                    throw; // 用户主动取消：原样上抛，由 GUI 呈现
+                }
             }
         }
     }

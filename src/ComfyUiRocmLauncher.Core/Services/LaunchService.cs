@@ -38,6 +38,10 @@ public sealed class LaunchService
     /// <summary>启动流程状态只存在状态机里，这里不再存第二份（S-12）。</summary>
     private LaunchState State => _stateMachine.LaunchState;
 
+    /// <summary>并发的第二次 StartAsync 守卫：状态机在「Starting 中途点停止」后已回到 Idle，
+    /// 仅凭状态挡不住第一次启动仍在途时的再次启动（会导致双进程、前者脱管）。</summary>
+    private int _starting;
+
     public event Action<string>? OutputReceived;
 
     private void SetState(LaunchState state) => _stateMachine.ReportLaunch(state);
@@ -46,6 +50,7 @@ public sealed class LaunchService
     public async Task<bool> StartAsync(AppConfig config, TimeSpan readyTimeout, CancellationToken cancellationToken = default)
     {
         if (State != LaunchState.Idle) return false;
+        if (Interlocked.CompareExchange(ref _starting, 1, 0) != 0) return false;
         try
         {
             return await StartCoreAsync(config, readyTimeout, cancellationToken).ConfigureAwait(false);
@@ -57,6 +62,10 @@ public sealed class LaunchService
             Log.EndSession();
             SetState(LaunchState.Idle);
             throw;
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _starting, 0);
         }
     }
 
@@ -96,10 +105,21 @@ public sealed class LaunchService
         Log.Append($"[启动器] 会话日志：{logFile}");
         Log.Append($"[启动器] spawn: {config.PythonExe} {arguments}");
 
+        // Starting 阶段点过「停止」则放弃拉起：StopAsync 在进程句柄存在前对 _process 是空转，
+        // 只把状态改走；不复查的话用户看到「已停止」后 ComfyUI 仍会被拉起
+        if (State != LaunchState.Starting)
+        {
+            Log.Append("[启动器] 启动在拉起前已被停止，放弃 spawn");
+            Log.EndSession();
+            return false;
+        }
+
         _process.Start(config.PythonExe, arguments, comfyDir, env);
 
         var ready = await WaitForReadyAsync(config, readyTimeout, cancellationToken).ConfigureAwait(false);
-        if (ready)
+        // 就绪判定与 Exited 事件的竞态：就绪行命中/端口连通后进程立即崩溃（或端口本就被其它进程
+        // 占用、ComfyUI 绑定失败退出），Exited 已把状态复位——这里不得再翻回 Running
+        if (ready && _process.IsRunning)
         {
             SetState(LaunchState.Running);
         }
@@ -111,7 +131,8 @@ public sealed class LaunchService
         }
         else
         {
-            Log.Append("[启动器] 进程在等待就绪期间已退出");
+            Log.Append("[启动器] 进程在启动过程中已退出");
+            Log.EndSession();
             SetState(LaunchState.Idle);
         }
         return ready;

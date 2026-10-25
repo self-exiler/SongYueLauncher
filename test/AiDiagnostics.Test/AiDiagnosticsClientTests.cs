@@ -22,7 +22,6 @@ public class AiDiagnosticsClientTests : IDisposable
     private static AiAgentProfile Analyst => new()
     {
         SystemPrompt = "只读分析日志。",
-        Description = "Read-only log analyst.",
     };
 
     private static AiRequest Request(string modelId = "deepseek-v4.1-flash-free", bool useTools = false) => new()
@@ -44,11 +43,11 @@ public class AiDiagnosticsClientTests : IDisposable
         var models = await CreateClient().ListModelsAsync();
 
         Assert.Equal(2, models.Count);
-        Assert.Equal("deepseek-v4.1-flash-free", models[0].QualifiedId);
-        Assert.Equal("our-free-model", models[0].ProviderId);
         // 复合 id 在首个 / 处拆出 provider 展示用；ModelId 保留原始 id（发送给网关的原样取值）
-        Assert.Equal("kilo-auto", models[1].ProviderId);
+        Assert.Equal("deepseek-v4.1-flash-free", models[0].ModelId);
+        Assert.Equal("deepseek-v4.1-flash-free", models[0].DisplayName);
         Assert.Equal("kilo-auto/free", models[1].ModelId);
+        Assert.Equal("free", models[1].DisplayName);
     }
 
     [Fact]
@@ -60,6 +59,31 @@ public class AiDiagnosticsClientTests : IDisposable
 
         Assert.Contains("401", ex.Message);
         Assert.Contains("Invalid API key", ex.Message);
+    }
+
+    // ---------- /v1/chat/completions 的非 2xx（审查 #12a：真实错误不能被吞成「无可解析内容」） ----------
+
+    [Fact]
+    public async Task AskAsync_AuthError_ReturnsFailureWithStatusAndBody()
+    {
+        _stub.Respond["/v1/chat/completions"] = _ => (401, "application/json", """{"error":{"message":"Invalid API key"}}""");
+
+        var answer = await CreateClient().AskAsync(Request());
+
+        Assert.False(answer.Success);
+        Assert.Contains("401", answer.Text);
+        Assert.Contains("Invalid API key", answer.Text);
+    }
+
+    [Fact]
+    public async Task AskAsync_RateLimited_ReturnsFailureWithStatus()
+    {
+        _stub.Respond["/v1/chat/completions"] = _ => (429, "application/json", """{"error":{"message":"Rate limit exceeded"}}""");
+
+        var answer = await CreateClient().AskAsync(Request());
+
+        Assert.False(answer.Success);
+        Assert.Contains("429", answer.Text);
     }
 
     // ---------- /v1/chat/completions（SSE） ----------
@@ -218,22 +242,6 @@ public class AiDiagnosticsClientTests : IDisposable
 
         Assert.True(answer.Success);
         Assert.Contains("not available", _stub.Bodies[1]);
-    }
-
-    // ---------- 健康探测 ----------
-
-    [Fact]
-    public async Task IsHealthy_TrueOn200()
-    {
-        _stub.Respond["/health"] = _ => (200, "application/json", """{"status":"ok"}""");
-        Assert.True(await CreateClient().IsHealthyAsync());
-    }
-
-    [Fact]
-    public async Task IsHealthy_FalseOnRefused()
-    {
-        var dead = new AiDiagnosticsClient(() => new GatewayOptions { BaseUrl = "http://127.0.0.1:1" });
-        Assert.False(await dead.IsHealthyAsync());
     }
 
     // ---------- 工具实现 ----------

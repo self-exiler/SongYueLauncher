@@ -216,9 +216,11 @@ public sealed partial class EnvUpdatePage : Page
         var id = name == "git" ? ToolchainService.GitWingetId : ToolchainService.UvWingetId;
         await RunOpAsync($"安装 {name}", async () =>
         {
-            // winget 机器级安装会自行弹 UAC；完成后回到普通权限
+            // winget 机器级安装会自行弹 UAC；完成后回到普通权限。
+            // 故意不 ConfigureAwait(false)：后续 BuildToolList 要操作 XAML 控件，
+            // 延续落回线程池会抛 RPC_E_WRONG_THREAD，被 RunOpAsync 收走成「安装成功却显示 [错误]」（审查 #6）
             await App.Services.Tasks.Run(winget, ToolchainService.WingetInstallArgs(id),
-                Environment.CurrentDirectory, Append).ConfigureAwait(false);
+                Environment.CurrentDirectory, Append);
             _tools = await ToolchainService.DetectAsync();
             BuildToolList();
         });
@@ -308,8 +310,16 @@ public sealed partial class EnvUpdatePage : Page
         await RunOpAsync("torch 更新", async () =>
         {
             RollbackButton.IsEnabled = false;
-            var ok = await WheelService.TorchUpdateAsync(App.Services.Tasks, Settings, arch, Append);
-            if (!ok) RollbackButton.IsEnabled = File.Exists(WheelService.SnapshotPath(Settings));
+            try
+            {
+                await WheelService.TorchUpdateAsync(App.Services.Tasks, Settings, arch, Append);
+            }
+            finally
+            {
+                // 启用判定放 finally：更新中途取消（OCE）会跳过 if (!ok)，环境半残且快照在，
+                // 但界面没有任何回滚入口（审查 #16）；快照存在即应可回滚
+                RollbackButton.IsEnabled = File.Exists(WheelService.SnapshotPath(Settings));
+            }
         });
     }
 
