@@ -1,12 +1,12 @@
 ﻿<#
     松月启动器唯一构建入口：本地与 GitHub Actions 云端共用本脚本。
 
-    .\installer\build.ps1 -Version 0.1.0beta
-      → installer\output\SongYueLauncher-windows-x64-0.1.0beta.exe   （默认：瘦身 Bundle）
-      → installer\output\SongYueLauncher-windows-x64-0.1.0beta.msi   （-Full：旧版自包含 MSI）
+    .\installer\build.ps1 -Version 1.0.0
+      → installer\output\SongYueLauncher-windows-x64-1.0.0.exe   （默认：瘦身 Bundle）
+      → installer\output\SongYueLauncher-windows-x64-1.0.0.msi   （-Full：旧版自包含 MSI）
 
     参数：
-      -Version      版本号，可带非数字后缀（0.1.0beta）。文件名用完整串，
+      -Version      版本号，可带非数字后缀（1.0.0）。文件名用完整串，
                     MSI 的 ProductVersion 只取前面的数字段（Windows Installer 限制）。
       -SkipPublish  复用已有 installer\publish 产物，只重打安装包（加速调试）。
       -Full         构建旧版「自包含」MSI（.NET 与 Windows App SDK 运行时全部内嵌，包体 ~110MB）。
@@ -20,7 +20,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Version = '0.1.0beta',
+    [string]$Version = '1.0.0',
     [switch]$SkipPublish,
     [switch]$Full
 )

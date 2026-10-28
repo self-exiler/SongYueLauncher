@@ -70,8 +70,8 @@ dotnet test test/ComfyUiRocmLauncher.Core.Test/ComfyUiRocmLauncher.Core.Test.csp
 打安装包（MSI，唯一构建入口，本地与云端共用）：
 
 ```powershell
-.\installer\build.ps1 -Version 0.1.0beta
-# → installer\output\SongYueLauncher-windows-x64-0.1.0beta.msi
+.\installer\build.ps1 -Version 1.0.0
+# → installer\output\SongYueLauncher-windows-x64-1.0.0.msi
 ```
 
 依赖 [WiX Toolset v4](https://wixtoolset.org/) 命令行：`dotnet tool install --global wix --version 4.0.5`。
@@ -84,8 +84,8 @@ dotnet test test/ComfyUiRocmLauncher.Core.Test/ComfyUiRocmLauncher.Core.Test.csp
 
 ```bash
 git push origin main
-git tag v0.1.0beta
-git push origin v0.1.0beta
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 MSI 未做代码签名，安装前需自行信任（或右键「以管理员身份运行」）；如需企业分发应替换为签名环节。

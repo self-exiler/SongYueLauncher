@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '产物版本号（如 0.1.0beta，不带 v 前缀）'
+        description: '产物版本号（如 1.0.0，不带 v 前缀）'
         required: true
-        default: '0.1.0beta'
+        default: '1.0.0'
 
 permissions:
   contents: write
