@@ -9,30 +9,43 @@
     mc:Ignorable="d"
     d:DesignWidth="920" d:DesignHeight="600">
 
-    <!-- 重构原型 v2（docs/prototypes/ai-analysis-dialog-v2.html）：
-         顶部模型栏 / 中部两栏（问题日志｜回答 + 竖排按钮列）/ 底部状态栏。
-         宿主为独立窗口 AiAnalysisWindow（标题栏 X 关闭），发送 / 复制 / 重新抓取全部内聚在本控件。
-         高度用 MinHeight 而非固定值：窗口可拉伸，两栏随需放大。
+    <!-- Windows Settings 风格重构（v2.1，取代原型 v2 的裸 Grid/竖排按钮列）：
+         顶部 SettingsCard 模型卡 / 中部两栏（问题日志分组卡｜分析回答卡，按钮横排进各栏）/ 底部状态行。
+         间距全部走 App.xaml 令牌（SettingsPagePadding / SettingsCardSpacing / SettingsCardContentWidth）。
          间隙必须打在根 Grid 的 Padding 上：WinUI 的 UserControl 模板不绑定 Padding 属性，宿主设 content.Padding 不生效。 -->
-    <Grid MinHeight="520" RowSpacing="12" Padding="36,14,36,24">
+    <UserControl.Resources>
+        <!-- 分组卡内容区容器：显式 Style 让 SettingsExpander 的 ItemContainerStyleSelector 跳过
+             （其默认项样式 TargetType=SettingsCard，套到 Border 上类型不匹配）；
+             上沿 1px 分隔线对齐 SettingsExpanderItemBorderThickness 的卡内分隔节奏 -->
+        <Style x:Key="GroupBodyStyle" TargetType="Border">
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="BorderThickness" Value="0,1,0,0" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid MinHeight="520" RowSpacing="8" Padding="{StaticResource SettingsPagePadding}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- ===== 顶部：模型栏 ===== -->
-        <Grid ColumnSpacing="8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Text="AI 模型" VerticalAlignment="Center" />
-            <ComboBox x:Name="ModelCombo" Grid.Column="1" HorizontalAlignment="Stretch"
-                      PlaceholderText="正在读取网关模型…" />
-            <Button x:Name="RefreshModelsButton" Grid.Column="2" Content="刷新模型" Click="RefreshModels_Click" />
-        </Grid>
+        <!-- ===== 顶部：模型卡 ===== -->
+        <ctrl:SettingsCard Header="AI 模型" Description="本地网关（Our Free Model）广播的可用模型">
+            <ctrl:SettingsCard.HeaderIcon>
+                <FontIcon Glyph="&#xE99A;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+            </ctrl:SettingsCard.HeaderIcon>
+            <Grid Width="{StaticResource SettingsCardContentWidth}" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="ModelCombo" HorizontalAlignment="Stretch"
+                          PlaceholderText="正在读取网关模型…" />
+                <Button x:Name="RefreshModelsButton" Grid.Column="1" Content="刷新模型" Click="RefreshModels_Click" />
+            </Grid>
+        </ctrl:SettingsCard>
 
         <!-- ===== 中部：两栏 ===== -->
         <Grid Grid.Row="1" ColumnSpacing="12">
@@ -42,37 +55,53 @@
             </Grid.ColumnDefinitions>
 
             <!-- 左栏：问题日志（分组视图，SRS v2.0 FR-5.11） -->
-            <Grid RowSpacing="6">
+            <Grid RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="问题日志" Style="{StaticResource CardTitleStyle}" VerticalAlignment="Center" />
+                    <TextBlock Text="问题日志" Style="{StaticResource SettingsSectionHeaderFirstStyle}" />
                     <TextBlock x:Name="ErrorSummaryText" Grid.Column="1" Style="{StaticResource SecondaryTextStyle}"
-                               TextWrapping="Wrap" VerticalAlignment="Center" />
+                               TextWrapping="Wrap" VerticalAlignment="Bottom" TextAlignment="Right" />
                 </Grid>
                 <TextBlock x:Name="GroupHintText" Grid.Row="1" Style="{StaticResource SecondaryTextStyle}"
                            TextWrapping="Wrap" Visibility="Collapsed" />
                 <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-                    <StackPanel x:Name="GroupPanel" Spacing="6" />
+                    <StackPanel x:Name="GroupPanel" Spacing="{StaticResource SettingsCardSpacing}" />
                 </ScrollViewer>
+                <!-- 作用于本栏勾选材料的操作横排在栏底（同 LogPage 工具条：设置风格无卡片背景） -->
+                <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="SendButton" Style="{StaticResource AccentButtonStyle}" Click="Send_Click">
+                        <TextBlock x:Name="SendButtonText" Text="发送分析"
+                                   TextWrapping="Wrap" TextAlignment="Center" />
+                    </Button>
+                    <Button x:Name="RecaptureButton" Content="重新抓取" Click="Recapture_Click" />
+                </StackPanel>
             </Grid>
 
-            <!-- 右栏：回答区 + 竖排按钮列 -->
-            <Grid Grid.Column="1" ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1" CornerRadius="8" Padding="12,10">
+            <!-- 右栏：分析回答 -->
+            <Grid Grid.Column="1" RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="分析回答" Style="{StaticResource SettingsSectionHeaderFirstStyle}" />
+                    <Button x:Name="CopyButton" Grid.Column="1" Content="复制回答" IsEnabled="False"
+                            VerticalAlignment="Top" Click="Copy_Click" />
+                </Grid>
+                <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Padding="16,12">
                     <ScrollViewer x:Name="AnswerScroll" VerticalScrollBarVisibility="Auto">
                         <!-- 勿在此控件上设置 TextWrapping：Labs 版 MarkdownTextBlock 无该属性，
                              WinUI 1.8 XamlCompiler 会静默崩溃（exit 1 无诊断）。换行由控件内部默认行为负责。 -->
@@ -80,30 +109,15 @@
                                                 Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                     </ScrollViewer>
                 </Border>
-                <StackPanel Grid.Column="1" Width="132" Spacing="8">
-                    <Button x:Name="SendButton" Style="{StaticResource AccentButtonStyle}"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                            Click="Send_Click">
-                        <TextBlock x:Name="SendButtonText" Text="发送分析"
-                                   TextWrapping="Wrap" TextAlignment="Center" />
-                    </Button>
-                    <Button x:Name="CopyButton" Content="复制回答" IsEnabled="False"
-                            HorizontalAlignment="Stretch" Click="Copy_Click" />
-                    <Button x:Name="RecaptureButton" Content="重新抓取"
-                            HorizontalAlignment="Stretch" Click="Recapture_Click" />
-                </StackPanel>
             </Grid>
         </Grid>
 
-        <!-- ===== 底部：状态栏 ===== -->
-        <Border Grid.Row="2" BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0" Padding="0,10,0,0">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Ellipse x:Name="StatusDot" Width="8" Height="8" VerticalAlignment="Center"
-                         Fill="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock x:Name="StatusText" Text="就绪。" Style="{StaticResource SecondaryTextStyle}"
-                           VerticalAlignment="Center" TextWrapping="Wrap" />
-            </StackPanel>
-        </Border>
+        <!-- ===== 底部：状态行（设置风格无分隔线） ===== -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
+            <Ellipse x:Name="StatusDot" Width="8" Height="8" VerticalAlignment="Center"
+                     Fill="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="StatusText" Text="就绪。" Style="{StaticResource SecondaryTextStyle}"
+                       VerticalAlignment="Center" TextWrapping="Wrap" />
+        </StackPanel>
     </Grid>
 </UserControl>

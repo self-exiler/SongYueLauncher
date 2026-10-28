@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using CommunityToolkit.WinUI.Controls;
 using ComfyUiRocmLauncher.Core.Ai;
 using ComfyUiRocmLauncher.GUI.Helpers;
 using Microsoft.UI.Dispatching;
@@ -10,7 +11,8 @@ using Microsoft.UI.Xaml.Media;
 namespace ComfyUiRocmLauncher.GUI.Views;
 
 /// <summary>
-/// AI 智能分析窗口内容（SRS v2.0 FR-5.6~5.11，原型 v2）：顶部模型栏 + 左分组日志/右回答两栏 + 竖排按钮列 + 底部状态栏。
+/// AI 智能分析窗口内容（SRS v2.0 FR-5.6~5.11，Windows Settings 风格 v2.1）：
+/// 顶部 SettingsCard 模型卡 + 左「问题日志」分组卡（底部横排发送/重新抓取）+ 右「分析回答」卡（标题行复制）+ 底部状态行。
 /// 左栏为指纹归并后的分组视图（FR-5.11，替代旧可编辑预览框）；发送 / 取消 / 复制 / 重新抓取全部内聚在本控件；
 /// 正文增量进回答区，工具/思考状态只进底部状态栏。由 <see cref="AiAnalysisWindow"/> 承载，关闭走标题栏 X。
 /// </summary>
@@ -294,9 +296,9 @@ public sealed partial class AiAnalysisDialog : UserControl
 
     // ---------- 分组卡片（FR-5.11） ----------
 
-    /// <summary>构建一张分组卡：头部为「发送勾选 + 类别徽章 + 归一化标题 + 计数/行号」，内容为代表块原文。
-    /// 默认勾选策略与提示词分节一致——解释器与 error 是根因材料（勾选），warning 是背景信号（不勾）。</summary>
-    private (Expander Card, CheckBox Send) BuildGroupCard(ErrorGroupView group)
+    /// <summary>构建一张分组卡（SettingsExpander）：头部为「类别徽章 + 归一化标题」，右侧 Content 为「计数/行号 + 发送勾选」，
+    /// 展开内容为代表块原文。默认勾选策略与提示词分节一致——解释器与 error 是根因材料（勾选），warning 是背景信号（不勾）。</summary>
+    private (SettingsExpander Card, CheckBox Send) BuildGroupCard(ErrorGroupView group)
     {
         var (label, brushKey) = group.Kind switch
         {
@@ -316,14 +318,15 @@ public sealed partial class AiAnalysisDialog : UserControl
         send.Checked += (_, _) => UpdateSummary();
         send.Unchecked += (_, _) => UpdateSummary();
 
+        // 头部左侧：徽章 + 归一化标题；徽章底色取状态色淡底、文字恒为正文色
+        // （此前固定白字配 caution 黄底在浅色主题下不可读）
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        header.Children.Add(send);
         header.Children.Add(new Border
         {
-            // 徽章底色取状态色淡底、文字恒为正文色：此前固定白字配 caution 黄底在浅色主题下不可读
             Background = ThemeHelper.Tint(brushKey, 0.25),
             CornerRadius = new CornerRadius(3),
             Padding = new Thickness(6, 1, 6, 2),
+            VerticalAlignment = VerticalAlignment.Center,
             Child = new TextBlock
             {
                 Text = label,
@@ -336,34 +339,47 @@ public sealed partial class AiAnalysisDialog : UserControl
         {
             Text = group.Title,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 360,
+            MaxWidth = 300,
             VerticalAlignment = VerticalAlignment.Center,
         });
-        header.Children.Add(new TextBlock
+
+        // 头部右侧（SettingsExpander.Content）：计数/行号 + 发送勾选——开关类控件在设置卡里恒居右
+        var right = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        right.Children.Add(new TextBlock
         {
             Text = group.Count > 1 ? $"×{group.Count} · 第 {group.FirstLine + 1}~{group.LastLine + 1} 行" : $"第 {group.FirstLine + 1} 行",
             Style = (Style)Application.Current.Resources["SecondaryTextStyle"],
             VerticalAlignment = VerticalAlignment.Center,
         });
+        right.Children.Add(send);
 
-        var body = new ScrollViewer
+        var body = new Border
         {
-            MaxHeight = 220,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new TextBlock
+            // 显式 Style 让 SettingsExpander 的 ItemContainerStyleSelector 跳过本元素
+            //（其默认项样式 TargetType=SettingsCard，套到 Border 上类型不匹配）
+            Style = (Style)Resources["GroupBodyStyle"],
+            Child = new ScrollViewer
             {
-                Text = group.RepresentativeText,
-                FontFamily = (FontFamily)Application.Current.Resources["MonoFontFamily"],
-                FontSize = 12,
-                IsTextSelectionEnabled = true,
-                TextWrapping = TextWrapping.Wrap,
+                MaxHeight = 220,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = new TextBlock
+                {
+                    Text = group.RepresentativeText,
+                    FontFamily = (FontFamily)Application.Current.Resources["MonoFontFamily"],
+                    FontSize = 12,
+                    IsTextSelectionEnabled = true,
+                    TextWrapping = TextWrapping.Wrap,
+                },
             },
         };
 
-        var card = new Expander
+        // Items 必须构造时一次性赋值：SettingsExpander.Items 是无通知的 List<object>，
+        // 模板内 ItemsRepeater 只在 Items 属性变更时重挂数据源，事后 Add 不生效（ArgsPage 同款坑）
+        var card = new SettingsExpander
         {
             Header = header,
-            Content = body,
+            Content = right,
+            Items = new List<object> { body },
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         return (card, send);
