@@ -113,7 +113,8 @@ public sealed partial class ArgsPage : Page
 
     /// <summary>
     /// 渐进式创建全部分组行：每组构建后让出 UI 线程，避免一次性创建 110 行卡顿（NFR-1）。
-    /// 行不再「首次展开时懒建」——SettingsExpander 没有 Expanding 事件，展开后再建会闪空内容。
+    /// 行不再「首次展开时懒建」——Expander 内容区折叠时不测量，懒建会撞上 ItemsRepeater
+    /// 对 Items 的一次性物化（详见 EnsureBodyBuilt 注释），展开即空组。
     /// </summary>
     private async Task BuildAllRowsAsync()
     {
@@ -132,17 +133,27 @@ public sealed partial class ArgsPage : Page
         group.Expander.IsExpanded = expanded;
     }
 
-    /// <summary>创建该组的行控件（平底行 + 行间分隔线，直接进 Expander.Items）。</summary>
+    /// <summary>
+    /// 创建该组的行控件（平底行 + 行间分隔线，整批替换进 Expander.Items）。
+    /// 必须「先建好、再整体替换 Items 引用」而不是逐项 Add：SettingsExpander.Items 是普通
+    /// List&lt;object&gt;（无 INotifyCollectionChanged），模板里的 ItemsRepeater 只在 Items
+    /// 属性变更时重挂数据源，对空列表物化之后 Add 的行永远不会出现——启动时 BuildShell 先
+    /// 把自动展开组 IsExpanded=true，BuildAllRowsAsync 逐帧建行若被布局测量抢跑，该组就
+    /// 永久展开为空（表现为"某分组点不开"，且随启用参数所在组漂移：精度 → 设备）。
+    /// 整批替换后两种时序都正确：模板未套用则 OnApplyTemplate 直接拿到满列表；
+    /// 已套用（甚至已物化空列表）则 DP 变更重置 ItemsSource，下次测量重新物化。
+    /// </summary>
     private void EnsureBodyBuilt(GroupUi group)
     {
         if (group.Built) return;
         group.Built = true;
-        var items = group.Expander.Items;
+        var items = new List<object>(group.Definition.Args.Count * 2);
         for (var i = 0; i < group.Definition.Args.Count; i++)
         {
             if (i > 0) items.Add(new Border { Style = (Style)Application.Current.Resources["CardDividerStyle"] });
             items.Add(BuildRow(group.Definition.Args[i]));
         }
+        group.Expander.Items = items;
     }
 
     /// <summary>组头计数：N 启用 · M 项（计数放右侧 Content，不混进标题文本）。</summary>
