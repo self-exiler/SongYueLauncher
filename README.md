@@ -19,7 +19,8 @@
 - **环境变量页**：固定注入层（只读）+ 自定义层（可增删改）；启动前自动 `rocm-sdk init` / 路径推导 / 缓存目录创建。
 - **GPU 架构模板（主页·启动控制区）**：集中选择 GPU 代际模板，**应用即全量替换**环境变量与参数；支持把当前配置**另存为自定义模板**（路径占位符化，换目录仍可用），并可**导出 .ps1 启动脚本**脱离启动器运行。
 - **环境与更新页**：工具链检查（git / uv / winget，含 UAC 安装）、Python 虚拟环境创建、核心仓库克隆/热更新（git pull 或 clone+robocopy 双策略）、torch nightly 更新（快照 + 下载验证门 + 尽力回滚）、专用轮子清单、项目依赖同步、通用 PyPI 包管理。
-- **日志页**：ANSI 着色实时滚动、落盘、磁盘上限保护；**AI智能分析**——一键抓取日志错误并指纹归并分组，经本机 AI 网关（dsh-our-free-model，OpenAI 兼容）调用免费模型分析并返回排查建议，可选联网查证。注意：分析材料（含整合包目录、Python 路径等本机信息）会发送给所选择的第三方免费模型渠道，请勿在日志中包含敏感信息。
+- **任务输出抽屉**：任意页面右侧滑出（页头按钮 / Ctrl+` / Esc 收起），左缘可拖拽调宽且按比例记忆（窗口缩放与下次启动一致）；环境任务与插件安装输出统一汇入；ANSI 着色实时滚动、落盘、磁盘上限保护；**AI智能分析**——一键抓取日志错误并指纹归并分组，经本机 AI 网关（dsh-our-free-model，OpenAI 兼容）调用免费模型分析并返回排查建议，可选联网查证。注意：分析材料（含整合包目录、Python 路径等本机信息）会发送给所选择的第三方免费模型渠道，请勿在日志中包含敏感信息。
+- **托盘图标常驻 + 最小化收起**：托盘图标自启动起一直存在（窗口显隐无关，退出时注销）；点最小化即隐藏窗口与任务栏按钮并收起到托盘，双击图标恢复，右键菜单可打开任务输出或退出；关闭按钮仍是正常退出（运行中任务照旧弹确认）。
 
 ### 镜像"三分法"
 
@@ -70,8 +71,8 @@ dotnet test test/ComfyUiRocmLauncher.Core.Test/ComfyUiRocmLauncher.Core.Test.csp
 打安装包（MSI，唯一构建入口，本地与云端共用）：
 
 ```powershell
-.\installer\build.ps1 -Version 1.0.0
-# → installer\output\SongYueLauncher-windows-x64-1.0.0.msi
+.\installer\build.ps1 -Version 1.1.0
+# → installer\output\SongYueLauncher-windows-x64-1.1.0.msi
 ```
 
 依赖 [WiX Toolset v4](https://wixtoolset.org/) 命令行：`dotnet tool install --global wix --version 4.0.5`。
@@ -84,8 +85,8 @@ dotnet test test/ComfyUiRocmLauncher.Core.Test/ComfyUiRocmLauncher.Core.Test.csp
 
 ```bash
 git push origin main
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 MSI 未做代码签名，安装前需自行信任（或右键「以管理员身份运行」）；如需企业分发应替换为签名环节。

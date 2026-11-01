@@ -1,6 +1,8 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Windowing;
 using ComfyUiRocmLauncher.Core.Models;
@@ -44,15 +46,49 @@ public sealed partial class MainWindow : Window
         }
 
         RestoreWindowState();
-        NavView.SelectedItem = FindNavItem(App.Services.Settings.LastPage) ?? NavView.MenuItems[0];
+        // 启动恒为主页（FR-9.3 改版）：不记忆上次页面。构造期给 SelectedItem 赋值不保证触发
+        // SelectionChanged（ItemsRepeater 未就绪），因此高亮与导航都显式做一遍
+        NavView.SelectedItem = NavView.MenuItems[0];
+        NavigateToTag("HomePage");
         // 除显示模式事件外，尺寸变化也同步一次：最大化/还原这类路径下更稳，保证回到展开态一定重新打开面板
-        NavView.SizeChanged += (_, _) => SyncPaneToggleVisibility();
+        NavView.SizeChanged += (_, _) =>
+        {
+            SyncPaneToggleVisibility();
+            if (_drawerOpen) PositionOutputDrawer();
+        };
         SyncPaneToggleVisibility();
         RefreshHeader();
 
         AppWindow.Closing += OnAppWindowClosing;
-        App.Services.StateChanged += _ => DispatcherQueue.TryEnqueue(RefreshHeader);
+        App.Services.StateChanged += OnAppStateChanged;
+        App.Services.Log.LineAppended += OnLogLineAppended;
+        OutputDrawer.Dismissed += OnOutputDrawerDismissed;
+        RegisterDrawerAccelerators();
+        InitTray();
         _ = RefreshVersionFromGitAsync();
+    }
+
+    /// <summary>Esc 只收抽屉（Ctrl+` 走 RootLayout.KeyDown：反引号不是 VirtualKey 枚举值）。</summary>
+    private void RegisterDrawerAccelerators()
+    {
+        var escape = new KeyboardAccelerator { Key = Windows.System.VirtualKey.Escape };
+        escape.Invoked += EscapeAccelerator_Invoked;
+        RootLayout.KeyboardAccelerators.Add(escape);
+
+        // KeyboardAccelerator 只接受 VirtualKey 枚举能映射的键，(VirtualKey)0xC0（VK_OEM_3）会让
+        // XAML 加速器注册在首帧渲染时直接 fail-fast（0xC000027B），因此反引号改走路由事件。
+        RootLayout.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnRootKeyDown), handledEventsToo: true);
+    }
+
+    private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if ((int)e.Key != 0xC0) return;
+        var ctrl = Microsoft.UI.Input.InputKeyboardSource
+            .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
+        if ((ctrl & Windows.UI.Core.CoreVirtualKeyStates.Down) == 0) return;
+
+        e.Handled = true;
+        ToggleOutputDrawer();
     }
 
     /// <summary>标题栏版本徽章读取本地 git HEAD（FR-1.3），外部 pull 后也能显示真实版本。</summary>
@@ -112,12 +148,6 @@ public sealed partial class MainWindow : Window
         cfg.WindowWidth = size.Width;
         cfg.WindowHeight = size.Height;
     }
-
-    private NavigationViewItem? FindNavItem(string? tag) =>
-        string.IsNullOrEmpty(tag)
-            ? null
-            : NavView.MenuItems.OfType<NavigationViewItem>()
-                .FirstOrDefault(i => string.Equals(i.Tag?.ToString(), tag, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>关闭确认状态机：弹窗期间取消关闭，用户选择“结束 Python 并关闭”后放行。</summary>
     private bool _closeAfterKill;
@@ -212,17 +242,70 @@ public sealed partial class MainWindow : Window
         Close();
     }
 
+    // ---------- 系统托盘（最小化收起，FR-9.6） ----------
+
+    private TrayIcon? _tray;
+
+    private void InitTray()
+    {
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+        _tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(this), iconPath, "松月启动器", App.Services.Log.Append);
+        _tray.MinimizeRequested += HideToTray;
+        _tray.ShowRequested += RestoreFromTray;
+        _tray.OutputRequested += OnTrayOutputRequested;
+        _tray.ExitRequested += OnTrayExitRequested;
+        Closed += (_, _) => _tray?.Dispose();
+        // 托盘图标常驻：与窗口是否隐藏无关，仅在进程退出时随 Closed 注销
+        _tray.Show();
+    }
+
+    /// <summary>最小化即收起：窗口与任务栏按钮一起隐藏，托盘图标始终保留。</summary>
+    private void HideToTray()
+    {
+        // 投递的收起消息可能对上已经还原的窗口，状态不是最小化就不处理
+        if (AppWindow.Presenter is not OverlappedPresenter { State: OverlappedPresenterState.Minimized }) return;
+
+        AppWindow.Hide();
+        _tray?.Show(); // 幂等：兜住启动时图标注册失败的情况，避免收起后无图标可恢复
+    }
+
+    private void RestoreFromTray()
+    {
+        if (AppWindow.Presenter is OverlappedPresenter presenter) presenter.Restore();
+        AppWindow.Show();
+        Activate();
+    }
+
+    private void OnTrayOutputRequested()
+    {
+        RestoreFromTray();
+        ShowOutputDrawer();
+    }
+
+    /// <summary>退出走正常关闭流程：窗口先恢复，运行中任务仍会弹既有确认框。</summary>
+    private void OnTrayExitRequested()
+    {
+        RestoreFromTray();
+        Close();
+    }
+
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.IsSettingsSelected) return;
         if (args.SelectedItem is not NavigationViewItem item) return;
 
-        var pageType = item.Tag?.ToString() switch
+        NavigateToTag(item.Tag?.ToString());
+    }
+
+    /// <summary>按导航项 Tag 切换页面实例（缓存复用）并同步页头标题；启动与点选共用。</summary>
+    private void NavigateToTag(string? tag)
+    {
+        var pageType = tag switch
         {
             "EnvUpdatePage" => typeof(EnvUpdatePage),
+            "PluginsPage" => typeof(PluginsPage),
             "ArgsPage" => typeof(ArgsPage),
             "EnvVarsPage" => typeof(EnvVarsPage),
-            "LogPage" => typeof(LogPage),
             _ => typeof(HomePage),
         };
 
@@ -234,16 +317,11 @@ public sealed partial class MainWindow : Window
             RootFrame.Content = page;
             RootFrame.BackStack.Clear();
         }
-        PageTitle.Text = item.Content?.ToString() ?? string.Empty;
+        // 标题取菜单项 Content，不在这里重复一份映射
+        PageTitle.Text = NavView.MenuItems.OfType<NavigationViewItem>()
+            .FirstOrDefault(i => string.Equals(i.Tag?.ToString(), tag, StringComparison.Ordinal))?.Content?.ToString()
+            ?? "主页";
         HideBreadcrumb();
-
-        // 记住上次停留的页面（FR-9）：存 Tag 而非序号，菜单顺序调整后仍能对上
-        var navTag = item.Tag?.ToString() ?? string.Empty;
-        if (!string.Equals(App.Services.Settings.LastPage, navTag, StringComparison.Ordinal))
-        {
-            App.Services.Settings.LastPage = navTag;
-            App.Services.Save();
-        }
 
         RefreshHeader();
     }
@@ -264,6 +342,128 @@ public sealed partial class MainWindow : Window
 
         // 徽章对读屏只是「已停止」这样的裸文本，补上语义前缀
         AutomationProperties.SetName(StateBadge, "运行状态：" + text);
+
+        OutputDrawer.SetState(state);
+        RefreshOutputIndicator();
+    }
+
+    // ---------- 任务输出抽屉（覆盖式，右侧滑出） ----------
+
+    private bool _drawerOpen;
+    private bool _hasUnseenTaskError;
+    private DispatcherQueueTimer? _drawerAutoOpenTimer;
+
+    private void OnAppStateChanged(LaunchState state) => DispatcherQueue.TryEnqueue(() =>
+    {
+        RefreshHeader();
+        ScheduleDrawerAutoOpen(state);
+    });
+
+    /// <summary>环境任务开始后延迟片刻再弹出：包列表刷新这类亚秒级任务不为它闪一次抽屉。</summary>
+    private void ScheduleDrawerAutoOpen(LaunchState state)
+    {
+        if (state != LaunchState.BusyEnv)
+        {
+            _drawerAutoOpenTimer?.Stop();
+            return;
+        }
+        if (_drawerOpen) return;
+
+        _drawerAutoOpenTimer ??= CreateDrawerAutoOpenTimer();
+        _drawerAutoOpenTimer.Stop();
+        _drawerAutoOpenTimer.Start();
+    }
+
+    private DispatcherQueueTimer CreateDrawerAutoOpenTimer()
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(700);
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) =>
+        {
+            if (App.Services.State == LaunchState.BusyEnv) ShowOutputDrawer();
+        };
+        return timer;
+    }
+
+    /// <summary>失败/取消只在入口按钮上标红点，不强制弹出打断用户。</summary>
+    private void OnLogLineAppended(string line)
+    {
+        if (!line.StartsWith("[错误]", StringComparison.Ordinal)
+            && !line.StartsWith("[已取消]", StringComparison.Ordinal)) return;
+
+        _hasUnseenTaskError = true;
+        if (!_drawerOpen) DispatcherQueue.TryEnqueue(RefreshOutputIndicator);
+    }
+
+    private void RefreshOutputIndicator()
+    {
+        if (App.Services.State == LaunchState.BusyEnv)
+        {
+            OutputIndicator.Fill = ThemeHelper.Brush("AccentFillColorDefaultBrush");
+            OutputIndicator.Visibility = Visibility.Visible;
+        }
+        else if (_hasUnseenTaskError)
+        {
+            OutputIndicator.Fill = ThemeHelper.Brush("SystemFillColorCriticalBrush");
+            OutputIndicator.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            OutputIndicator.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void OutputDrawerButton_Click(object sender, RoutedEventArgs e) => ToggleOutputDrawer();
+
+    private void EscapeAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (!_drawerOpen) return;
+        args.Handled = true;
+        CloseOutputDrawer();
+    }
+
+    private void ToggleOutputDrawer()
+    {
+        if (_drawerOpen) CloseOutputDrawer();
+        else ShowOutputDrawer();
+    }
+
+    public void ShowOutputDrawer()
+    {
+        if (_drawerOpen) return;
+        _hasUnseenTaskError = false;
+        PositionOutputDrawer();
+        OutputDrawerPopup.IsOpen = true;
+    }
+
+    public void CloseOutputDrawer()
+    {
+        if (_drawerOpen) _ = OutputDrawer.CloseAsync();
+    }
+
+    private void OutputDrawerPopup_Opened(object? sender, object e)
+    {
+        _drawerOpen = true;
+        OutputDrawer.Open();
+        RefreshOutputIndicator();
+    }
+
+    private void OnOutputDrawerDismissed(object? sender, EventArgs e)
+    {
+        _drawerOpen = false;
+        OutputDrawerPopup.IsOpen = false;
+        RefreshOutputIndicator();
+    }
+
+    /// <summary>抽屉只覆盖 NavigationView 区域，标题栏保持可拖动；位置按 NavView 在根布局中的原点换算。</summary>
+    private void PositionOutputDrawer()
+    {
+        if (Content is not FrameworkElement root || NavView.ActualWidth <= 0) return;
+        var origin = NavView.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(0, 0));
+        OutputDrawerPopup.HorizontalOffset = origin.X;
+        OutputDrawerPopup.VerticalOffset = origin.Y;
+        OutputDrawer.SetHostSize(NavView.ActualWidth, NavView.ActualHeight);
     }
 
     // ---------- 页头面包屑（二级页导航，Win11 设置风格） ----------

@@ -31,6 +31,9 @@ public sealed class LogService
     /// <summary>UI 订阅该事件追加渲染（触发线程为输出读取线程，UI 侧需自行切回 UI 线程）。</summary>
     public event Action<string>? LineAppended;
 
+    /// <summary>缓冲被清空：订阅方需重放快照，否则下次打开会渲染陈旧缓存。</summary>
+    public event Action? Cleared;
+
     public IReadOnlyList<string> Snapshot()
     {
         lock (_bufferLock) { return _buffer.ToArray(); }
@@ -96,6 +99,8 @@ public sealed class LogService
     public void Clear()
     {
         lock (_bufferLock) { _buffer.Clear(); }
+        // 与 LineAppended 同理：事件在锁外触发
+        Cleared?.Invoke();
     }
 
     /// <summary>磁盘保护（FR-5.4）：仅保留最近 retainCount 份；总大小超限时从最旧开始删除。</summary>

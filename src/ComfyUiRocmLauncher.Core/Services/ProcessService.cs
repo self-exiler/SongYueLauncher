@@ -142,10 +142,12 @@ public sealed class ProcessService
         string arguments,
         string workingDirectory,
         Action<string>? onOutput = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IDictionary<string, string>? environment = null)
     {
         var (exitCode, _, _) = await ProcessRunner.RunCapturedAsync(
-            fileName, arguments, workingDirectory, Timeout.Infinite, onOutput, cancellationToken)
+            fileName, arguments, workingDirectory, Timeout.Infinite, onOutput, cancellationToken,
+            environment: environment)
             .ConfigureAwait(false);
 
         // RunCapturedAsync 用 -1 表达「被打断」，但环境任务的上层靠异常区分「取消」与「失败」

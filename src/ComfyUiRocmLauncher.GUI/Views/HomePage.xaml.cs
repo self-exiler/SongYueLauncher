@@ -41,7 +41,9 @@ public sealed partial class HomePage : Page
 
         App.Services.StateChanged += OnStateChanged;
         RefreshState();
+        // 每次进入页面都按其时配置重同步：base-directory 可能在启动参数页被改动，快捷目录要跟着换目标
         RefreshQuickDirs();
+        RefreshBaseDirCard();
         RefreshTemplates();
     }
 
@@ -72,18 +74,16 @@ public sealed partial class HomePage : Page
 
         // 状态点配色：强调状态取状态色，空闲用次级前景（disabled 刷子语义上是「控件禁用」）
         RunStateDot.Fill = ThemeHelper.Brush(ThemeHelper.StateAccentKey(state) ?? "TextFillColorSecondaryBrush");
-
-        // 外置链接操作会搬移文件，ComfyUI 运行中或环境任务进行时必须禁入（含 BusyEnv）
-        RefreshDirLinks();
     }
 
-    /// <summary>FR-1.4：快捷目录不存在时对应按钮禁用。</summary>
+    /// <summary>FR-1.4：快捷目录按生效路径解析（base-directory / 各 *-directory 参数改写后指向外置数据根）；目录不存在时对应按钮禁用。</summary>
     private void RefreshQuickDirs()
     {
         foreach (var button in new[] { QdOutput, QdModels, QdWorkflow, QdCustomNodes, QdInput })
         {
-            var target = Path.Combine(Settings.ComfyUiDir, (string)button.Tag);
-            button.IsEnabled = !string.IsNullOrWhiteSpace(Settings.ComfyUiDir) && Directory.Exists(target);
+            var target = ComfyDirResolver.Resolve(Settings, (string)button.Tag);
+            button.IsEnabled = Directory.Exists(target);
+            Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(button, target);
         }
     }
 
@@ -92,7 +92,7 @@ public sealed partial class HomePage : Page
         Settings.ComfyUiDir = ComfyDirBox.Text.Trim();
         App.Services.Save();
         RefreshQuickDirs();
-        RefreshDirLinks();
+        RefreshBaseDirCard();
 
         // ComfyUI 目录变更时，若用户未手动改过解释器则联动刷新默认值（FR-1.1）
         if (!string.IsNullOrWhiteSpace(Settings.ComfyUiDir) && string.IsNullOrWhiteSpace(PythonBox.Text))
@@ -186,142 +186,85 @@ public sealed partial class HomePage : Page
     private void QuickDir_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button || button.Tag is not string relative) return;
-        UiHelpers.OpenFolder(Path.Combine(Settings.ComfyUiDir, relative));
+        UiHelpers.OpenFolder(ComfyDirResolver.Resolve(Settings, relative));
     }
 
-    // ---------- 目录外置链接（FR-1.5） ----------
+    // ---------- 目录外置（FR-1.5，纯启动参数） ----------
 
-    /// <summary>四个链接控件按目录名成组，避免 models / output 两份重复代码。</summary>
-    private (string Name, TextBlock Status, Button Link, Button Unlink)[] DirLinkRows() =>
-    [
-        ("models", ModelsLinkStatus, ModelsLinkButton, ModelsUnlinkButton),
-        ("output", OutputLinkStatus, OutputLinkButton, OutputUnlinkButton),
-    ];
+    private const string BaseDirArg = "base-directory";
 
-    /// <summary>刷新外置链接状态；文件系统是真相，config 记录只用于回显。非 Idle 状态禁入（搬文件不能与运行/任务并发）。</summary>
-    private void RefreshDirLinks()
+    private void BaseDirBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        var idle = App.Services.State == LaunchState.Idle;
-        var comfyReady = !string.IsNullOrWhiteSpace(Settings.ComfyUiDir) && Directory.Exists(Settings.ComfyUiDir);
-        foreach (var (name, status, link, unlink) in DirLinkRows())
+        var value = BaseDirBox.Text.Trim().Trim('"');
+        if (value.Length == 0)
         {
-            var info = comfyReady ? DirLinkService.Inspect(Settings.ComfyUiDir, name) : null;
-            status.Text = info switch
-            {
-                null => "请先设置有效的 ComfyUI 目录",
-                { IsLink: true, TargetPath: not null } =>
-                    info.TargetExists ? $"已外置 → {info.TargetPath}" : $"链接失效（外部目录不存在）：{info.TargetPath}",
-                { IsLink: true } => "已链接（无法解析目标目录）",
-                { Exists: true, HasContent: true } => "未链接（普通目录；外置时会先把其中内容迁往外部目录）",
-                { Exists: true } => "未链接（空目录）",
-                _ => "目录不存在（首次启动 ComfyUI 后生成，也可直接外置）",
-            };
-            link.IsEnabled = idle && comfyReady;
-            unlink.IsEnabled = idle && comfyReady && info is { IsLink: true };
+            // 清空文本框不算「清除」：值留空但开关保持，真正移除参数走「清除」按钮
+            Settings.Args.SetValue(BaseDirArg, string.Empty);
         }
+        else
+        {
+            Settings.Args.Enable(BaseDirArg, true);
+            Settings.Args.SetValue(BaseDirArg, value);
+        }
+        App.Services.Save();
+        RefreshBaseDirCard();
     }
 
-    private async void LinkDir_Click(object sender, RoutedEventArgs e)
+    private async void BrowseBaseDir_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button button || button.Tag is not string name) return;
-        if (App.Services.State != LaunchState.Idle)
-        {
-            DirLinkOpText.Text = "ComfyUI 运行中或环境任务进行时不可操作。";
-            return;
-        }
-
         var picker = new Windows.Storage.Pickers.FolderPicker
         {
             SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.ComputerFolder,
         };
         picker.FileTypeFilter.Add("*");
         WinRT.Interop.InitializeWithWindow.Initialize(picker, App.WindowHandle);
+
         var folder = await picker.PickSingleFolderAsync();
-        if (folder is null) return;
-
-        var target = DirLinkService.TargetPath(folder.Path, name);
-        var ok = await UiHelpers.ConfirmAsync(
-            XamlRoot, "外置目录链接",
-            $"将把「{name}」链接到外部目录：\n{target}\n\n" +
-            "目录中的现有内容会先迁移过去（同一磁盘瞬时完成，跨磁盘复制、耗时与体积成正比；同名文件会被覆盖），" +
-            "随后原位置变为目录联接。此后模型与输出都存放在整合包之外，删除或重装整合包不会影响它们。\n\n" +
-            "迁移期间请勿启动 ComfyUI、勿关闭启动器。",
-            "外置");
-        if (!ok) return;
-
-        await RunDirLinkOpAsync($"外置 {name}", async () =>
-        {
-            var warning = await DirLinkService.LinkAsync(App.Services.Tasks, Settings.ComfyUiDir, name, folder.Path,
-                msg => DispatcherQueue.TryEnqueue(() => DirLinkOpText.Text = msg));
-            DirLinkOpText.Text = warning is null
-                ? $"√ 「{name}」已外置到 {target}"
-                : $"√ 「{name}」已外置到 {target}（{warning}）";
-        });
+        if (folder is not null) BaseDirBox.Text = folder.Path;
     }
 
-    private async void UnlinkDir_Click(object sender, RoutedEventArgs e)
+    private void ClearBaseDir_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button button || button.Tag is not string name) return;
-        if (App.Services.State != LaunchState.Idle)
-        {
-            DirLinkOpText.Text = "ComfyUI 运行中或环境任务进行时不可操作。";
-            return;
-        }
-
-        var info = DirLinkService.Inspect(Settings.ComfyUiDir, name);
-        if (!info.IsLink)
-        {
-            DirLinkOpText.Text = $"「{name}」目前不是目录链接。";
-            return;
-        }
-
-        var ok = await UiHelpers.ConfirmAsync(
-            XamlRoot, "还原目录链接",
-            $"将解除「{name}」的外置链接：删除目录联接（外部目录中的数据不受影响），把其中内容搬回整合包目录" +
-            "（同一磁盘瞬时完成，跨磁盘复制、耗时与体积成正比），恢复为普通目录。搬不动的文件会保留在外部目录。\n\n" +
-            "迁移期间请勿启动 ComfyUI、勿关闭启动器。",
-            "还原");
-        if (!ok) return;
-
-        await RunDirLinkOpAsync($"还原 {name}", async () =>
-        {
-            var warning = await DirLinkService.UnlinkAsync(App.Services.Tasks, Settings.ComfyUiDir, name,
-                msg => DispatcherQueue.TryEnqueue(() => DirLinkOpText.Text = msg));
-            DirLinkOpText.Text = warning is null
-                ? $"√ 「{name}」已还原为整合包内普通目录"
-                : $"√ 「{name}」已还原（{warning}）";
-        });
+        Settings.Args.Enable(BaseDirArg, false);
+        Settings.Args.SetValue(BaseDirArg, string.Empty);
+        App.Services.Save();
+        RefreshBaseDirCard();
     }
 
-    /// <summary>外置/还原共用外壳：占用全局任务槽（BusyEnv 期间禁启动）、异常落到状态行、结束刷新两块目录区。</summary>
-    private async Task RunDirLinkOpAsync(string label, Func<Task> body)
+    /// <summary>回显 base-directory 参数状态与生效推导；只读参数，不做任何文件系统操作。</summary>
+    private void RefreshBaseDirCard()
     {
-        if (!App.Services.Tasks.TryStart())
+        var arg = Settings.Args;
+        var value = arg.Value(BaseDirArg).Trim().Trim('"');
+        BaseDirBox.Text = value;
+
+        if (!arg.IsEnabled(BaseDirArg) || value.Length == 0)
         {
-            DirLinkOpText.Text = "已有任务在运行，请稍后再试。";
+            BaseDirStatusText.Text = "未启用：ComfyUI 使用整合包内的 models / input / output / temp 目录。";
             return;
         }
 
-        DirLinkOpText.Text = label + "进行中…";
+        var warning = string.Empty;
         try
         {
-            await body();
+            var full = NormPath(value);
+            if (!Path.IsPathRooted(full))
+                warning = "；相对路径按 ComfyUI 目录解析";
+            else if (!string.IsNullOrWhiteSpace(Settings.ComfyUiDir) &&
+                     full.StartsWith(NormPath(Settings.ComfyUiDir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                warning = "；警告：该目录位于整合包内，删除整合包时数据仍会丢失";
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            DirLinkOpText.Text = "[已取消] " + label + "（已迁移的文件保持现状，可重新执行）";
+            warning = "；路径格式无效，ComfyUI 可能启动失败";
         }
-        catch (Exception ex)
-        {
-            DirLinkOpText.Text = "[错误] " + ex.Message;
-        }
-        finally
-        {
-            App.Services.Tasks.Complete();
-            RefreshDirLinks();
-            RefreshQuickDirs();
-        }
+
+        BaseDirStatusText.Text =
+            $"已启用：模型/输入/输出/临时目录按 {value} 解析（其下 models、output 等子目录）{warning}";
     }
+
+    private static string NormPath(string path) =>
+        Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
 
     // ---------- GPU 架构模板（原配置管理页，SRS FR-7） ----------
 

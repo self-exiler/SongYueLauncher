@@ -40,31 +40,13 @@ public static class ComfyManagerChannelService
 
     /// <summary>
     /// user 目录：<c>--user-directory</c> → <c>--base-directory</c>/user → <c>&lt;ComfyUI 目录&gt;/user</c>。
-    /// 与 ComfyUI 的取值规则一致（user-directory 覆盖 base-directory；相对路径按 ComfyUI 目录解析）。
+    /// 解析规则收敛在 <see cref="ComfyDirResolver"/>（与上游 folder_paths.py 一致）。
     /// </summary>
     /// <remarks>
     /// 只认 Enabled 的原因：关闭开关只会把它移出 Enabled，Values 里的旧值仍留着（`SetValue` 仅在写空时删）。
     /// 若只看有没有值，用户关掉该参数后启动器会去改写一个 ComfyUI 根本不用的目录。
     /// </remarks>
-    public static string ResolveUserDirectory(AppConfig config)
-    {
-        var userOverride = EnabledValue(config, "user-directory");
-        if (userOverride.Length > 0) return ResolveAgainstComfyDir(config, userOverride);
-
-        var baseOverride = EnabledValue(config, "base-directory");
-        if (baseOverride.Length > 0)
-            return Path.Combine(ResolveAgainstComfyDir(config, baseOverride), "user");
-
-        return Path.GetFullPath(Path.Combine(config.ComfyUiDir, "user"));
-    }
-
-    private static string EnabledValue(AppConfig config, string name) =>
-        config.Args is { } args && args.IsEnabled(name)
-            ? args.Value(name).Trim().Trim('"')
-            : string.Empty;
-
-    private static string ResolveAgainstComfyDir(AppConfig config, string path) =>
-        Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(config.ComfyUiDir, path));
+    public static string ResolveUserDirectory(AppConfig config) => ComfyDirResolver.Resolve(config, "user");
 
     /// <summary>
     /// 已初始化的 Manager 目录（0–2 个）：新版 <c>&lt;user&gt;/__manager</c>（ComfyUI ≥ 0.3.76）与

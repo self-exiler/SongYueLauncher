@@ -14,14 +14,12 @@ public sealed partial class EnvUpdatePage : Page
     private bool _toolsDetected;
     private bool _mirrorsReady;
     private IReadOnlyList<ToolStatus> _tools = Array.Empty<ToolStatus>();
-    private readonly BoundedAnsiConsole _console;
 
     public EnvUpdatePage()
     {
         InitializeComponent();
         // 按钮栏自适应：窄窗口把每张卡里的按钮组改为纵向排列，避免横向溢出
         EnvRoot.SizeChanged += (_, _) => ApplyButtonBars();
-        _console = new BoundedAnsiConsole(ConsoleText, MaxConsoleLines);
         GithubMirrorBox.ItemsSource = MirrorCatalog.GithubMirrors;
         PypiMirrorBox.ItemsSource = MirrorCatalog.PypiMirrors;
         Loaded += OnLoaded;
@@ -75,38 +73,11 @@ public sealed partial class EnvUpdatePage : Page
     private void OnStateChanged(LaunchState state) =>
         DispatcherQueue.TryEnqueue(ApplyGuards);
 
-    // ---------- 输出控制台 ----------
-    /// <summary>控制台渲染行数上限（与日志页一致），避免长任务下 Inlines 无限增长。</summary>
-    private const int MaxConsoleLines = 3000;
-
-    /// <summary>任务输出区展开时的固定高度（行高与折叠置 0 对应）。</summary>
-    private const int ConsoleFixedHeight = 200;
-
-    private void Append(string line)
-    {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            _console.AppendLine(line);
-            ConsoleScroll.ChangeView(null, ConsoleScroll.ExtentHeight, null);
-        });
-        App.Services.Log.Append(line);
-    }
+    // ---------- 任务输出 ----------
+    /// <summary>输出统一写入全局日志缓冲，由右侧抽屉渲染（本页只保留状态行与取消按钮）。</summary>
+    private static void Append(string line) => App.Services.Log.Append(line);
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => App.Services.Tasks.Cancel();
-
-    private void ClearConsole_Click(object sender, RoutedEventArgs e) => _console.Clear();
-
-    /// <summary>折叠任务输出区：只留标题行，为上方内容腾出空间；页面实例被缓存，状态在会话内保持。</summary>
-    private bool _consoleCollapsed;
-
-    private void ToggleConsole_Click(object sender, RoutedEventArgs e)
-    {
-        _consoleCollapsed = !_consoleCollapsed;
-        ConsoleScroll.Visibility = _consoleCollapsed ? Visibility.Collapsed : Visibility.Visible;
-        ConsoleRow.Height = new GridLength(_consoleCollapsed ? 0 : ConsoleFixedHeight);
-        ConsoleToggleLabel.Text = _consoleCollapsed ? "展开" : "收起";
-        ConsoleToggleGlyph.Glyph = _consoleCollapsed ? "\uE70E" : "\uE70D";
-    }
 
     // ---------- 通用任务执行 ----------
     private async Task RunOpAsync(string label, Func<Task> body)

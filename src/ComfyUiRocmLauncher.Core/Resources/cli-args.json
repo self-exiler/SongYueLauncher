@@ -1,5 +1,5 @@
 {
-  "comment": "数据驱动的启动参数清单。type 取值: flag | int | float | string | optionalString | optionalInt | enum | multiEnum | floatList | stringList | repeatableStringList | repeatableVerbose | repeatableKeyValue。mutex 为互斥组编号（同组开启一个自动关闭其余）。",
+  "comment": "数据驱动的启动参数清单。type 取值: flag | int | float | string | folderPath | filePathList | optionalString | optionalInt | enum | multiEnum | floatList | stringList | repeatableVerbose | repeatableKeyValue。mutex 为互斥组编号（同组开启一个自动关闭其余）。",
   "groups": [
     {
       "id": "network",
@@ -17,13 +17,13 @@
       "id": "directories",
       "title": "目录",
       "args": [
-        { "name": "base-directory", "type": "string", "description": "覆盖 models/custom_nodes/input/output/temp/user 的基目录" },
-        { "name": "extra-model-paths-config", "type": "repeatableStringList", "description": "加载 extra_model_paths.yaml，可指定多个（每行一个，每个路径单独传递一次该参数）" },
-        { "name": "output-directory", "type": "string", "description": "覆盖输出目录（优先于 base-directory）" },
-        { "name": "temp-directory", "type": "string", "description": "覆盖临时目录（优先于 base-directory）" },
-        { "name": "input-directory", "type": "string", "description": "覆盖输入目录（优先于 base-directory）" },
-        { "name": "user-directory", "type": "string", "description": "覆盖 user 目录（须为已存在的绝对路径）" },
-        { "name": "models-directory", "type": "string", "description": "覆盖 models 目录（须为已存在的绝对路径）" }
+        { "name": "base-directory", "type": "folderPath", "description": "覆盖 models/custom_nodes/input/output/temp/user 的基目录" },
+        { "name": "extra-model-paths-config", "type": "filePathList", "description": "加载 extra_model_paths.yaml，可指定多个（每行一个，每个路径单独传递一次该参数）" },
+        { "name": "output-directory", "type": "folderPath", "description": "覆盖输出目录（优先于 base-directory）" },
+        { "name": "temp-directory", "type": "folderPath", "description": "覆盖临时目录（优先于 base-directory）" },
+        { "name": "input-directory", "type": "folderPath", "description": "覆盖输入目录（优先于 base-directory）" },
+        { "name": "user-directory", "type": "folderPath", "description": "覆盖 user 目录（须为已存在的绝对路径）" },
+        { "name": "models-directory", "type": "folderPath", "description": "覆盖 models 目录（须为已存在的绝对路径）" }
       ]
     },
     {

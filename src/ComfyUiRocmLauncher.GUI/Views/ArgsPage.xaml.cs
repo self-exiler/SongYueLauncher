@@ -431,14 +431,14 @@ public sealed partial class ArgsPage : Page
                 return (panel, RefreshChecks);
             }
 
-            case ArgType.RepeatableStringList:
+            case ArgType.FilePathList:
             case ArgType.RepeatableKeyValue:
             {
                 var box = new TextBox
                 {
                     AcceptsReturn = true,
                     MinHeight = 52,
-                    PlaceholderText = "每行一条",
+                    PlaceholderText = arg.Type == ArgType.FilePathList ? "每行一个文件路径" : "每行一条",
                     FontFamily = ThemeHelper.Mono,
                 };
                 box.Text = string.Join(Environment.NewLine, Settings.Args.LinesOf(arg.Name));
@@ -446,7 +446,65 @@ public sealed partial class ArgsPage : Page
                     .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                     .Select(l => l.Trim())
                     .Where(l => l.Length > 0)));
-                return (box, () => box.Text = string.Join(Environment.NewLine, Settings.Args.LinesOf(arg.Name)));
+
+                if (arg.Type == ArgType.RepeatableKeyValue)
+                    return (box, () => box.Text = string.Join(Environment.NewLine, Settings.Args.LinesOf(arg.Name)));
+
+                // yaml 清单类参数：多行框 + 「添加文件…」，选择结果按行追加（已存在的行不重复）
+                var addBtn = new Button { Content = "添加文件…", MinWidth = 96, Margin = new Thickness(0, 4, 0, 0) };
+                addBtn.Click += async (_, _) =>
+                {
+                    var picker = new Windows.Storage.Pickers.FileOpenPicker
+                    {
+                        SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
+                    };
+                    picker.FileTypeFilter.Add(".yaml");
+                    picker.FileTypeFilter.Add(".yml");
+                    WinRT.Interop.InitializeWithWindow.Initialize(picker, App.WindowHandle);
+                    var file = await picker.PickSingleFileAsync();
+                    if (file is null) return;
+                    var lines = box.Text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+                    if (!lines.Contains(file.Path, StringComparer.OrdinalIgnoreCase))
+                        box.Text = string.Join(Environment.NewLine, lines.Append(file.Path));
+                };
+
+                var listStack = new StackPanel();
+                listStack.Children.Add(box);
+                listStack.Children.Add(addBtn);
+                return (listStack, () => box.Text = string.Join(Environment.NewLine, Settings.Args.LinesOf(arg.Name)));
+            }
+
+            case ArgType.FolderPath:
+            {
+                // 目录类参数给「文本框 + 浏览…」：路径可手输也可选，浏览结果回填文本框后走同一条 Commit 落盘
+                var box = new TextBox
+                {
+                    PlaceholderText = "目录路径（可手填或浏览选择）",
+                    FontFamily = ThemeHelper.Mono,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                };
+                var browse = new Button { Content = "浏览…", MinWidth = 84, VerticalAlignment = VerticalAlignment.Center };
+                browse.Click += async (_, _) =>
+                {
+                    var picker = new Windows.Storage.Pickers.FolderPicker
+                    {
+                        SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.ComputerFolder,
+                    };
+                    picker.FileTypeFilter.Add("*");
+                    WinRT.Interop.InitializeWithWindow.Initialize(picker, App.WindowHandle);
+                    var folder = await picker.PickSingleFolderAsync();
+                    if (folder is not null) box.Text = folder.Path;
+                };
+
+                var rowPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                rowPanel.Children.Add(box);
+                rowPanel.Children.Add(browse);
+
+                box.Text = Settings.Args.Value(arg.Name);
+                box.TextChanged += (_, _) =>
+                    Commit(() => Settings.Args.SetValue(arg.Name, box.Text.Trim()));
+                return (rowPanel, () => box.Text = Settings.Args.Value(arg.Name));
             }
 
             default:

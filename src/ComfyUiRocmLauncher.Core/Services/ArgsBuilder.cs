@@ -35,6 +35,7 @@ public static class ArgsBuilder
             case ArgType.Int:
             case ArgType.Float:
             case ArgType.String:
+            case ArgType.FolderPath:
             case ArgType.Enum:
             {
                 var value = args.Value(def.Name);
@@ -76,7 +77,7 @@ public static class ArgsBuilder
                     : new[] { flag }.Concat(pick).ToArray();
             }
 
-            case ArgType.RepeatableStringList:
+            case ArgType.FilePathList:
             case ArgType.RepeatableKeyValue:
             {
                 var lines = args.LinesOf(def.Name)

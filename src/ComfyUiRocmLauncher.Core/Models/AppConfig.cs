@@ -42,8 +42,8 @@ public sealed class AppConfig
     /// <summary>上次退出时是否最大化。</summary>
     public bool WindowMaximized { get; set; }
 
-    /// <summary>上次停留的页面 Tag（MainWindow 导航恢复用）；空 = 主页。</summary>
-    public string LastPage { get; set; } = string.Empty;
+    /// <summary>任务输出抽屉宽度占宿主（NavigationView 区域）宽度的比例（FR-5.1）；用户拖拽后更新。</summary>
+    public double TaskDrawerWidthRatio { get; set; } = 0.36;
 }
 
 /// <summary>

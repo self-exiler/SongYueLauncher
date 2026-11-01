@@ -1,130 +1,54 @@
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
-using Microsoft.UI.Xaml.Media;
 using ComfyUiRocmLauncher.Core.Ai;
 using ComfyUiRocmLauncher.Core.Services;
-using ComfyUiRocmLauncher.GUI.Helpers;
+using ComfyUiRocmLauncher.GUI.Views;
 
-namespace ComfyUiRocmLauncher.GUI.Views;
+namespace ComfyUiRocmLauncher.GUI.Helpers;
 
-/// <summary>日志页（SRS FR-5）：ANSI 着色渲染 + 自动滚动 + 复制/清空 + 打开日志目录。</summary>
-public sealed partial class LogPage : Page
+/// <summary>
+/// AI 智能分析入口（SRS v2.0 FR-5.6）：网关未就绪时先走引导流程（缺 Node 提示安装、
+/// 未安装则弹下载链接到浏览器并引导放置 zip、未运行则拉起服务），全部通过后打开独立分析窗口。
+/// 从原日志页迁出，供任务输出抽屉随时调用。
+/// </summary>
+public static class AiGatewayEntry
 {
-    private const int MaxRenderedLines = 3000;
-    private readonly BoundedAnsiConsole _console;
+    private static AiAnalysisWindow? _window;
 
-    public LogPage()
+    public static async Task OpenAsync(Window owner)
     {
-        InitializeComponent();
-        _console = new BoundedAnsiConsole(LogText, MaxRenderedLines);
-        // 开关没有可见标题，补自动化名称；旁边「自动滚动」文本对读屏不构成标签关联
-        AutomationProperties.SetName(AutoScrollToggle, "自动滚动");
-        // 工具条自适应：窄窗口把按钮组与自动滚动改为纵向，避免横向溢出
-        LogRoot.SizeChanged += (_, _) =>
-        {
-            var narrow = LogRoot.ActualWidth < 760;
-            LogButtonsPanel.Orientation = narrow ? Orientation.Vertical : Orientation.Horizontal;
-            AutoScrollPanel.Orientation = narrow ? Orientation.Vertical : Orientation.Horizontal;
-        };
-        Loaded += OnLoaded;
-        Unloaded += (_, _) => App.Services.Log.LineAppended -= OnLineAppended;
-    }
+        var xamlRoot = (owner.Content as FrameworkElement)?.XamlRoot;
+        if (xamlRoot is null) return;
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
-    {
-        _console.Clear();
-
-        foreach (var line in App.Services.Log.Snapshot())
-        {
-            _console.AppendLine(line);
-        }
-
-        App.Services.Log.LineAppended += OnLineAppended;
-        RetentionText.Text = $"磁盘保护：保留最近 {App.Services.Settings.LogRetainCount} 份，总大小超 {App.Services.Settings.LogRetainTotalMB} MB 从最旧开始删除";
-        ScrollToEnd();
-    }
-
-    private void OnLineAppended(string line)
-    {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            _console.AppendLine(line);
-            if (AutoScrollToggle.IsOn) ScrollToEnd();
-        });
-    }
-
-    private void ScrollToEnd() => LogScroll.ChangeView(null, LogScroll.ExtentHeight, null);
-
-    private void Clear_Click(object sender, RoutedEventArgs e)
-    {
-        App.Services.Log.Clear();
-        _console.Clear();
-    }
-
-    private void CopyAll_Click(object sender, RoutedEventArgs e)
-    {
-        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-        package.SetText(App.Services.Log.SnapshotPlainText());
-        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-
-        // 复制是轻量操作：失败由系统剪贴板兜底提示，成功必须给出一个明确的短时反馈
-        _ = UiHelpers.FlashAsync(CopyStatusText, "已复制全部日志到剪贴板");
-    }
-
-    private void OpenLogDir_Click(object sender, RoutedEventArgs e)
-    {
-        var dir = App.Services.Log.LogDirectory;
-        if (!UiHelpers.OpenFolder(dir))
-        {
-            _ = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = "日志目录不存在",
-                Content = dir,
-                CloseButtonText = "确定",
-            }.ShowAsync();
-        }
-    }
-
-    /// <summary>
-    /// AI 智能分析（SRS v2.0 FR-5.6）：网关未就绪时先走引导流程（缺 Node 提示安装、
-    /// 未安装则弹下载链接到浏览器并引导放置 zip、未运行则拉起服务），全部通过后打开独立分析窗口。
-    /// </summary>
-    private AiAnalysisWindow? _aiWindow;
-
-    private async void AiAnalyze_Click(object sender, RoutedEventArgs e)
-    {
-        AiAnalyzeButton.IsEnabled = false;
         try
         {
             var gateway = App.Services.Gateway;
             if (gateway.Current == AiGatewayState.NodeMissing)
             {
-                await ShowNodeMissingAsync();
+                await ShowNodeMissingAsync(xamlRoot);
                 return;
             }
 
             // 未安装且安装目录里没有待解压的 zip：引导浏览器下载并放置（取消则中止本次进入）
             if (gateway.Current == AiGatewayState.NotInstalled && !gateway.HasPendingArchive)
             {
-                if (!await ShowManualInstallGuideAsync()) return;
+                if (!await ShowManualInstallGuideAsync(xamlRoot)) return;
             }
 
             var alreadyRunning = gateway.Current == AiGatewayState.Running
                                  && App.Services.Settings.AiGatewayApiKey.Length > 0;
             var (ok, message) = alreadyRunning
                 ? (true, string.Empty)
-                : await EnsureWithProgressAsync();
+                : await EnsureWithProgressAsync(xamlRoot);
             if (!ok)
             {
                 // message 为空 = 用户主动取消准备流程：不再弹“服务不可用”误导用户
-                if (message.Length > 0) await ShowGatewayProblemAsync(message);
+                if (message.Length > 0) await ShowGatewayProblemAsync(xamlRoot, message);
                 return;
             }
 
-            OpenAnalysisWindow();
+            OpenWindow();
         }
         catch (OperationCanceledException)
         {
@@ -134,19 +58,15 @@ public sealed partial class LogPage : Page
         {
             // async void 没有 catch 就是崩溃（审查 A1：安装目录不可写等意外必须折算成弹窗）
             App.Services.Log.Append($"[AI网关] 准备失败：{ex.Message}");
-            await ShowGatewayProblemAsync($"准备 AI 分析服务时出错：{ex.Message}");
-        }
-        finally
-        {
-            AiAnalyzeButton.IsEnabled = true;
+            await ShowGatewayProblemAsync(xamlRoot, $"准备 AI 分析服务时出错：{ex.Message}");
         }
     }
 
-    private void OpenAnalysisWindow()
+    private static void OpenWindow()
     {
-        if (_aiWindow is not null)
+        if (_window is not null)
         {
-            _aiWindow.Activate();
+            _window.Activate();
             return;
         }
 
@@ -155,19 +75,19 @@ public sealed partial class LogPage : Page
         panel.RecaptureRequested += (_, _) => Seed();
         Seed();
 
-        _aiWindow = new AiAnalysisWindow(panel, "AI 智能分析");
-        _aiWindow.Closed += (_, _) => _aiWindow = null;
-        _aiWindow.Activate();
+        _window = new AiAnalysisWindow(panel, "AI 智能分析");
+        _window.Closed += (_, _) => _window = null;
+        _window.Activate();
     }
 
     /// <summary>准备期间显示进度弹窗（首次会经历解压 → 启动 → 就绪数个阶段）。取消按钮真正取消准备流程。</summary>
-    private async Task<(bool Ok, string Message)> EnsureWithProgressAsync()
+    private static async Task<(bool Ok, string Message)> EnsureWithProgressAsync(XamlRoot xamlRoot)
     {
         var progressText = new TextBlock { Text = "正在准备 AI 分析服务…", TextWrapping = TextWrapping.Wrap };
         using var cts = new CancellationTokenSource();
         var dialog = new ContentDialog
         {
-            XamlRoot = XamlRoot,
+            XamlRoot = xamlRoot,
             Title = "AI 智能分析",
             Content = new StackPanel
             {
@@ -186,7 +106,7 @@ public sealed partial class LogPage : Page
         try
         {
             var result = await App.Services.Gateway.EnsureReadyAsync(
-                new Progress<string>(s => DispatcherQueue.TryEnqueue(() => progressText.Text = s)),
+                new Progress<string>(s => dialog.DispatcherQueue.TryEnqueue(() => progressText.Text = s)),
                 cts.Token);
             return (result.Ok, result.Message);
         }
@@ -205,7 +125,7 @@ public sealed partial class LogPage : Page
     /// 改为把下载链接弹到默认浏览器，并用文字引导用户把 zip 放进安装目录，由启动器解压。
     /// 返回 true 表示用户点了「我已放置好」，继续走准备流程。
     /// </summary>
-    private async Task<bool> ShowManualInstallGuideAsync()
+    private static async Task<bool> ShowManualInstallGuideAsync(XamlRoot xamlRoot)
     {
         var gateway = App.Services.Gateway;
         var mirror = App.Services.Settings.EnvUpdate.GithubMirror?.Trim();
@@ -242,7 +162,7 @@ public sealed partial class LogPage : Page
             Text = gateway.InstallRoot,
             IsTextSelectionEnabled = true,
             TextWrapping = TextWrapping.Wrap,
-            FontFamily = (FontFamily)Application.Current.Resources["MonoFontFamily"],
+            FontFamily = ThemeHelper.Mono,
         };
         var step3 = new TextBlock
         {
@@ -258,7 +178,7 @@ public sealed partial class LogPage : Page
 
         var dialog = new ContentDialog
         {
-            XamlRoot = XamlRoot,
+            XamlRoot = xamlRoot,
             Title = "安装 AI 分析服务（仅首次）",
             Content = new StackPanel
             {
@@ -288,11 +208,11 @@ public sealed partial class LogPage : Page
         if (!tail) host.Inlines.Add(new Run { Text = " · " });
     }
 
-    private async Task ShowNodeMissingAsync()
+    private static async Task ShowNodeMissingAsync(XamlRoot xamlRoot)
     {
         var dialog = new ContentDialog
         {
-            XamlRoot = XamlRoot,
+            XamlRoot = xamlRoot,
             Title = "缺少 Node.js 运行时",
             Content = new TextBlock
             {
@@ -313,11 +233,11 @@ public sealed partial class LogPage : Page
         await dialog.ShowAsync();
     }
 
-    private async Task ShowGatewayProblemAsync(string message)
+    private static async Task ShowGatewayProblemAsync(XamlRoot xamlRoot, string message)
     {
         await new ContentDialog
         {
-            XamlRoot = XamlRoot,
+            XamlRoot = xamlRoot,
             Title = "AI 分析服务未就绪",
             Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = message },
             CloseButtonText = "知道了",

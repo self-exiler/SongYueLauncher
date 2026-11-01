@@ -144,7 +144,7 @@
                 <!-- ===== 快捷目录 ===== -->
                 <TextBlock Text="快捷目录" Style="{StaticResource SettingsSectionHeaderStyle}" />
                 <settings:SettingsCard Header="快捷目录"
-                                       Description="在文件资源管理器中打开整合包下的常用目录；目录不存在时对应按钮自动禁用。">
+                                       Description="在文件资源管理器中打开常用目录；启用目录外置（base-directory）后自动指向外置数据根下的对应目录；目录不存在时对应按钮自动禁用。">
                     <!-- 窄窗口放不下五个按钮时由 code-behind 切为纵向排列 -->
                     <StackPanel x:Name="QuickDirsPanel" Width="{StaticResource SettingsCardContentWidth}"
                                 HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
@@ -161,9 +161,9 @@
                     </StackPanel>
                 </settings:SettingsCard>
 
-                <!-- FR-1.5：把 models / output 链接为整合包外数据目录的 junction，删除/重装整合包不丢模型与输出 -->
-                <settings:SettingsCard Header="目录外置链接"
-                                       Description="把模型 / 输出目录链接到整合包外的数据目录（目录联接）：删除或重装整合包时，模型与输出保留在外部目录，不会随之丢失。">
+                <!-- FR-1.5：目录外置纯参数化——只维护启动参数 base-directory，不做任何文件系统操作 -->
+                <settings:SettingsCard Header="目录外置（启动参数）"
+                                       Description="选择一个整合包外的数据根目录，写入启动参数 base-directory：ComfyUI 按该目录解析 models / input / output / temp 等子目录，删除或重装整合包不丢数据。本卡只维护参数，不移动、不链接任何文件。">
                     <settings:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE71B;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                     </settings:SettingsCard.HeaderIcon>
@@ -172,38 +172,15 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="模型目录（models）" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                                <Button x:Name="ModelsLinkButton" Content="外置…" MinWidth="80"
-                                        ToolTipService.ToolTip="选择外部数据目录，把 models 链接出去"
-                                        Click="LinkDir_Click" Tag="models" />
-                                <Button x:Name="ModelsUnlinkButton" Content="还原" MinWidth="72"
-                                        ToolTipService.ToolTip="解除链接，把内容搬回整合包目录"
-                                        Click="UnlinkDir_Click" Tag="models" />
-                            </StackPanel>
-                        </Grid>
-                        <TextBlock x:Name="ModelsLinkStatus" Style="{StaticResource SecondaryTextStyle}"
-                                   TextWrapping="Wrap" />
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="输出目录（output）" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                                <Button x:Name="OutputLinkButton" Content="外置…" MinWidth="80"
-                                        ToolTipService.ToolTip="选择外部数据目录，把 output 链接出去"
-                                        Click="LinkDir_Click" Tag="output" />
-                                <Button x:Name="OutputUnlinkButton" Content="还原" MinWidth="72"
-                                        ToolTipService.ToolTip="解除链接，把内容搬回整合包目录"
-                                        Click="UnlinkDir_Click" Tag="output" />
-                            </StackPanel>
+                            <TextBox x:Name="BaseDirBox" FontFamily="{StaticResource MonoFontFamily}"
+                                     PlaceholderText="外部数据根目录（留空并清除 = 使用整合包目录）"
+                                     TextChanged="BaseDirBox_TextChanged" />
+                            <Button Grid.Column="1" Content="浏览…" MinWidth="84" Click="BrowseBaseDir_Click" />
+                            <Button Grid.Column="2" Content="清除" MinWidth="72" Click="ClearBaseDir_Click" />
                         </Grid>
-                        <TextBlock x:Name="OutputLinkStatus" Style="{StaticResource SecondaryTextStyle}"
-                                   TextWrapping="Wrap" />
-                        <!-- 操作进度与结果反馈，平时为空不占位 -->
-                        <TextBlock x:Name="DirLinkOpText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="BaseDirStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
                     </StackPanel>
                 </settings:SettingsCard>
 

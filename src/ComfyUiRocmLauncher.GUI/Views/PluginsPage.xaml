@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="ComfyUiRocmLauncher.GUI.Views.PluginsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d">
+
+    <Grid Padding="{StaticResource SettingsPagePadding}" RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 工具栏：第一行计数与搜索，第二行检测/批量动作（窄窗口下两行比一行挤成一团好读） -->
+        <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}">
+            <StackPanel Style="{StaticResource SettingsCardStackStyle}" Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock x:Name="PluginCountText" Style="{StaticResource CardTitleStyle}" VerticalAlignment="Center" />
+                    <TextBox x:Name="SearchBox"
+                             MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="{StaticResource SettingsFieldMaxWidth}"
+                             PlaceholderText="搜索插件名 / 仓库地址…" TextChanged="SearchBox_TextChanged" />
+                    <Button x:Name="RefreshButton" Content="刷新" MinWidth="84" Click="Refresh_Click" />
+                    <Button x:Name="OpenDirButton" Content="打开插件目录" MinWidth="120" Click="OpenDir_Click" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="CheckUpdatesButton" Content="检测更新" MinWidth="104" Click="CheckUpdates_Click" />
+                    <Button x:Name="BatchUpdateButton" Content="批量更新" MinWidth="104" Click="BatchUpdate_Click" />
+                    <Button x:Name="SelectModeButton" Content="多选" MinWidth="84" Click="SelectMode_Click" />
+                    <TextBlock x:Name="UpdateSummaryText" VerticalAlignment="Center" Style="{StaticResource SecondaryTextStyle}" />
+                </StackPanel>
+                <!-- 多选模式才出现：对勾选项做批量启用 / 禁用 / 卸载 -->
+                <StackPanel x:Name="BatchBar" Orientation="Horizontal" Spacing="8" Visibility="Collapsed">
+                    <TextBlock x:Name="SelectedCountText" Text="已选 0 项" VerticalAlignment="Center"
+                               Style="{StaticResource SecondaryTextStyle}" />
+                    <Button x:Name="BatchEnableButton" Content="启用所选" MinWidth="104" IsEnabled="False" Click="BatchEnable_Click" />
+                    <Button x:Name="BatchDisableButton" Content="禁用所选" MinWidth="104" IsEnabled="False" Click="BatchDisable_Click" />
+                    <Button x:Name="BatchUninstallButton" Content="卸载所选" MinWidth="104" IsEnabled="False" Click="BatchUninstall_Click" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- 方案 B：粘贴仓库地址即装即走（GitHub 镜像与 PyPI 镜像沿用「环境与更新」页的设置） -->
+        <settings:SettingsCard Grid.Row="1" Header="安装新插件"
+                               Description="粘贴自定义节点的仓库地址（https://github.com/作者/仓库）：git clone 到插件目录，按需要装 requirements.txt 或执行 install.py。">
+            <settings:SettingsCard.HeaderIcon>
+                <FontIcon Glyph="&#xE896;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+            </settings:SettingsCard.HeaderIcon>
+            <StackPanel Width="{StaticResource SettingsCardContentWidth}" Spacing="8">
+                <TextBox x:Name="InstallUrlBox" FontFamily="{StaticResource MonoFontFamily}"
+                         PlaceholderText="https://github.com/author/ComfyUI-Node" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ToggleSwitch x:Name="AutoDepsToggle" IsOn="True" OnContent="自动安装依赖" OffContent="只克隆代码"
+                                  VerticalAlignment="Center" />
+                    <Button x:Name="InstallButton" Grid.Column="1" Content="安装" MinWidth="96"
+                            Style="{StaticResource AccentButtonStyle}" VerticalAlignment="Center"
+                            Click="Install_Click" />
+                </Grid>
+            </StackPanel>
+        </settings:SettingsCard>
+
+        <!-- 插件行按扫描结果在 code-behind 整批重建（数量不定，且要跟随搜索过滤） -->
+        <ScrollViewer Grid.Row="2">
+            <StackPanel x:Name="PluginListHost" Spacing="{StaticResource SettingsCardSpacing}" HorizontalAlignment="Stretch" />
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="3" Spacing="{StaticResource SettingsCardSpacing}">
+            <!-- 任务进行中的状态与取消；完整输出统一进右侧「任务输出」抽屉 -->
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock x:Name="ConsoleHintText" VerticalAlignment="Center" Style="{StaticResource SecondaryTextStyle}" />
+                <Button x:Name="CancelButton" Content="取消" IsEnabled="False" Click="Cancel_Click" />
+            </StackPanel>
+            <settings:SettingsExpander x:Name="BackupExpander" Header="卸载备份" HorizontalAlignment="Stretch">
+                <TextBlock x:Name="BackupCountText" Style="{StaticResource SecondaryTextStyle}" />
+            </settings:SettingsExpander>
+            <!-- 操作结果与进度反馈，平时为空不占位 -->
+            <TextBlock x:Name="PluginOpText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+        </StackPanel>
+    </Grid>
+</Page>

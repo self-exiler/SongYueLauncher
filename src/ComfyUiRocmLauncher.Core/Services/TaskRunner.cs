@@ -47,6 +47,7 @@ public sealed class TaskRunner
     }
 
     /// <summary>在当前任务槽内执行一条命令，输出流式回调，返回退出码。</summary>
-    public Task<int> Run(string fileName, string arguments, string workingDirectory, Action<string>? onOutput = null) =>
-        ProcessService.RunCommandAsync(fileName, arguments, workingDirectory, onOutput, Token);
+    public Task<int> Run(string fileName, string arguments, string workingDirectory, Action<string>? onOutput = null,
+        IDictionary<string, string>? environment = null) =>
+        ProcessService.RunCommandAsync(fileName, arguments, workingDirectory, onOutput, Token, environment);
 }

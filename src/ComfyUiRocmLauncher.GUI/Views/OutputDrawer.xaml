@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="ComfyUiRocmLauncher.GUI.Views.OutputDrawer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:views="using:ComfyUiRocmLauncher.GUI.Views"
+    mc:Ignorable="d">
+
+    <!-- 覆盖式抽屉：宿主尺寸由 MainWindow 按 NavigationView 区域同步（SetHostSize） -->
+    <Grid x:Name="Host">
+        <!-- 轻遮罩：点击关闭。Popup 不用 light dismiss——Popup 关闭后无法再做滑出动画，
+             因此由本控件先动画、完成后再由宿主收回 Popup -->
+        <Border x:Name="Scrim" Background="#66000000" Opacity="0" PointerPressed="Scrim_PointerPressed" />
+
+        <Grid x:Name="DrawerPanel" HorizontalAlignment="Right" Width="560">
+            <Grid.RenderTransform>
+                <TranslateTransform x:Name="Slide" X="0" />
+            </Grid.RenderTransform>
+
+            <Border Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1,1,0,1" CornerRadius="8,0,0,8">
+                <Grid Padding="20,16,20,20" RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 页头：标题 + 当前状态 + 关闭 -->
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="任务输出" Style="{StaticResource SubtitleTextBlockStyle}" VerticalAlignment="Center" />
+                        <TextBlock x:Name="TaskHintText" Grid.Column="1" VerticalAlignment="Center"
+                                   Style="{StaticResource SecondaryTextStyle}" TextTrimming="CharacterEllipsis" />
+                        <Button x:Name="CloseButton" Grid.Column="2" Click="Close_Click" Padding="8"
+                                ToolTipService.ToolTip="关闭（Esc）" AutomationProperties.Name="关闭任务输出">
+                            <FontIcon Glyph="&#xE711;" FontSize="12" />
+                        </Button>
+                    </Grid>
+
+                    <!-- 状态行：保留策略 + 轻量操作反馈（复制成功等），不弹窗打断 -->
+                    <StackPanel Grid.Row="1" Spacing="2">
+                        <TextBlock x:Name="RetentionText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="CopyStatusText" Style="{StaticResource SecondaryTextStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <!-- 控制台：保留终端深色底以保证 ANSI 调色板对比度 -->
+                    <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Background="{StaticResource ConsoleBackgroundBrush}">
+                        <ScrollViewer x:Name="LogScroll" Padding="12">
+                            <TextBlock x:Name="LogText"
+                                       FontFamily="{StaticResource MonoFontFamily}"
+                                       FontSize="12"
+                                       Foreground="{StaticResource ConsoleForegroundBrush}"
+                                       TextWrapping="Wrap"
+                                       IsTextSelectionEnabled="True" />
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- 工具条：窄抽屉时由代码切为纵向（与日志页旧版同一自适应口径） -->
+                    <StackPanel x:Name="ToolbarRow" Grid.Row="3" Spacing="8">
+                        <StackPanel x:Name="AutoScrollPanel" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="自动滚动" VerticalAlignment="Center" />
+                            <ToggleSwitch x:Name="AutoScrollToggle" IsOn="True" OnContent="" OffContent="" MinWidth="0" />
+                        </StackPanel>
+                        <StackPanel x:Name="ActionsPanel" Orientation="Horizontal" Spacing="8">
+                            <Button Content="复制全部" Click="CopyAll_Click" />
+                            <Button Content="清空" Click="Clear_Click" />
+                            <Button Content="日志目录" Click="OpenLogDir_Click" ToolTipService.ToolTip="打开磁盘上的日志目录" />
+                            <Button x:Name="AiAnalyzeButton" Content="AI 智能分析" Click="AiAnalyze_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 左缘拖拽条：命中区 8px，悬停显示细条；宽度比例拖拽结束后写入配置（FR-5.1）。
+                 ContentControl 默认模板不渲染 Background，命中面靠内部 Grid 的 Transparent 底 -->
+            <views:DrawerResizeHandle x:Name="ResizeHandle" HorizontalAlignment="Left" Width="8"
+                                      HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                      PointerEntered="ResizeHandle_PointerEntered"
+                                      PointerExited="ResizeHandle_PointerExited"
+                                      PointerPressed="ResizeHandle_PointerPressed"
+                                      PointerMoved="ResizeHandle_PointerMoved"
+                                      PointerReleased="ResizeHandle_PointerReleased"
+                                      PointerCaptureLost="ResizeHandle_PointerCaptureLost">
+                <Grid Background="Transparent">
+                    <Border x:Name="ResizeVisual" Width="3" Height="48" CornerRadius="2"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Background="{ThemeResource ControlStrokeColorDefaultBrush}" Opacity="0" />
+                </Grid>
+            </views:DrawerResizeHandle>
+        </Grid>
+    </Grid>
+</UserControl>
