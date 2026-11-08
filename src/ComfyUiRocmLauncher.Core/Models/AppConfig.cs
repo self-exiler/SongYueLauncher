@@ -17,14 +17,6 @@ public sealed class AppConfig
     public int LogRetainCount { get; set; } = 30;
     public int LogRetainTotalMB { get; set; } = 200;
 
-    // ---------- AI 智能分析（SRS v2.0 FR-5.6~5.9） ----------
-
-    /// <summary>AI 网关（dsh-our-free-model 独立服务）监听端口，由启动器拉起时经 --port 传入。</summary>
-    public int AiGatewayPort { get; set; } = 18900;
-
-    /// <summary>网关 API Key（forwardKey）；服务首次启动后由启动器自动从网关数据目录读取回填。</summary>
-    public string AiGatewayApiKey { get; set; } = string.Empty;
-
     // ---------- 界面状态（下次启动恢复，FR-9） ----------
 
     /// <summary>窗口左上角 X（AppWindow 像素坐标）。</summary>

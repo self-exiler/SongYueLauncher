@@ -29,25 +29,9 @@ public sealed class AppServices
         Tasks = new TaskRunner();
         Tasks.BusyChanged += Machine.ReportEnvBusy;
 
-        // AI 智能分析：网关安装/生命周期（SRS v2.0 FR-5.6）+ 诊断门面
-        // key 回填可能发生在 EnsureReadyAsync 的延续（线程池线程）：Save() 会触碰 UI 线程创建的
-        // DispatcherQueueTimer（非敏捷 WinRT 对象），跨线程调用抛 RPC_E_WRONG_THREAD 并穿出
-        // async void 崩溃应用——必须弹回 UI 线程执行（审查 #5）
-        var dq = DispatcherQueue.GetForCurrentThread();
-        Gateway = new AiGatewayService(
-            Log,
-            Path.Combine(ConfigService.RootDirectoryPath, "our-free-model"),
-            () => Settings.AiGatewayPort,
-            key => dq.TryEnqueue(() =>
-            {
-                Settings.AiGatewayApiKey = key;
-                Save();
-            }));
-        Ai = new ComfyUiAiService(() => new AiDiagnostics.GatewayOptions
-        {
-            BaseUrl = $"http://127.0.0.1:{Settings.AiGatewayPort}",
-            ApiKey = Settings.AiGatewayApiKey,
-        });
+        // AI 智能分析：直接调用本机 opencode CLI（SRS v3.4 FR-5.6）。
+        // 不再有需要启动器安装/拉起/回收的服务进程，也无需端口与 API Key 配置。
+        Ai = new ComfyUiAiService();
 
         _saveTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _saveTimer.Interval = TimeSpan.FromMilliseconds(400);
@@ -64,10 +48,7 @@ public sealed class AppServices
     /// <summary>环境任务调度器（全局单任务互斥，供环境与更新页使用）。</summary>
     public TaskRunner Tasks { get; }
 
-    /// <summary>AI 网关服务（dsh-our-free-model 独立服务）的安装与生命周期（SRS v2.0 FR-5.6）。</summary>
-    public AiGatewayService Gateway { get; }
-
-    /// <summary>AI 智能分析门面（SRS v2.0 FR-5.6~5.9）。</summary>
+    /// <summary>AI 智能分析门面（SRS v3.4 FR-5.6~5.9）。</summary>
     public ComfyUiAiService Ai { get; }
 
     public AppConfig Settings { get; }

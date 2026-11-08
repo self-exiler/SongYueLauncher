@@ -11,7 +11,7 @@ using Microsoft.UI.Xaml.Media;
 namespace ComfyUiRocmLauncher.GUI.Views;
 
 /// <summary>
-/// AI 智能分析窗口内容（SRS v2.0 FR-5.6~5.11，Windows Settings 风格 v2.1）：
+/// AI 智能分析窗口内容（SRS v3.4 FR-5.6~5.11，Windows Settings 风格 v2.1）：
 /// 顶部 SettingsCard 模型卡 + 左「问题日志」分组卡（底部横排发送/重新抓取）+ 右「分析回答」卡（标题行复制）+ 底部状态行。
 /// 左栏为指纹归并后的分组视图（FR-5.11，替代旧可编辑预览框）；发送 / 取消 / 复制 / 重新抓取全部内聚在本控件；
 /// 正文增量进回答区，工具/思考状态只进底部状态栏。由 <see cref="AiAnalysisWindow"/> 承载，关闭走标题栏 X。
@@ -169,7 +169,7 @@ public sealed partial class AiAnalysisDialog : UserControl
             else
             {
                 SetAnswerText(answer.Text);
-                SetStatus("分析失败，请检查网关服务状态或更换模型后重试。", StatusKind.Err);
+                SetStatus("分析失败，请检查本机 opencode 的 provider 配置或更换模型后重试。", StatusKind.Err);
             }
         }
         catch (OperationCanceledException)
@@ -179,12 +179,12 @@ public sealed partial class AiAnalysisDialog : UserControl
         catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException)
         {
             SetAnswerText(ex.Message);
-            SetStatus("调用 AI 网关出错。", StatusKind.Err);
+            SetStatus("调用本机 opencode 出错。", StatusKind.Err);
         }
         catch (Exception ex)
         {
             SetAnswerText(ex.Message);
-            SetStatus("调用 AI 网关发生未预期错误。", StatusKind.Err);
+            SetStatus("调用本机 opencode 发生未预期错误。", StatusKind.Err);
         }
     }
 
@@ -259,7 +259,7 @@ public sealed partial class AiAnalysisDialog : UserControl
     {
         if (_answering) return;
         ModelCombo.IsEnabled = false;
-        SetStatus("正在读取网关模型…", StatusKind.Busy);
+        SetStatus("正在读取本机 opencode 模型…", StatusKind.Busy);
         try
         {
             var models = await _client.ListModelsAsync();
@@ -267,7 +267,7 @@ public sealed partial class AiAnalysisDialog : UserControl
             foreach (var m in models) _models.Add(m);
             if (_models.Count == 0)
             {
-                SetStatus("网关未返回可用模型，请确认 Our Free Model 服务已启动并完成模型探测。", StatusKind.Err);
+                SetStatus("本机 opencode 未返回可用模型：请确认已配置 provider（可执行 `opencode models` 检查）；冷启动时目录可能稍后才装载完成。", StatusKind.Err);
                 ModelCombo.PlaceholderText = "暂无可用模型";
             }
             else
@@ -281,9 +281,8 @@ public sealed partial class AiAnalysisDialog : UserControl
         {
             _models.Clear();
             ModelCombo.PlaceholderText = "模型读取失败";
-            // 网关进程死掉抛 HttpRequestException、超时抛 TaskCanceledException——此前都不在过滤器里，
-            // 被 `_ =` 火后不管吞掉，状态栏永久停在「正在读取网关模型…」（审查 #12d）
-            var reason = ex is TaskCanceledException ? "读取模型超时（网关无响应）" : ex.Message;
+            // CLI 不存在、输出非 JSON、进程超时都要落到状态栏；否则 `_ =` 火后不管会永久停在「正在读取…」（审查 #12d）
+            var reason = ex is TaskCanceledException ? "读取模型超时（opencode 无响应）" : ex.Message;
             SetStatus($"模型读取失败：{reason}", StatusKind.Err);
         }
         finally

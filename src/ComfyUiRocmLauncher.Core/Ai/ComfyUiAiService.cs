@@ -1,26 +1,24 @@
 using AiDiagnostics;
 using AiDiagnostics.Logs;
-using AiDiagnostics.Tools;
 
 namespace ComfyUiRocmLauncher.Core.Ai;
 
 /// <summary>
-/// AI 智能分析的宿主门面（SRS v2.0 FR-5.6~5.9）：把 ComfyUI 领域画像与通用 <see cref="AiDiagnosticsClient"/> 组装起来。
-/// 界面层只依赖本类，既不接触网关的 HTTP 细节，也不接触诊断库的公开类型。
+/// AI 智能分析的宿主门面（SRS v3.4 FR-5.6~5.9）：把 ComfyUI 领域画像与通用 <see cref="AiDiagnosticsClient"/> 组装起来。
+/// 界面层只依赖本类，既不接触 opencode 的命令行细节，也不接触诊断库的公开类型。
 /// </summary>
 public sealed class ComfyUiAiService
 {
     private readonly AiDiagnosticsClient _client;
 
-    /// <param name="optionsFactory">每次调用时取最新的网关地址与 Key（Key 可能在服务首次启动后才生成）。</param>
-    public ComfyUiAiService(Func<GatewayOptions>? optionsFactory = null)
-    {
-        _client = new AiDiagnosticsClient(
-            optionsFactory,
-            tools: new CompositeToolExecutor(new WebSearchTool(), new WebFetchTool()));
-    }
+    /// <param name="optionsFactory">每次调用时取最新的 CLI 路径与超时配置；不传则自动定位本机 opencode。</param>
+    public ComfyUiAiService(Func<OpenCodeOptions>? optionsFactory = null) =>
+        _client = new AiDiagnosticsClient(optionsFactory);
 
-    /// <summary>列举网关当前可用的模型。</summary>
+    /// <summary>定位本机 opencode CLI；未安装返回 <c>null</c>（供入口做安装引导）。</summary>
+    public static string? LocateOpenCode() => AiDiagnosticsClient.Locate();
+
+    /// <summary>列举本机 opencode 当前可用的模型。</summary>
     public async Task<IReadOnlyList<AiModelOption>> ListModelsAsync(CancellationToken cancellationToken = default)
     {
         var models = await _client.ListModelsAsync(cancellationToken).ConfigureAwait(false);
@@ -44,6 +42,8 @@ public sealed class ComfyUiAiService
                 ModelId = modelId,
                 Agent = ComfyUiDiagnosis.Agent,
                 UseTools = true,
+                Title = ComfyUiDiagnosis.AnalysisTitle,
+                Instruction = ComfyUiDiagnosis.AnalysisInstruction,
             },
             onDelta,
             onStatus,

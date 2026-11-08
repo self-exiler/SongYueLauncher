@@ -1,83 +1,91 @@
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using AiDiagnostics.Tools;
+using AiDiagnostics.Agents;
+using AiDiagnostics.Parsing;
+using AiDiagnostics.Runtime;
 
 namespace AiDiagnostics;
 
 /// <summary>
-/// 通过 OpenAI 兼容本地网关做 AI 分析的客户端：列举模型、把文本交给分析请求并流式取回回答。
+/// 通过本机 opencode CLI 做 AI 分析的客户端：列举可用模型、把文本交给自定义 agent 分析并流式取回回答。
 /// </summary>
 /// <remarks>
-/// 网关由宿主安装并拉起（dsh-our-free-model 独立服务，SRS v2.0 FR-5.6），
-/// 库只认 <see cref="GatewayOptions"/> 里的 BaseUrl 与 Key，不感知安装与进程生命周期。
-/// 联网查证经可选的 <see cref="IAiToolExecutor"/>（function calling 工具循环，最多
-/// <see cref="MaxToolRounds"/> 轮；上游不支持 tools 时自动降级为纯离线分析）。
+/// 走 CLI（<c>opencode api model.list</c> / <c>opencode run --standalone --format json</c>），
+/// 不依赖任何常驻 HTTP 网关、端口与 Bearer Key；provider、凭据与模型可用性完全由用户本机
+/// opencode 配置决定。库不感知业务域：人设、提示词与日志材料全部由宿主注入。
+/// <para>
+/// 联网查证交回 opencode 自身的 <c>websearch</c> / <c>webfetch</c> 权限（临时 agent 配置里放行），
+/// 不再由客户端做 function calling 工具循环。
+/// </para>
 /// </remarks>
 public sealed class AiDiagnosticsClient
 {
-    /// <summary>工具循环的物理轮数上限：每次工具往返算一轮，超出后去掉 tools 让模型直接作答。</summary>
-    private const int MaxToolRounds = 2;
+    private readonly Func<OpenCodeOptions> _optionsFactory;
+    private readonly ICommandRunner _runner;
 
-    /// <summary>单次分析的工具调用总次数上限：轮数只限往返，单轮内模型可并行发起多个 tool_calls（A10）。</summary>
-    private const int MaxToolCalls = 6;
-
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
-
-    private readonly Func<GatewayOptions> _optionsFactory;
-    private readonly HttpClient _http;
-    private readonly IAiToolExecutor? _tools;
-
-    public AiDiagnosticsClient(Func<GatewayOptions>? optionsFactory = null, HttpClient? http = null, IAiToolExecutor? tools = null)
+    public AiDiagnosticsClient(Func<OpenCodeOptions>? optionsFactory = null)
+        : this(optionsFactory, new ProcessCommandRunner())
     {
-        _optionsFactory = optionsFactory ?? (() => new GatewayOptions());
-        _http = http ?? new HttpClient(new SocketsHttpHandler
-        {
-            ConnectTimeout = TimeSpan.FromSeconds(5),
-            AutomaticDecompression = System.Net.DecompressionMethods.All,
-        });
-        _tools = tools;
     }
 
-    /// <summary>列出网关当前可用的模型（<c>GET /v1/models</c>，OpenAI 格式）。</summary>
+    /// <summary>测试桩注入点：替换子进程执行层，客户端契约不出网、不真的拉起 opencode。</summary>
+    internal AiDiagnosticsClient(Func<OpenCodeOptions>? optionsFactory, ICommandRunner runner)
+    {
+        _optionsFactory = optionsFactory ?? (() => new OpenCodeOptions());
+        _runner = runner;
+    }
+
+    /// <summary>定位本机 opencode 可执行文件；未安装返回 <c>null</c>（供宿主做入口引导）。</summary>
+    public static string? Locate() => OpenCodeLocator.Find();
+
+    /// <summary>
+    /// 列出 opencode 当前可用（已启用）的模型。
+    /// </summary>
+    /// <remarks>
+    /// 必须走默认（常驻后台）服务：<c>--standalone</c> 会为单次查询新建私有服务，
+    /// 其 provider 目录要等插件异步装载完才可见，冷启动时 <c>model.list</c> 恒为空列表。
+    /// 后台服务刚拉起时同样可能未装载完，因此空列表时短暂等待后重试。
+    /// </remarks>
     public async Task<IReadOnlyList<AiModel>> ListModelsAsync(CancellationToken cancellationToken = default)
     {
         var options = _optionsFactory();
-        using var request = BuildRequest(HttpMethod.Get, options.BaseUrl.TrimEnd('/') + "/v1/models", options.ApiKey);
-        using var timeout = Timeout(cancellationToken, options.ModelsTimeoutMs);
-        using var response = await _http.SendAsync(request, timeout.Token).ConfigureAwait(false);
+        var exe = ResolveExecutable(options);
+        var attempts = Math.Max(1, options.ModelListAttempts);
+        IReadOnlyList<AiModel> models = [];
 
-        var body = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(DescribeHttpFailure("模型列举", (int)response.StatusCode, body));
-
-        return ParseModels(body);
-    }
-
-    internal static IReadOnlyList<AiModel> ParseModels(string json)
-    {
-        var result = new List<AiModel>();
-        using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) return result;
-
-        foreach (var m in data.EnumerateArray())
+        for (var attempt = 0; attempt < attempts; attempt++)
         {
-            var id = m.ValueKind == JsonValueKind.Object && m.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.String
-                ? i.GetString()
-                : null;
-            if (string.IsNullOrEmpty(id)) continue;
+            if (attempt > 0)
+            {
+                await Task.Delay(options.ModelListRetryDelayMs, cancellationToken).ConfigureAwait(false);
+            }
 
-            // 网关广播 `provider/model` 复合 id（聚合渠道、链路）与裸 id（免费车道）两种形态；
-            // 展示名取 / 后段，发送仍用原始 id（QualifiedId）
-            var slash = id.IndexOf('/');
-            var name = slash > 0 ? id[(slash + 1)..] : id;
-            result.Add(new AiModel(id, name));
+            var run = await _runner.RunAsync(
+                exe, "api model.list", Environment.CurrentDirectory, options.ModelsTimeoutMs,
+                null, cancellationToken).ConfigureAwait(false);
+
+            if (run.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    $"opencode 模型列举失败（退出码 {run.ExitCode}）：{FirstLine(run.StdErr.Length > 0 ? run.StdErr : run.StdOut)}");
+            }
+
+            try
+            {
+                models = ModelListParser.Parse(run.StdOut);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                throw new InvalidOperationException($"opencode 模型列举返回了非 JSON 输出：{FirstLine(run.StdOut)}");
+            }
+            if (models.Count > 0) break;
         }
-        return result;
+
+        return models;
     }
 
     /// <summary>
-    /// 发送提问并流式取回回答。回答正文增量经 <paramref name="onDelta"/> 回调（SSE 逐段原样拼接，
-    /// 不要在调用方额外加分隔）；工具活动与思考状态经 <paramref name="onStatus"/> 回调（只进状态栏）。
+    /// 发送提问并流式取回回答。完整 prompt 经 stdin 传入，argv 只保留短指令；
+    /// 正文片段经 <paramref name="onDelta"/>（宿主直接 Append），思考与工具状态经 <paramref name="onStatus"/>。
     /// </summary>
     public async Task<AiAnswer> AskAsync(
         AiRequest request,
@@ -88,316 +96,140 @@ public sealed class AiDiagnosticsClient
         if (string.IsNullOrWhiteSpace(request.ModelId)) return new AiAnswer(false, "请先选择一个模型。");
 
         var options = _optionsFactory();
-        var messages = new List<JsonObject>
+        var exe = ResolveExecutable(options);
+
+        // 每次分析独立临时项目：只含本次自定义 agent，不污染用户全局 opencode 配置
+        using var workspace = AgentWorkspace.Create(request.Agent, request.UseTools);
+
+        // 显式指定临时配置并校正 opencode v2 的 PWD 根目录解析，避免父进程遗留的
+        // PWD 环境变量让 CLI 忽略 WorkingDirectory，从而找不到本次生成的自定义 agent
+        var environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            Message("system", request.Agent.SystemPrompt),
-            Message("user", request.Prompt),
+            ["OPENCODE_CONFIG"] = workspace.ConfigPath,
+            ["PWD"] = workspace.Root,
         };
 
-        var offerTools = request.UseTools && _tools is not null;
-        var toolsDropped = false;
-        var toolRounds = 0;
-        var toolCallsExecuted = 0;
-        var contentBuilder = new StringBuilder();
-
-        for (var round = 0; ; round++)
-        {
-            var useTools = offerTools && !toolsDropped;
-            using var httpRequest = BuildChatRequest(options, request.ModelId, messages, useTools ? _tools!.Definitions : null);
-            using var timeout = Timeout(cancellationToken, options.AnswerTimeoutMs);
-
-            HttpResponseMessage response;
-            try
-            {
-                response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                return new AiAnswer(false, PartialOr("分析超时，请检查网关服务或更换模型后重试。", contentBuilder));
-            }
-
-            // 上游不支持 tools 时会整单 400：去掉 tools 重发一次，退化为纯离线分析（一期基线行为）
-            if ((int)response.StatusCode == 400 && useTools)
-            {
-                response.Dispose();
-                toolsDropped = true;
-                continue;
-            }
-
-            // 非 2xx（401 Key 失效 / 429 限流 / 5xx 上游故障）不是 SSE 流：读 body 报可诊断的错误，
-            // 不能落到底下「无可解析内容」的空流分支（审查 #12a）
-            if (!response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
-                return new AiAnswer(false, PartialOr(DescribeHttpFailure("分析", (int)response.StatusCode, body), contentBuilder));
-            }
-
-            using (response)
-            {
-                try
-                {
-                    var body = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
-                    var state = await ReadChatStreamAsync(body, contentBuilder, onDelta, onStatus, timeout.Token).ConfigureAwait(false);
-
-                    if (state is { FinishReason: "tool_calls" } && useTools && state.ToolCalls.Count > 0)
-                    {
-                        messages.Add(AssistantToolCalls(state));
-                        toolRounds++;
-                        // 轮次熔断：后续请求不再提供工具，模型只能基于已有结果作答
-                        if (toolRounds >= MaxToolRounds) toolsDropped = true;
-                        foreach (var call in state.ToolCalls)
-                        {
-                            // 总次数兜底（A10）：轮数只限往返次数，单轮内模型可并行发起多个 tool_calls；
-                            // 超预算的调用直接以文案回填，保证每个 tool_call id 都有结果可应答
-                            if (toolCallsExecuted >= MaxToolCalls)
-                            {
-                                messages.Add(ToolResult(call.Id, "Tool call budget exceeded for this analysis."));
-                                continue;
-                            }
-                            toolCallsExecuted++;
-                            onStatus?.Invoke($"正在调用 {call.Name} …");
-                            // 未知工具名兜底（FR-5.12 安全边界）：无论执行器是否自带守卫，未声明的能力一律拒绝
-                            var tools = _tools!;
-                            var executor = tools.Definitions.Any(d => d.Name == call.Name) ? tools : null;
-                            var result = executor is null
-                                ? $"Tool '{call.Name}' is not available."
-                                : await executor.ExecuteAsync(call, timeout.Token).ConfigureAwait(false);
-                            messages.Add(ToolResult(call.Id, result));
-                        }
-                        continue;
-                    }
-
-                    if (state.ErrorMessage is { Length: > 0 } error)
-                    {
-                        return new AiAnswer(false, PartialOr(error, contentBuilder));
-                    }
-
-                    var text = contentBuilder.ToString().Trim();
-                    if (text.Length == 0)
-                    {
-                        return new AiAnswer(false, "网关没有返回可解析的回答内容。");
-                    }
-                    return new AiAnswer(true, text);
-                }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-                {
-                    // 流读取/工具执行段的超时（区别于用户取消）：保留已流出的半截正文（审查 #12b）
-                    return new AiAnswer(false, PartialOr("分析超时，请检查网关服务或更换模型后重试。", contentBuilder));
-                }
-                catch (OperationCanceledException)
-                {
-                    throw; // 用户主动取消：原样上抛，由 GUI 呈现
-                }
-            }
-        }
-    }
-
-    // ---------- chat completions 流 ----------
-
-    /// <summary>一轮 chat completions 流的状态：正文、结束原因、累积中的工具调用与流内错误。</summary>
-    internal sealed class ChatStreamState
-    {
-        public string? FinishReason { get; set; }
-        public string? ErrorMessage { get; set; }
-        public List<AiToolCall> ToolCalls { get; } = [];
-        internal Dictionary<int, (string? Id, string? Name, StringBuilder Args)> Pending { get; } = [];
-    }
-
-    private static async Task<ChatStreamState> ReadChatStreamAsync(
-        Stream body, StringBuilder content, Action<string>? onDelta, Action<string>? onStatus, CancellationToken ct)
-    {
-        var state = new ChatStreamState();
-        var reasoningAnnounced = false;
+        var content = new StringBuilder();
+        var diagnostics = new List<string>();
+        string? streamError = null;
         var contentStarted = false;
+        var thinkingAnnounced = false;
+        var lastCumulative = string.Empty;
 
-        using var reader = new StreamReader(body);
-        while (await reader.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
+        // 兼容两种 NDJSON 正文语义：逐段独立文本，或每次回传累积全文（只派发新增尾部）
+        void AppendDelta(string chunk)
         {
-            // 思考期间的静默由周期性 SSE 注释帧（":" 开头）填充，跳过
-            if (line.Length == 0 || line.StartsWith(':')) continue;
-            if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
-
-            var payload = line["data:".Length..].Trim();
-            if (payload == "[DONE]") break;
-
-            JsonObject? frame;
-            try
+            if (lastCumulative.Length > 0 && chunk.StartsWith(lastCumulative, StringComparison.Ordinal))
             {
-                frame = JsonNode.Parse(payload) as JsonObject;
-            }
-            catch (JsonException)
-            {
-                continue; // 半截帧丢弃，完整帧会另起一行
-            }
-            if (frame is null) continue;
-
-            if (frame["error"] is JsonObject error)
-            {
-                state.ErrorMessage ??= error["message"]?.GetValue<string>() ?? payload;
-                continue;
+                var delta = chunk[lastCumulative.Length..];
+                lastCumulative = chunk;
+                if (delta.Length == 0) return;
+                content.Append(delta);
+                onDelta?.Invoke(delta);
+                return;
             }
 
-            if (frame["choices"] is not JsonArray choices || choices.Count == 0) continue;
-            if (choices[0] is not JsonObject choice) continue;
-
-            if (choice["finish_reason"] is JsonValue finish && finish.TryGetValue<string>(out var finishReason))
+            if (content.Length > 0)
             {
-                state.FinishReason = finishReason;
+                content.Append("\n\n");
+                onDelta?.Invoke("\n\n");
             }
+            content.Append(chunk);
+            onDelta?.Invoke(chunk);
+            lastCumulative = chunk;
+        }
 
-            if (choice["delta"] is not JsonObject delta) continue;
-
-            if (delta["reasoning_content"] is JsonValue reasoning &&
-                reasoning.TryGetValue<string>(out var r) && r.Length > 0 && !reasoningAnnounced)
+        void OnOutputLine(string line)
+        {
+            var evt = RunEventParser.ParseLine(line);
+            switch (evt.Kind)
             {
-                reasoningAnnounced = true;
-                onStatus?.Invoke("模型思考中…");
-            }
-
-            if (delta["content"] is JsonValue contentValue && contentValue.TryGetValue<string>(out var chunk) && chunk.Length > 0)
-            {
-                if (!contentStarted)
-                {
-                    contentStarted = true;
-                    onStatus?.Invoke("正在生成回答…");
-                }
-                content.Append(chunk);
-                onDelta?.Invoke(chunk);
-            }
-
-            if (delta["tool_calls"] is JsonArray calls)
-            {
-                foreach (var node in calls)
-                {
-                    if (node is not JsonObject call) continue;
-                    var index = call["index"] is JsonValue idx && idx.TryGetValue<int>(out var i) ? i : 0;
-                    var slot = state.Pending.TryGetValue(index, out var existing)
-                        ? existing
-                        : (null, null, new StringBuilder());
-                    if (call["id"] is JsonValue id && id.TryGetValue<string>(out var idStr) && idStr.Length > 0)
-                        slot.Item1 = idStr;
-                    if (call["function"] is JsonObject fn)
+                case AiRunEventKind.Text:
+                    if (!contentStarted)
                     {
-                        if (fn["name"] is JsonValue name && name.TryGetValue<string>(out var n) && n.Length > 0)
-                            slot.Item2 ??= n;
-                        if (fn["arguments"] is JsonValue args && args.TryGetValue<string>(out var a))
-                            slot.Item3.Append(a);
+                        contentStarted = true;
+                        onStatus?.Invoke("正在生成回答…");
                     }
-                    state.Pending[index] = slot;
-                }
-            }
-        }
+                    AppendDelta(evt.Text);
+                    break;
 
-        state.ToolCalls.AddRange(state.Pending
-            .Where(kv => kv.Value.Item2 is not null)
-            .OrderBy(kv => kv.Key)
-            .Select(kv => new AiToolCall(kv.Value.Item1 ?? $"call_{kv.Key}", kv.Value.Item2!, kv.Value.Item3.ToString())));
-        return state;
-    }
-
-    // ---------- 消息与请求构造 ----------
-
-    private static HttpRequestMessage BuildChatRequest(
-        GatewayOptions options, string modelId, List<JsonObject> messages, IReadOnlyList<AiToolDefinition>? definitions)
-    {
-        var payload = new JsonObject
-        {
-            ["model"] = modelId,
-            ["messages"] = new JsonArray([.. messages.Select(m => (JsonNode)m.DeepClone())]),
-            ["stream"] = true,
-            ["temperature"] = 0.1,
-        };
-        if (definitions is { Count: > 0 })
-        {
-            payload["tool_choice"] = "auto";
-            payload["tools"] = new JsonArray([.. definitions.Select(d =>
-            {
-                JsonNode? schema = JsonNode.Parse(d.JsonSchema);
-                return (JsonNode)new JsonObject
-                {
-                    ["type"] = "function",
-                    ["function"] = new JsonObject
+                case AiRunEventKind.Progress:
+                    if (evt.Text == "模型思考中…")
                     {
-                        ["name"] = d.Name,
-                        ["description"] = d.Description,
-                        ["parameters"] = schema,
-                    },
-                };
-            })]);
+                        if (thinkingAnnounced) break;
+                        thinkingAnnounced = true;
+                    }
+                    onStatus?.Invoke(evt.Text);
+                    break;
+
+                case AiRunEventKind.Error:
+                    streamError ??= evt.Text;
+                    break;
+
+                default:
+                    // 非 JSON 行（CLI 日志 / ANSI 输出）只留作失败诊断，绝不进回答区
+                    if (evt.Text.Length > 0 && diagnostics.Count < 20) diagnostics.Add(evt.Text);
+                    break;
+            }
         }
-        return BuildRequest(HttpMethod.Post, options.BaseUrl.TrimEnd('/') + "/v1/chat/completions", options.ApiKey, payload);
-    }
 
-    private static JsonObject Message(string role, string content) => new()
-    {
-        ["role"] = role,
-        ["content"] = content,
-    };
+        var run = await _runner.RunAsync(
+            exe,
+            BuildAskArguments(request),
+            workspace.Root,
+            options.AnswerTimeoutMs,
+            OnOutputLine,
+            cancellationToken,
+            request.Prompt,
+            environment).ConfigureAwait(false);
 
-    private static JsonObject AssistantToolCalls(ChatStreamState state) => new()
-    {
-        ["role"] = "assistant",
-        ["content"] = null,
-        ["tool_calls"] = new JsonArray([.. state.ToolCalls.Select(c => (JsonNode)new JsonObject
+        var text = content.ToString().Trim();
+        if (streamError is { Length: > 0 } error)
         {
-            ["id"] = c.Id,
-            ["type"] = "function",
-            ["function"] = new JsonObject
+            return new AiAnswer(false, PartialOr(error, text));
+        }
+
+        if (run.ExitCode != 0)
+        {
+            var detail = LastNonEmptyLine(run.StdErr)
+                         ?? (diagnostics.Count > 0 ? diagnostics[^1] : null)
+                         ?? "（无输出）";
+            var reason = $"opencode 分析失败（退出码 {run.ExitCode}）：{detail}";
+            if (detail.Contains("超时", StringComparison.Ordinal) || detail.Contains("取消", StringComparison.Ordinal))
             {
-                ["name"] = c.Name,
-                ["arguments"] = c.ArgumentsJson,
-            },
-        })]),
-    };
-
-    private static JsonObject ToolResult(string callId, string result) => new()
-    {
-        ["role"] = "tool",
-        ["tool_call_id"] = callId,
-        ["content"] = result,
-    };
-
-    private static HttpRequestMessage BuildRequest(HttpMethod method, string url, string apiKey, JsonObject? payload = null)
-    {
-        var request = new HttpRequestMessage(method, url);
-        if (!string.IsNullOrEmpty(apiKey)) request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-        if (payload is not null)
-        {
-            request.Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json");
+                reason += "\n\n首次冷启动可能较慢；也请确认本机已配置可用模型 provider（可执行 `opencode models` 检查）。";
+            }
+            return new AiAnswer(false, PartialOr(reason, text));
         }
-        return request;
+
+        return text.Length > 0
+            ? new AiAnswer(true, text)
+            : new AiAnswer(false, "opencode 没有返回可解析的回答内容。请确认已配置可用模型 provider（可执行 `opencode models` 检查）。");
     }
 
-    private static CancellationTokenSource Timeout(CancellationToken outer, int ms)
+    /// <summary>构造 <c>opencode run</c> 参数：长 prompt 走 stdin，argv 只放短指令。</summary>
+    internal static string BuildAskArguments(AiRequest request) =>
+        new StringBuilder("run --standalone --format json --agent ")
+            .Append(CommandLine.Quote(request.Agent.Id))
+            .Append(" --model ")
+            .Append(CommandLine.Quote(request.ModelId))
+            .Append(" --title ")
+            .Append(CommandLine.Quote(request.Title))
+            .Append(' ')
+            .Append(CommandLine.Quote(request.Instruction))
+            .ToString();
+
+    private static string ResolveExecutable(OpenCodeOptions options)
     {
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
-        cts.CancelAfter(ms);
-        return cts;
+        var exe = !string.IsNullOrWhiteSpace(options.ExecutablePath)
+            ? options.ExecutablePath
+            : OpenCodeLocator.Find();
+        return exe ?? throw new InvalidOperationException(
+            "未检测到本机 opencode CLI。请安装 @opencode/cli（npm i -g @opencode/cli）后重试。");
     }
 
-    private static string PartialOr(string failure, StringBuilder partial) =>
+    private static string PartialOr(string failure, string partial) =>
         partial.Length > 0 ? $"{failure}\n\n已收到的部分内容：\n{partial}" : failure;
-
-    private static string DescribeHttpFailure(string action, int status, string body)
-    {
-        string? message = null;
-        try
-        {
-            using var doc = JsonDocument.Parse(body);
-            if (doc.RootElement.TryGetProperty("error", out var error) && error.TryGetProperty("message", out var m))
-            {
-                message = m.GetString();
-            }
-            else if (doc.RootElement.TryGetProperty("message", out var m2))
-            {
-                message = m2.GetString();
-            }
-        }
-        catch (JsonException) { }
-        var detail = message is { Length: > 0 } ? message : FirstLine(body);
-        return $"{action}失败（HTTP {status}）：{detail}";
-    }
 
     private static string FirstLine(string text)
     {
@@ -407,5 +239,16 @@ public sealed class AiDiagnosticsClient
             if (trimmed.Length > 0) return trimmed.Length > 300 ? trimmed[..300] : trimmed;
         }
         return "(无输出)";
+    }
+
+    private static string? LastNonEmptyLine(string text)
+    {
+        string? result = null;
+        foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length > 0) result = trimmed;
+        }
+        return result is { Length: > 300 } ? result[..300] : result;
     }
 }

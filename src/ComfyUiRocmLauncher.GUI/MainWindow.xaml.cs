@@ -155,27 +155,17 @@ public sealed partial class MainWindow : Window
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
         // 无论最终是否关闭，先立即落盘窗口状态与待写配置。
-        // 注意：网关停机必须放在「确定放行关闭」之后——用户可能点「取消关闭」继续用 AI 分析
         CaptureWindowState();
         App.Services.FlushSave();
-        if (_closeAfterKill)
-        {
-            App.Services.Gateway.Shutdown();
-            return;
-        }
+        if (_closeAfterKill) return;
 
         var leftovers = FindLeftoverPython();
-        if (leftovers.Length == 0 && App.Services.State == LaunchState.Idle)
-        {
-            App.Services.Gateway.Shutdown();
-            return;
-        }
+        if (leftovers.Length == 0 && App.Services.State == LaunchState.Idle) return;
 
         var xamlRoot = (Content as FrameworkElement)?.XamlRoot;
         if (xamlRoot is null)
         {
             // 拿不到 XamlRoot（理论上不发生）就无法弹窗：按直接关闭处理，不再拦截
-            App.Services.Gateway.Shutdown();
             return;
         }
 
@@ -238,7 +228,6 @@ public sealed partial class MainWindow : Window
         await ProcessService.KillProcessesAsync(FindLeftoverPython());
 
         App.Services.Log.Append("[启动器] 关闭前结束残留 Python 进程");
-        App.Services.Gateway.Shutdown();
         Close();
     }
 

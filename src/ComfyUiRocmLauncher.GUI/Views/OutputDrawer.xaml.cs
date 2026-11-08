@@ -257,13 +257,13 @@ public sealed partial class OutputDrawer : UserControl
 
     private async void AiAnalyze_Click(object sender, RoutedEventArgs e)
     {
-        // 先收起抽屉：网关引导用到 ContentDialog，弹窗与 Popup 同层时层级不可控
+        // 先收起抽屉：未安装 opencode 时会弹 ContentDialog，弹窗与 Popup 同层时层级不可控
         await CloseAsync();
 
         AiAnalyzeButton.IsEnabled = false;
         try
         {
-            await AiGatewayEntry.OpenAsync(App.Window);
+            await AiDiagnosticsEntry.OpenAsync(App.Window);
         }
         finally
         {

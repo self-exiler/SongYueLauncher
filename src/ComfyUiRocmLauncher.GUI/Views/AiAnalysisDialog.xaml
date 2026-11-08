@@ -32,7 +32,7 @@
         </Grid.RowDefinitions>
 
         <!-- ===== 顶部：模型卡 ===== -->
-        <ctrl:SettingsCard Header="AI 模型" Description="本地网关（Our Free Model）广播的可用模型">
+        <ctrl:SettingsCard Header="AI 模型" Description="本机 opencode 当前可用的模型（provider 由本机配置决定）">
             <ctrl:SettingsCard.HeaderIcon>
                 <FontIcon Glyph="&#xE99A;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
             </ctrl:SettingsCard.HeaderIcon>
@@ -42,7 +42,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <ComboBox x:Name="ModelCombo" HorizontalAlignment="Stretch"
-                          PlaceholderText="正在读取网关模型…" />
+                          PlaceholderText="正在读取本机模型…" />
                 <Button x:Name="RefreshModelsButton" Grid.Column="1" Content="刷新模型" Click="RefreshModels_Click" />
             </Grid>
         </ctrl:SettingsCard>
