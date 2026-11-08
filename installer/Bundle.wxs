@@ -1,6 +1,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
-     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:netfx="http://wixtoolset.org/schemas/v4/wxs/netfx">
   <!--
     松月启动器瘦身安装引导器（WiX Burn Bundle）。
 
@@ -8,10 +9,13 @@
     不进安装包），MSI 只有应用自身（~60MB 发布产物）；两个运行时在安装时按需下载：
 
       1. .NET Desktop Runtime 10 (x64)
-         检测：dotnet 共享目录下的钉住版本（util:FileSearch，注册表键在本机实测不可靠——
-         只有 sharedhost，sharedfx 可能整个缺失）。用户装有更新补丁版时（如 10.0.14）
-         不会命中钉住版 → 会再装一份钉住版（.NET 运行时按版本并排共存，无害，只发生一次）。
-         兜底：检测漏网且跳过安装时，apphost 启动器自身会弹出官方「缺运行时」引导对话框。
+         检测：netfx:DotNetCoreSearch 按 major 查宿主机已装的最新桌面运行时版本，
+         只要 >= DotNetMinVersion 就跳过下载——10.0.5 / 10.0.12 / 10.0.14 都算兼容，
+         不再要求与下载载荷的钉住补丁版（DotNetVersion，如 10.0.13）精确相等。
+         钉住版只决定 URL / Hash / Size（不可变，审查 #10），不再当检测锚点。
+         旧的精确版本 FileSearch 已弃用：实测宿主机装 10.0.12 会被误判缺失，58MB 下载
+         失败时连应用本体都装不上（v1.1.1 真机安装）。
+         兜底：万一运行时仍缺失，apphost 启动器自身会弹出官方「缺运行时」引导对话框。
       2. Windows App Runtime 1.8 (x64)
          无可靠检测锚点（MSIX 包不出注册表，WindowsApps 目录 ACL 拒绝枚举），
          因此不做 DetectCondition、每次安装都运行官方安装器——它幂等：已装时快速退出。
@@ -22,7 +26,7 @@
       BundleUpgradeCode                               Bundle 自身升级码（与 MSI UpgradeCode 不同：
                                                       旧版自包含 MSI 靠内部 MajorUpgrade 被新包覆盖升级）
       MsiPath                                         瘦身 MSI 的路径
-      DotNetVersion / DotNetUrl / DotNetSha1 / DotNetSize
+      DotNetVersion / DotNetMinVersion / DotNetMajorVersion / DotNetUrl / DotNetSha1 / DotNetSize
       WarUrl / WarSha1 / WarSize
   -->
   <Bundle Name="松月启动器 (A ComfyUI Launcher for ROCm)"
@@ -44,11 +48,13 @@
     <!-- 安装目录：应用 MSI 的 INSTALLFOLDER 由这里传入，保持与旧版相同的默认位置 -->
     <Variable Name="InstallFolder" Value="[ProgramFiles64Folder]SongYueLauncher" />
 
-    <!-- .NET 桌面运行时检测：钉住版本的共享目录存在即视为已装 -->
-    <util:FileSearch Id="DotNetDesktopRuntimeSearch"
-                     Path="[ProgramFiles64Folder]dotnet\shared\Microsoft.WindowsDesktop.App\$(var.DotNetVersion)\System.Private.CoreLib.dll"
-                     Result="exists"
-                     Variable="DotNetInstalled" />
+    <!-- .NET 桌面运行时检测（放宽兼容）：按 major 查宿主机已装的最新桌面运行时版本，
+         只要 >= 最低兼容版本就跳过下载。未安装时变量为空/0，比较不成立 → 正常下载钉住版。 -->
+    <netfx:DotNetCoreSearch Id="DotNetDesktopRuntimeSearch"
+                            RuntimeType="desktop"
+                            Platform="x64"
+                            MajorVersion="$(var.DotNetMajorVersion)"
+                            Variable="DotNetDesktopVersion" />
 
     <Chain>
       <!-- 每台机器只装一次（Permanent）：卸载启动器不回收系统级运行时 -->
@@ -57,7 +63,7 @@
                   Description="松月启动器运行所需的 .NET 桌面运行时（首次安装时自动下载）"
                   PerMachine="yes"
                   Permanent="yes"
-                  DetectCondition="DotNetInstalled"
+                  DetectCondition="DotNetDesktopVersion &gt;= &quot;$(var.DotNetMinVersion)&quot;"
                   InstallArguments="/install /quiet /norestart"
                   RepairArguments="/repair /quiet /norestart">
         <!-- v5 远程载荷：下载地址/文件名/哈希/大小全部写在 ExePackagePayload（v3 的 RemotePayload 已并入） -->

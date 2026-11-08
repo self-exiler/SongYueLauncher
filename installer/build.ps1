@@ -53,7 +53,16 @@ $bundleUpgradeCode = 'AA65422F-A713-4020-855C-6A502C7F4F73'
 # 两个源都必须钉死不可变 URL：WAR 若用 aka.ms「latest」短链，微软轮换后存量 Bundle 的哈希校验
 # 必然失败——所有已发布安装包同时变坏且无法远程修复（审查 #10）。版本与 GUI csproj 的
 # WindowsAppSDK 包版本保持一致（升级 SDK 时同步改这里）。
+#
+# .NET 版本拆成两个概念，别再把「下载钉住版」当成「安装宿主机必须精确匹配的版本」：
+#   $dotNetVersion       下载载荷钉住的补丁版（URL / 文件名 / Hash / ExePackage Version），保持不可变；
+#   $dotNetMinVersion    应用 TargetFramework (net10.0) 的最低兼容运行时，只用于宿主机检测；
+#   $dotNetMajorVersion  DotNetCoreSearch 搜索的 major，同 major 下任意 minor/patch 都兼容。
+# 背景：旧实现按 10.0.13 精确目录做 FileSearch，宿主机装 10.0.12 也判定缺失，触发 58MB
+# 运行时下载；下载没完成时连应用本体都装不上（v1.1.1 真机安装实测）。
 $dotNetVersion = '10.0.13'
+$dotNetMinVersion = '10.0.0'
+$dotNetMajorVersion = ($dotNetVersion -split '\.')[0]
 $dotNetUrl = "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/$dotNetVersion/windowsdesktop-runtime-$dotNetVersion-win-x64.exe"
 $warVersion = '1.8.260317003'
 $warUrl = "https://aka.ms/windowsappsdk/1.8/$warVersion/windowsappruntimeinstall-x64.exe"
@@ -63,6 +72,18 @@ Write-Output "== 松月启动器打包 =="
 Write-Output "   文件名版本 : $Version"
 Write-Output "   MSI 版本   : $msiVersion"
 Write-Output "   形态       : $(if ($Full) { '自包含 MSI（运行时内嵌）' } else { '瘦身 Bundle（运行时按需下载）' })"
+Write-Output "   .NET 运行时: 下载钉住 $dotNetVersion；宿主机兼容下限 $dotNetMinVersion（同 major 任意补丁）"
+
+# 构建宿主机运行时校验（放宽）：框架依赖发布不内嵌运行时，宿主只要装了同 major 的
+# WindowsDesktop.App 即算兼容，忽略 minor/patch；缺失只提示，不阻断 CI（runner 常只有 SDK）。
+$hostDesktopRuntime = & dotnet --list-runtimes 2>$null |
+    ForEach-Object { if ($_ -match '^Microsoft\.WindowsDesktop\.App\s+(\d+\.\d+\.\d+)') { [version]$Matches[1] } } |
+    Sort-Object -Descending | Select-Object -First 1
+if ($hostDesktopRuntime -and $hostDesktopRuntime.Major -ge [int]$dotNetMajorVersion) {
+    Write-Output "   宿主检测   : 已装 $hostDesktopRuntime >= $dotNetMinVersion，兼容（忽略补丁差异）"
+} else {
+    Write-Output "   宿主检测   : 未发现 $dotNetMajorVersion.x 桌面运行时（不影响打包，目标机由 Bundle 检测后按需安装）"
+}
 
 # ---------- 1. 发布应用本体 ----------
 # 两种形态都必须显式写死发布参数（*.pubxml 被 .gitignore 忽略，隐式形态会漂移成坏包）：
@@ -231,12 +252,12 @@ Write-Output "== 准备外置运行时依赖 =="
 $dotNetPayload = Get-InstallerPayload $dotNetUrl "windowsdesktop-runtime-$dotNetVersion-win-x64.exe"
 $warPayload = Get-InstallerPayload $warUrl 'windowsappruntimeinstall-x64.exe'
 
-# Bundle 需要 util（检测搜索）与 bootstrapperApplications（标准引导界面）两个扩展（全局装一次，幂等）。
-# 必须钉住与 wix.exe 相同的大版本（不钉会解析到最新 7.x，与 WiX v5 不兼容）
+# Bundle 需要 util、bootstrapperApplications（标准引导界面）与 netfx（.NET 运行时版本范围搜索）
+# 三个扩展（全局装一次，幂等）。必须钉住与 wix.exe 相同的大版本（不钉会解析到最新 7.x，与 WiX v5 不兼容）
 $extList = & $wix extension list -g 2>&1 | Out-String
 $wixVersion = (& $wix --version 2>&1 | Out-String).Trim()
 $wixMajor = ($wixVersion -split '\.')[0]
-foreach ($ext in 'WixToolset.Util.wixext', 'WixToolset.BootstrapperApplications.wixext') {
+foreach ($ext in 'WixToolset.Util.wixext', 'WixToolset.BootstrapperApplications.wixext', 'WixToolset.Netfx.wixext') {
     if ($extList -notmatch [regex]::Escape($ext)) {
         & $wix extension add -g "$ext/$wixMajor.0.2"
         if ($LASTEXITCODE -ne 0) { throw "wix extension add $ext 失败" }
@@ -248,12 +269,15 @@ foreach ($ext in 'WixToolset.Util.wixext', 'WixToolset.BootstrapperApplications.
     -o $bundlePath `
     -ext WixToolset.Util.wixext `
     -ext WixToolset.BootstrapperApplications.wixext `
+    -ext WixToolset.Netfx.wixext `
     -d ProductVersion=$msiVersion `
     -d Manufacturer=$manufacturer `
     -d BundleUpgradeCode=$bundleUpgradeCode `
     -d IconPath=$icon `
     -d MsiPath=$msiPath `
     -d DotNetVersion=$dotNetVersion `
+    -d DotNetMinVersion=$dotNetMinVersion `
+    -d DotNetMajorVersion=$dotNetMajorVersion `
     -d DotNetUrl=$dotNetUrl `
     -d DotNetSha1=$($dotNetPayload[0]) `
     -d DotNetSize=$($dotNetPayload[1]) `
